@@ -1,0 +1,8 @@
+framework:
+    secret: '%env(APP_SECRET)%'
+    form:
+        enabled: true
+        legacy_error_messages: false
+    csrf_protection: true
+    session:
+        handler_id: ~
