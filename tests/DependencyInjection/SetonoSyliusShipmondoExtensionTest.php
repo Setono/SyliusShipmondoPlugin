@@ -19,13 +19,6 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
         ];
     }
 
-    protected function getMinimalConfiguration(): array
-    {
-        return [
-            'option' => 'option_value',
-        ];
-    }
-
     /**
      * @test
      */
