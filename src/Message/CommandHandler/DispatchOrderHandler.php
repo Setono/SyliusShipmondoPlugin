@@ -18,6 +18,7 @@ final class DispatchOrderHandler
 
     public function __invoke(DispatchOrder $message): void
     {
+        /** @var null|OrderInterface $order */
         $order = $this->orderRepository->find($message->order);
         if (null === $order) {
             throw new UnrecoverableMessageHandlingException(sprintf('Order with id %s does not exist', (string) $message->order));
@@ -25,6 +26,10 @@ final class DispatchOrderHandler
 
         Assert::isInstanceOf($order, OrderInterface::class);
 
-        dump('Dispatching order with id ' . $order->getId());
+        if(null !== $message->version && $order->getVersion() !== $message->version) {
+            throw new UnrecoverableMessageHandlingException(sprintf('Order with id %s has been updated since it was dispatched', (string) $message->order));
+        }
+
+        echo 'Dispatching order with id ' . $order->getId() . PHP_EOL;
     }
 }
