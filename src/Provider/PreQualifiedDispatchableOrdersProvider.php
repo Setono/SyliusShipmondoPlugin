@@ -15,13 +15,10 @@ use Sylius\Component\Order\Repository\OrderRepositoryInterface;
 
 final class PreQualifiedDispatchableOrdersProvider implements PreQualifiedDispatchableOrdersProviderInterface
 {
-    private EntityRepository&OrderRepositoryInterface $orderRepository;
-
     public function __construct(
-        OrderRepositoryInterface&EntityRepository $orderRepository,
+        private readonly OrderRepositoryInterface&EntityRepository $orderRepository,
         private readonly EventDispatcherInterface $eventDispatcher,
     ) {
-        $this->orderRepository = $orderRepository;
     }
 
     /**
