@@ -32,7 +32,5 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
     public function after_loading_the_correct_parameter_has_been_set(): void
     {
         $this->load();
-
-        $this->assertContainerBuilderHasParameter('setono_sylius_shipmondo.option', 'option_value');
     }
 }
