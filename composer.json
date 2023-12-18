@@ -15,6 +15,7 @@
         "psr/event-dispatcher": "^1.0",
         "setono/doctrine-object-manager-trait": "^1.1",
         "sylius/core": "^1.0",
+        "sylius/core-bundle": "^1.0",
         "sylius/order": "^1.0",
         "sylius/resource": "^1.0",
         "symfony/config": "^5.4 || ^6.0",
