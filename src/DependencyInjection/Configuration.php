@@ -14,17 +14,6 @@ final class Configuration implements ConfigurationInterface
         $treeBuilder = new TreeBuilder('setono_sylius_shipmondo');
         $rootNode = $treeBuilder->getRootNode();
 
-        /**
-         * @psalm-suppress MixedMethodCall,PossiblyUndefinedMethod
-         */
-        $rootNode
-            ->children()
-                ->scalarNode('option')
-                    ->info('This is an example configuration option')
-                    ->isRequired()
-                    ->cannotBeEmpty()
-        ;
-
         return $treeBuilder;
     }
 }

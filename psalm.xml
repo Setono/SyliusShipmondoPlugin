@@ -3,6 +3,10 @@
     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
     xmlns="https://getpsalm.org/schema/config"
     xsi:schemaLocation="https://getpsalm.org/schema/config vendor/vimeo/psalm/config.xsd"
+    findUnusedPsalmSuppress="false"
+    findUnusedBaselineEntry="false"
+    findUnusedCode="false"
+    findUnusedVariablesAndParams="false"
     phpVersion="8.1"
     errorLevel="1"
 >
@@ -24,4 +28,11 @@
         </pluginClass>
         <pluginClass class="Psalm\PhpUnitPlugin\Plugin"/>
     </plugins>
+    <forbiddenFunctions>
+        <function name="dump"/>
+        <function name="dd"/>
+        <function name="print_r"/>
+        <function name="var_dump"/>
+        <function name="exit"/>
+    </forbiddenFunctions>
 </psalm>

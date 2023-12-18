@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<container xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://symfony.com/schema/dic/services"
+           xsi:schemaLocation="http://symfony.com/schema/dic/services http://symfony.com/schema/dic/services/services-1.0.xsd">
+    <services>
+        <service id="setono_sylius_shipmondo.dispatcher.order"
+                 class="Setono\SyliusShipmondoPlugin\Dispatcher\OrderDispatcher">
+            <argument type="service" id="setono_sylius_shipmondo.provider.pre_qualified_dispatchable_orders"/>
+            <argument type="service" id="setono_sylius_shipmondo.command_bus"/>
+            <argument type="service" id="state_machine.setono_sylius_shipmondo__order"/>
+            <argument type="service" id="doctrine"/>
+        </service>
+    </services>
+</container>
