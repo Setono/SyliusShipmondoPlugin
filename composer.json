@@ -14,6 +14,7 @@
         "ocramius/doctrine-batch-utils": "^2.4",
         "psr/event-dispatcher": "^1.0",
         "setono/doctrine-object-manager-trait": "^1.1",
+        "setono/shipmondo-php-sdk": "dev-master",
         "sylius/core": "^1.0",
         "sylius/core-bundle": "^1.0",
         "sylius/order": "^1.0",
@@ -36,6 +37,7 @@
         "jms/serializer-bundle": "^4.2",
         "lexik/jwt-authentication-bundle": "^2.16",
         "matthiasnoback/symfony-dependency-injection-test": "^4.3 || ^5.0",
+        "nyholm/psr7": "^1.8",
         "phpunit/phpunit": "^9.5",
         "psalm/plugin-phpunit": "^0.18",
         "psalm/plugin-symfony": "^5.0",
@@ -43,6 +45,7 @@
         "sylius/sylius": "~1.12.13",
         "symfony/debug-bundle": "^5.4 || ^6.0",
         "symfony/dotenv": "^5.4 || ^6.0",
+        "symfony/http-client": "^5.4 || ^6.0",
         "symfony/intl": "^5.4 || ^6.0",
         "symfony/property-info": "^5.4 || ^6.0",
         "symfony/serializer": "^5.4 || ^6.0.1",
@@ -69,7 +72,8 @@
             "dealerdirect/phpcodesniffer-composer-installer": false,
             "ergebnis/composer-normalize": true,
             "infection/extension-installer": true,
-            "symfony/thanks": false
+            "symfony/thanks": false,
+            "php-http/discovery": false
         },
         "sort-packages": true
     },

@@ -18,10 +18,13 @@ final class SetonoSyliusShipmondoExtension extends Extension implements PrependE
         /**
          * @psalm-suppress PossiblyNullArgument
          *
-         * @var array{option: scalar} $config
+         * @var array{api: array{username: string, key: string}} $config
          */
         $config = $this->processConfiguration($this->getConfiguration([], $container), $configs);
         $loader = new XmlFileLoader($container, new FileLocator(__DIR__ . '/../Resources/config'));
+
+        $container->setParameter('setono_sylius_shipmondo.api.username', $config['api']['username']);
+        $container->setParameter('setono_sylius_shipmondo.api.key', $config['api']['key']);
 
         $loader->load('services.xml');
     }

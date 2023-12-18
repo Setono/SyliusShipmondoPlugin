@@ -28,9 +28,11 @@ final class PreQualifiedDispatchableOrdersProvider implements PreQualifiedDispat
     {
         $qb = $this->orderRepository->createQueryBuilder('o')
             ->andWhere('o.shipmondoState = :shipmondoState')
+            ->andWhere('o.state = :state')
             ->andWhere('o.checkoutState = :checkoutState')
             ->andWhere('o.paymentState IN (:paymentStates)')
             ->setParameter('shipmondoState', OrderInterface::SHIPMONDO_STATE_PENDING)
+            ->setParameter('state', OrderInterface::STATE_NEW)
             ->setParameter('checkoutState', OrderCheckoutStates::STATE_COMPLETED)
             ->setParameter('paymentStates', [OrderPaymentStates::STATE_PAID, OrderPaymentStates::STATE_AUTHORIZED])
         ;
