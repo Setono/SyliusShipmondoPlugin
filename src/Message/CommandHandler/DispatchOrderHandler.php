@@ -29,7 +29,5 @@ final class DispatchOrderHandler
         if (null !== $message->version && $order->getVersion() !== $message->version) {
             throw new UnrecoverableMessageHandlingException(sprintf('Order with id %s has been updated since it was dispatched', (string) $message->order));
         }
-
-        echo 'Dispatching order with id ' . $order->getId() . \PHP_EOL;
     }
 }
