@@ -15,9 +15,13 @@ final class OrderWorkflow
 {
     private const PROPERTY_NAME = 'shipmondoState';
 
-    public const NAME = 'setono_sylius_shipmondo__order';
+    final public const NAME = 'setono_sylius_shipmondo__order';
 
-    public const TRANSITION_DISPATCH = 'dispatch';
+    final public const TRANSITION_START_DISPATCH = 'start_dispatch';
+
+    final public const TRANSITION_COMPLETE_DISPATCH = 'complete_dispatch';
+
+    final public const TRANSITION_FAIL = 'fail';
 
     private function __construct()
     {
@@ -31,6 +35,8 @@ final class OrderWorkflow
         return [
             OrderInterface::SHIPMONDO_STATE_PENDING,
             OrderInterface::SHIPMONDO_STATE_DISPATCHING,
+            OrderInterface::SHIPMONDO_STATE_DISPATCHED,
+            OrderInterface::SHIPMONDO_STATE_FAILED,
         ];
     }
 
@@ -77,7 +83,9 @@ final class OrderWorkflow
     public static function getTransitions(): array
     {
         return [
-            new Transition(self::TRANSITION_DISPATCH, [OrderInterface::SHIPMONDO_STATE_PENDING], OrderInterface::SHIPMONDO_STATE_DISPATCHING),
+            new Transition(self::TRANSITION_START_DISPATCH, [OrderInterface::SHIPMONDO_STATE_PENDING], OrderInterface::SHIPMONDO_STATE_DISPATCHING),
+            new Transition(self::TRANSITION_COMPLETE_DISPATCH, [OrderInterface::SHIPMONDO_STATE_DISPATCHING], OrderInterface::SHIPMONDO_STATE_DISPATCHED),
+            new Transition(self::TRANSITION_FAIL, [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_DISPATCHING], OrderInterface::SHIPMONDO_STATE_FAILED),
         ];
     }
 }

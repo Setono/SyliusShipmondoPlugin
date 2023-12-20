@@ -33,7 +33,7 @@ final class OrderDispatcher implements OrderDispatcherInterface
 
         foreach ($this->preQualifiedDispatchableOrdersProvider->getOrders() as $order) {
             try {
-                $this->orderWorkflow->apply($order, OrderWorkflow::TRANSITION_DISPATCH);
+                $this->orderWorkflow->apply($order, OrderWorkflow::TRANSITION_START_DISPATCH);
             } catch (LogicException) {
                 continue;
             }

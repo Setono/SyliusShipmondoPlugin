@@ -13,6 +13,10 @@ interface OrderInterface extends BaseOrderInterface, VersionedInterface
 
     public const SHIPMONDO_STATE_DISPATCHING = 'dispatching';
 
+    public const SHIPMONDO_STATE_DISPATCHED = 'dispatched';
+
+    public const SHIPMONDO_STATE_FAILED = 'failed';
+
     public function getShipmondoState(): string;
 
     public function setShipmondoState(string $shipmondoState): void;

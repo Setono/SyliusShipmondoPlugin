@@ -22,6 +22,16 @@ trait OrderTrait
      */
     protected string $shipmondoState = OrderInterface::SHIPMONDO_STATE_PENDING;
 
+    public function getVersion(): int
+    {
+        return $this->version;
+    }
+
+    public function setVersion(?int $version): void
+    {
+        $this->version = (int) $version;
+    }
+
     public function getShipmondoState(): string
     {
         return $this->shipmondoState;
@@ -30,15 +40,5 @@ trait OrderTrait
     public function setShipmondoState(string $shipmondoState): void
     {
         $this->shipmondoState = $shipmondoState;
-    }
-
-    public function getVersion(): int
-    {
-        return $this->version;
-    }
-
-    public function setVersion(?int $version): void
-    {
-        $this->version = $version;
     }
 }
