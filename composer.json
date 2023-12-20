@@ -72,8 +72,8 @@
             "dealerdirect/phpcodesniffer-composer-installer": false,
             "ergebnis/composer-normalize": true,
             "infection/extension-installer": true,
-            "symfony/thanks": false,
-            "php-http/discovery": false
+            "php-http/discovery": false,
+            "symfony/thanks": false
         },
         "sort-packages": true
     },
