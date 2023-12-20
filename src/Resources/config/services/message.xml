@@ -6,6 +6,7 @@
                  class="Setono\SyliusShipmondoPlugin\Message\CommandHandler\DispatchOrderHandler">
             <argument type="service" id="sylius.repository.order"/>
             <argument type="service" id="setono_sylius_shipmondo.client"/>
+            <argument type="service" id="setono_sylius_shipmondo.data_mapper.sales_order"/>
 
             <tag name="messenger.message_handler"/>
         </service>
