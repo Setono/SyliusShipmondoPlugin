@@ -1,0 +1,7 @@
+setono_sylius_shipmondo:
+    ui:
+        shipmondo_state: Shipmondo state
+        dispatching: Dispatching
+        pending: Pending
+        dispatched: Dispatched
+        failed: Failed

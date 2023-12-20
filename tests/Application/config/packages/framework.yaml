@@ -1,4 +1,5 @@
 framework:
+    ide: phpstorm
     secret: '%env(APP_SECRET)%'
     form:
         enabled: true
