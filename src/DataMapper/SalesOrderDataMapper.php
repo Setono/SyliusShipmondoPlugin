@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\DataMapper;
 
 use Psr\EventDispatcher\EventDispatcherInterface;
-use Setono\Shipmondo\DTO\Model\Address;
-use Setono\Shipmondo\DTO\Model\SalesOrder;
+use Setono\Shipmondo\Request\SalesOrders\Address;
+use Setono\Shipmondo\Request\SalesOrders\OrderLine;
+use Setono\Shipmondo\Request\SalesOrders\PaymentDetails;
+use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
 use Setono\SyliusShipmondoPlugin\Event\MapOrderLineEvent;
 use Setono\SyliusShipmondoPlugin\Event\MapSalesOrderEvent;
 use Setono\SyliusShipmondoPlugin\Event\MapShippingOrderLineEvent;
@@ -46,7 +48,7 @@ final class SalesOrderDataMapper implements SalesOrderDataMapperInterface
                 email: $order->getCustomer()?->getEmail(),
                 mobile: $order->getBillingAddress()?->getPhoneNumber(),
             ),
-            paymentDetails: new SalesOrder\PaymentDetails(
+            paymentDetails: new PaymentDetails(
                 amountIncludingVat: self::formatAmount($order->getTotal()),
                 currencyCode: $order->getCurrencyCode(),
                 vatAmount: self::formatAmount($order->getTaxTotal()),
@@ -59,7 +61,7 @@ final class SalesOrderDataMapper implements SalesOrderDataMapperInterface
             $orderItemUnit = $orderItem->getUnits()->first();
             Assert::isInstanceOf($orderItemUnit, OrderItemUnitInterface::class);
 
-            $orderLine = new SalesOrder\OrderLine(
+            $orderLine = new OrderLine(
                 itemName: sprintf('%s (%s)', (string) $orderItem->getProductName(), (string) $orderItem->getProductName()),
                 itemSku: $orderItem->getVariant()?->getCode(),
                 quantity: $orderItem->getQuantity(),
@@ -74,8 +76,8 @@ final class SalesOrderDataMapper implements SalesOrderDataMapperInterface
 
         $shippingAdjustments = $order->getAdjustments(AdjustmentInterface::SHIPPING_ADJUSTMENT);
         foreach ($shippingAdjustments as $shippingAdjustment) {
-            $orderLine = new SalesOrder\OrderLine(
-                lineType: SalesOrder\OrderLine::LINE_TYPE_SHIPPING,
+            $orderLine = new OrderLine(
+                lineType: OrderLine::LINE_TYPE_SHIPPING,
                 itemName: $shippingAdjustment->getLabel(),
                 quantity: 1,
                 unitPriceExcludingVat: self::formatAmount($shippingAdjustment->getAmount()),

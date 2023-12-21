@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\DataMapper;
 
-use Setono\Shipmondo\DTO\Model\SalesOrder;
+use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 
 interface SalesOrderDataMapperInterface
