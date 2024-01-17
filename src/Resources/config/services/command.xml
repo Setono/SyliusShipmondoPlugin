@@ -8,5 +8,12 @@
 
             <tag name="console.command"/>
         </service>
+
+        <service id="setono_sylius_shipmondo.command.register_webhooks"
+                 class="Setono\SyliusShipmondoPlugin\Command\RegisterWebhooksCommand">
+            <argument type="service" id="setono_sylius_shipmondo.registrar.webhook"/>
+
+            <tag name="console.command"/>
+        </service>
     </services>
 </container>

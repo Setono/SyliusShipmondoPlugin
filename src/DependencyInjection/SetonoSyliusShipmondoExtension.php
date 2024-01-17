@@ -5,26 +5,30 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\DependencyInjection;
 
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
+use Sylius\Bundle\ResourceBundle\DependencyInjection\Extension\AbstractResourceExtension;
+use Sylius\Bundle\ResourceBundle\SyliusResourceBundle;
 use Symfony\Component\Config\FileLocator;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
-use Symfony\Component\DependencyInjection\Extension\Extension;
 use Symfony\Component\DependencyInjection\Extension\PrependExtensionInterface;
 use Symfony\Component\DependencyInjection\Loader\XmlFileLoader;
 
-final class SetonoSyliusShipmondoExtension extends Extension implements PrependExtensionInterface
+final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension implements PrependExtensionInterface
 {
     public function load(array $configs, ContainerBuilder $container): void
     {
         /**
          * @psalm-suppress PossiblyNullArgument
          *
-         * @var array{api: array{username: string, key: string}} $config
+         * @var array{api: array{username: string, key: string}, webhooks: array{key: string}, resources: array} $config
          */
         $config = $this->processConfiguration($this->getConfiguration([], $container), $configs);
         $loader = new XmlFileLoader($container, new FileLocator(__DIR__ . '/../Resources/config'));
 
         $container->setParameter('setono_sylius_shipmondo.api.username', $config['api']['username']);
         $container->setParameter('setono_sylius_shipmondo.api.key', $config['api']['key']);
+        $container->setParameter('setono_sylius_shipmondo.webhooks.key', $config['webhooks']['key']);
+
+        $this->registerResources('setono_sylius_shipmondo', SyliusResourceBundle::DRIVER_DOCTRINE_ORM, $config['resources'], $container);
 
         $loader->load('services.xml');
     }
@@ -35,6 +39,13 @@ final class SetonoSyliusShipmondoExtension extends Extension implements PrependE
             'messenger' => [
                 'buses' => [
                     'setono_sylius_shipmondo.command_bus' => null,
+                ],
+            ],
+            'webhook' => [
+                'routing' => [
+                    'shipmondo' => [
+                        'service' => 'setono_sylius_shipmondo.webhook.webhook_parser',
+                    ],
                 ],
             ],
             'workflows' => OrderWorkflow::getConfig(),

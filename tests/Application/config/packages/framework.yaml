@@ -7,3 +7,5 @@ framework:
     csrf_protection: true
     session:
         handler_id: ~
+    router:
+        default_uri: 'https://02oysdgty6.sharedwithexpose.com'

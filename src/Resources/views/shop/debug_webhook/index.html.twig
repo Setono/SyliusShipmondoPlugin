@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <title>Shipmondo Webhook Debugger</title>
+
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
+        <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+
+        <script>
+            window.addEventListener('DOMContentLoaded', () => {
+                const form = document.getElementById('form-decode');
+                form.addEventListener('submit', (e) => {
+                    e.preventDefault();
+
+                    const data = form.querySelector('textarea').value;
+
+                    fetch(form.action, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        body: JSON.stringify({data}),
+                    })
+                        .then(response => response.json())
+                        .then(data => {
+                            const container = document.createElement('div');
+                            container.classList.add('mb-3');
+
+                            const pre = document.createElement('pre');
+                            pre.innerText = JSON.stringify(data, null, 2);
+
+                            container.appendChild(pre);
+
+                            form.parentNode.insertBefore(container, form.nextSibling);
+                        })
+                        .catch((error) => {
+                            console.error('Error:', error);
+                        });
+                });
+            });
+        </script>
+    </head>
+    <body class="pt-5">
+        <div class="container">
+            <h1>Shipmondo Webhook Debugger</h1>
+
+            <h2>Decode webhook request</h2>
+            <form action="{{ path('setono_sylius_shipmondo_global_debug_webhook_decode') }}" method="post" id="form-decode">
+                <div class="mb-3">
+                    <textarea class="form-control" name="data"></textarea>
+                </div>
+
+                <button type="submit" class="btn btn-primary">Submit</button>
+            </form>
+        </div>
+    </body>
+</html>

@@ -16,6 +16,7 @@
         <ignoreFiles>
             <directory name="tests/Application"/>
             <directory name="vendor"/>
+            <file name="src/Controller/DebugWebhookController.php"/>
         </ignoreFiles>
     </projectFiles>
     <plugins>

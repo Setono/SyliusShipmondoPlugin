@@ -1,0 +1,2 @@
+setono_sylius_shipmondo:
+    resource: "@SetonoSyliusShipmondoPlugin/Resources/config/routes.yaml"
