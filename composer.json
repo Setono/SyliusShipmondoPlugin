@@ -34,7 +34,7 @@
         "symfony/string": "^6.4",
         "symfony/webhook": "^6.4",
         "symfony/workflow": "^6.4",
-        "twig/twig": "^3.8",
+        "twig/twig": "^2.16 || ^3.8",
         "webmozart/assert": "^1.11"
     },
     "require-dev": {
