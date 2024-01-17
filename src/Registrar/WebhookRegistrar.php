@@ -29,7 +29,7 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
         foreach ($resources as $resource => $actions) {
             foreach ($actions as $action) {
                 $this->client->webhooks()->create(new Webhook(
-                    sprintf('Sylius - [%s:%s]', u($resource)->snake(), $action),
+                    sprintf('Sylius - [%s:%s]', u($resource)->snake()->toString(), $action),
                     $this->urlGenerator->generate(
                         'setono_sylius_shipmondo_global_webhook',
                         ['resource' => u($resource)->snake(), 'action' => $action],
