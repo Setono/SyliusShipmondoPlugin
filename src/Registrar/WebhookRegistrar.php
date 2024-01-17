@@ -32,7 +32,7 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
                     sprintf('Sylius - [%s:%s]', u($resource)->snake()->toString(), $action),
                     $this->urlGenerator->generate(
                         'setono_sylius_shipmondo_global_webhook',
-                        ['resource' => u($resource)->snake(), 'action' => $action],
+                        ['resource' => u($resource)->snake()->toString(), 'action' => $action],
                         UrlGeneratorInterface::ABSOLUTE_URL,
                     ),
                     $this->webhooksKey,
