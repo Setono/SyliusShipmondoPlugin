@@ -42,9 +42,19 @@ $bundles = [
 ];
 ```
 
-### Extend entities
+### Add environment variables
 
-**Extend `Order`**
+Add the following variables to your `.env` file:
+
+```dotenv
+###> setono/sylius-shipmondo-plugin ###
+SHIPMONDO_USERNAME=
+SHIPMONDO_KEY=
+SHIPMONDO_WEBHOOKS_KEY=
+###< setono/sylius-shipmondo-plugin ###
+```
+
+### Extend `Order` entity
 
 ```php
 <?php
@@ -70,22 +80,11 @@ class Order extends BaseOrder implements ShipmondoOrderInterface
 }
 ```
 
-- Add configuration:
-
-```yaml
-# config/packages/_sylius.yaml
-sylius_order:
-    resources:
-        order:
-            classes:
-                model: App\Entity\Order\Order
-```
-
 ### Update your database:
 
 ```bash
-$ bin/console doctrine:migrations:diff
-$ bin/console doctrine:migrations:migrate
+php bin/console doctrine:migrations:diff
+php bin/console doctrine:migrations:migrate
 ```
 
 ## Development
