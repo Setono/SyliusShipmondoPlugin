@@ -1,6 +1,6 @@
 {
     "name": "setono/sylius-shipmondo-plugin",
-    "description": "Setono example plugin for Sylius.",
+    "description": "Integrate your store with Shipmondo",
     "license": "MIT",
     "type": "sylius-plugin",
     "keywords": [
