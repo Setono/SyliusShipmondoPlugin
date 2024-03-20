@@ -1,3 +1,4 @@
+# todo this route should probably be removed because the recipe for the webhook component automatically creates a route for the webhook controller
 setono_sylius_shipmondo_global_webhook:
     path: /shipmondo/webhook
     defaults:
