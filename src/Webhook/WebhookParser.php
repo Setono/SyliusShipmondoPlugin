@@ -53,6 +53,7 @@ final class WebhookParser extends AbstractRequestParser
         );
     }
 
+    // Shipmondo expects HTTP 200 instead of HTTP 202
     public function createSuccessfulResponse(): Response
     {
         return new Response('OK');
