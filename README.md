@@ -5,6 +5,89 @@
 [![Build Status][ico-github-actions]][link-github-actions]
 [![Code Coverage][ico-code-coverage]][link-code-coverage]
 
+## Installation
+
+```bash
+composer require setono/sylius-shipmondo-plugin
+```
+
+### Import routing:
+
+```yaml
+# config/routes/setono_sylius_shipmondo.yaml
+setono_sylius_shipmondo:
+    resource: "@SetonoSyliusShipmondoPlugin/Resources/config/routes.yaml"
+```
+
+or if your app doesn't use locales:
+
+```yaml
+# config/routes/setono_sylius_shipmondo.yaml
+setono_sylius_shipmondo:
+    resource: "@SetonoSyliusShipmondoPlugin/Resources/config/routes_no_locale.yaml"
+```
+
+### Add plugin class to your `bundles.php`:
+
+Make sure you add it before `SyliusGridBundle`, otherwise you'll get
+`You have requested a non-existent parameter "setono_sylius_shipmondo.model.remote_event.class".` exception.
+
+```php
+<?php
+$bundles = [
+    // ...
+    Setono\SyliusShipmondoPlugin\SetonoSyliusShipmondoPlugin::class => ['all' => true],
+    Sylius\Bundle\GridBundle\SyliusGridBundle::class => ['all' => true],
+    // ...
+];
+```
+
+### Extend entities
+
+**Extend `Order`**
+
+```php
+<?php
+
+# src/Entity/Order/Order.php
+
+declare(strict_types=1);
+
+namespace App\Entity\Order;
+
+use Setono\SyliusShipmondoPlugin\Model\OrderInterface as ShipmondoOrderInterface;
+use Setono\SyliusShipmondoPlugin\Model\OrderTrait as ShipmondoOrderTrait;
+use Sylius\Component\Core\Model\Order as BaseOrder;
+use Doctrine\ORM\Mapping as ORM;
+
+/**
+ * @ORM\Entity
+ * @ORM\Table(name="sylius_order")
+ */
+class Order extends BaseOrder implements ShipmondoOrderInterface
+{
+    use ShipmondoOrderTrait;
+}
+```
+
+- Add configuration:
+
+```yaml
+# config/packages/_sylius.yaml
+sylius_order:
+    resources:
+        order:
+            classes:
+                model: App\Entity\Order\Order
+```
+
+### Update your database:
+
+```bash
+$ bin/console doctrine:migrations:diff
+$ bin/console doctrine:migrations:migrate
+```
+
 ## Development
 
 ```shell
