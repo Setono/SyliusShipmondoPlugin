@@ -7,6 +7,7 @@
             <argument type="service" id="setono_sylius_shipmondo.client"/>
             <argument type="service" id="router"/>
             <argument>%setono_sylius_shipmondo.webhooks.key%</argument>
+            <argument>%setono_sylius_shipmondo.webhooks.name_prefix%</argument>
         </service>
     </services>
 </container>

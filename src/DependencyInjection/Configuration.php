@@ -43,6 +43,11 @@ final class Configuration implements ConfigurationInterface
                             ->info('This is the key that Shipmondo will use to encrypt the webhook payload')
                             ->defaultValue('%env(SHIPMONDO_WEBHOOKS_KEY)%')
                             ->cannotBeEmpty()
+                        ->end()
+                        ->scalarNode('name_prefix')
+                            ->info('This is the prefix that will be added to the name of the webhooks')
+                            ->defaultValue('Setono Sylius Shipmondo Plugin')
+                            ->cannotBeEmpty()
         ;
 
         $this->addResourcesSection($rootNode);

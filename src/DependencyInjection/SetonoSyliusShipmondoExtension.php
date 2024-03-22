@@ -19,7 +19,7 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
         /**
          * @psalm-suppress PossiblyNullArgument
          *
-         * @var array{api: array{username: string, key: string}, webhooks: array{key: string}, resources: array} $config
+         * @var array{api: array{username: string, key: string}, webhooks: array{key: string, name_prefix: string}, resources: array} $config
          */
         $config = $this->processConfiguration($this->getConfiguration([], $container), $configs);
         $loader = new XmlFileLoader($container, new FileLocator(__DIR__ . '/../Resources/config'));
@@ -27,6 +27,7 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
         $container->setParameter('setono_sylius_shipmondo.api.username', $config['api']['username']);
         $container->setParameter('setono_sylius_shipmondo.api.key', $config['api']['key']);
         $container->setParameter('setono_sylius_shipmondo.webhooks.key', $config['webhooks']['key']);
+        $container->setParameter('setono_sylius_shipmondo.webhooks.name_prefix', $config['webhooks']['name_prefix']);
 
         $this->registerResources('setono_sylius_shipmondo', SyliusResourceBundle::DRIVER_DOCTRINE_ORM, $config['resources'], $container);
 
