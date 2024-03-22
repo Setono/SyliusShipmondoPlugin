@@ -8,7 +8,7 @@
 ## Installation
 
 ```bash
-composer require setono/sylius-shipmondo-plugin
+composer require setono/sylius-shipmondo-plugin symfony/webhook
 ```
 
 ### Import routing:
