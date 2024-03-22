@@ -35,7 +35,7 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
                         [
                             'type' => 'shipmondo',
                             'resource' => u($resource)->snake()->toString(),
-                            'action' => $action
+                            'action' => $action,
                         ],
                         UrlGeneratorInterface::ABSOLUTE_URL,
                     ),

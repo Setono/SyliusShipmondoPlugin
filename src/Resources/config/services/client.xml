@@ -6,6 +6,10 @@
                  class="Setono\Shipmondo\Client\Client">
             <argument>%setono_sylius_shipmondo.api.username%</argument>
             <argument>%setono_sylius_shipmondo.api.key%</argument>
+
+            <call method="setLogger">
+                <argument type="service" id="logger"/>
+            </call>
         </service>
     </services>
 </container>
