@@ -12,5 +12,5 @@ use Sylius\Component\Resource\Repository\RepositoryInterface;
  */
 interface RegisteredWebhooksRepositoryInterface extends RepositoryInterface
 {
-    public function findOneByHash(string $hash): ?RegisteredWebhooksInterface;
+    public function findOneByVersion(string $version): ?RegisteredWebhooksInterface;
 }

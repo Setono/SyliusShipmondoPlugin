@@ -10,9 +10,9 @@ use Webmozart\Assert\Assert;
 
 class RegisteredWebhooksRepository extends EntityRepository implements RegisteredWebhooksRepositoryInterface
 {
-    public function findOneByHash(string $hash): ?RegisteredWebhooksInterface
+    public function findOneByVersion(string $version): ?RegisteredWebhooksInterface
     {
-        $obj = $this->findOneBy(['hash' => $hash]);
+        $obj = $this->findOneBy(['hash' => $version]);
         Assert::nullOrIsInstanceOf($obj, RegisteredWebhooksInterface::class);
 
         return $obj;
