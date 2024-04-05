@@ -44,7 +44,7 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
 
         $webhooks = array_map(static fn (array $webhook) => $webhook['name'] . $webhook['endpoint'] . $webhook['key'] . $webhook['action'] . $webhook['resource'], $webhooks);
 
-        return md5(implode($webhooks));
+        return md5(implode('', $webhooks));
     }
 
     /**
