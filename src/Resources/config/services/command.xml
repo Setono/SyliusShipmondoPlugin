@@ -11,7 +11,7 @@
 
         <service id="setono_sylius_shipmondo.command.register_webhooks"
                  class="Setono\SyliusShipmondoPlugin\Command\RegisterWebhooksCommand">
-            <argument type="service" id="setono_sylius_shipmondo.registrar.webhook"/>
+            <argument type="service" id="setono_sylius_shipmondo.command_bus"/>
 
             <tag name="console.command"/>
         </service>

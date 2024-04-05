@@ -1,1 +1,11 @@
-# TODO Add your admin routes here
+setono_sylius_shipmondo_admin_shipmondo_index:
+    path: /shipmondo
+    methods: [GET]
+    defaults:
+        _controller: setono_sylius_shipmondo.controller.admin.shipmondo::index
+        
+setono_sylius_shipmondo_admin_shipmondo_register_webhooks:
+    path: /shipmondo/register-webhooks
+    methods: [GET]
+    defaults:
+        _controller: setono_sylius_shipmondo.controller.admin.shipmondo::registerWebhooks

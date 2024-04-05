@@ -1,0 +1,24 @@
+{% extends '@SyliusAdmin/layout.html.twig' %}
+
+{% import '@SyliusUi/Macro/headers.html.twig' as headers %}
+
+{% set header = 'setono_sylius_shipmondo.ui.shipmondo'|trans %}
+
+{% block title %}{{ header }} {{ parent() }}{% endblock %}
+
+{% block content %}
+    <div class="column">
+        {{ headers.default(header, 'truck', 'setono_sylius_shipmondo.ui.shipmondo_index'|trans) }}
+    </div>
+
+    <div class="ui segment">
+        {% if registeredWebhooks is null %}
+            <p>{{ 'setono_sylius_shipmondo.ui.register_webhooks_information'|trans }}</p>
+        {% else %}
+            <p>{{ 'setono_sylius_shipmondo.ui.webhooks_registered_information'|trans({'%date%': registeredWebhooks.registeredAt|date}) }}</p>
+        {% endif %}
+        <a href="{{ path('setono_sylius_shipmondo_admin_shipmondo_register_webhooks') }}" class="ui primary button">
+            {{ 'setono_sylius_shipmondo.ui.register_webhooks'|trans }}
+        </a>
+    </div>
+{% endblock %}

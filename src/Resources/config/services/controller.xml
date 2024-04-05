@@ -8,5 +8,18 @@
             <argument>%kernel.environment%</argument>
             <argument>%setono_sylius_shipmondo.webhooks.key%</argument>
         </service>
+
+        <service id="setono_sylius_shipmondo.controller.admin.shipmondo"
+                 class="Setono\SyliusShipmondoPlugin\Controller\Admin\ShipmondoController" public="true">
+            <argument type="service" id="setono_sylius_shipmondo.repository.registered_webhooks"/>
+            <argument type="service" id="setono_sylius_shipmondo.command_bus"/>
+            <argument type="service" id="setono_sylius_shipmondo.registrar.webhook"/>
+
+            <call method="setContainer">
+                <argument type="service" id="service_container"/>
+            </call>
+
+            <tag name="controller.service_arguments"/>
+        </service>
     </services>
 </container>

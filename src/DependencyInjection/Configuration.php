@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\DependencyInjection;
 
+use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooks;
 use Setono\SyliusShipmondoPlugin\Model\RemoteEvent;
+use Setono\SyliusShipmondoPlugin\Repository\RegisteredWebhooksRepository;
 use Sylius\Bundle\ResourceBundle\Controller\ResourceController;
 use Sylius\Bundle\ResourceBundle\Form\Type\DefaultResourceType;
 use Sylius\Component\Resource\Factory\Factory;
@@ -65,6 +67,20 @@ final class Configuration implements ConfigurationInterface
                 ->arrayNode('resources')
                     ->addDefaultsIfNotSet()
                     ->children()
+                        ->arrayNode('registered_webhooks')
+                            ->addDefaultsIfNotSet()
+                            ->children()
+                                ->variableNode('options')->end()
+                                ->arrayNode('classes')
+                                    ->addDefaultsIfNotSet()
+                                    ->children()
+                                        ->scalarNode('model')->defaultValue(RegisteredWebhooks::class)->cannotBeEmpty()->end()
+                                        ->scalarNode('repository')->defaultValue(RegisteredWebhooksRepository::class)->cannotBeEmpty()->end()
+                                        ->scalarNode('factory')->defaultValue(Factory::class)->end()
+                                    ->end()
+                                ->end()
+                            ->end()
+                        ->end()
                         ->arrayNode('remote_event')
                             ->addDefaultsIfNotSet()
                             ->children()

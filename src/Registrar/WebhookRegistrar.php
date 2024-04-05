@@ -52,4 +52,9 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
             }
         }
     }
+
+    public function getHash(): string
+    {
+        return md5_file(__FILE__);
+    }
 }

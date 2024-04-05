@@ -4,11 +4,12 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Command;
 
-use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
+use Setono\SyliusShipmondoPlugin\Message\Command\RegisterWebhooks;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\Messenger\MessageBusInterface;
 
 #[AsCommand(
     name: 'setono:sylius-shipmondo:register-webhooks',
@@ -16,14 +17,14 @@ use Symfony\Component\Console\Output\OutputInterface;
 )]
 final class RegisterWebhooksCommand extends Command
 {
-    public function __construct(private readonly WebhookRegistrarInterface $webhookRegistrar)
+    public function __construct(private readonly MessageBusInterface $commandBus)
     {
         parent::__construct();
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
-        $this->webhookRegistrar->register();
+        $this->commandBus->dispatch(new RegisterWebhooks());
 
         return 0;
     }

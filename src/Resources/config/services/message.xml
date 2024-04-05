@@ -10,5 +10,14 @@
 
             <tag name="messenger.message_handler"/>
         </service>
+
+        <service id="setono_sylius_shipmondo.message.command_handler.register_webhooks"
+                 class="Setono\SyliusShipmondoPlugin\Message\CommandHandler\RegisterWebhooksHandler">
+            <argument type="service" id="setono_sylius_shipmondo.repository.registered_webhooks"/>
+            <argument type="service" id="setono_sylius_shipmondo.registrar.webhook"/>
+            <argument type="service" id="setono_sylius_shipmondo.factory.registered_webhooks"/>
+
+            <tag name="messenger.message_handler"/>
+        </service>
     </services>
 </container>

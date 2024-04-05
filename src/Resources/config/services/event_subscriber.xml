@@ -2,6 +2,11 @@
 <container xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://symfony.com/schema/dic/services"
            xsi:schemaLocation="http://symfony.com/schema/dic/services http://symfony.com/schema/dic/services/services-1.0.xsd">
     <services>
+        <service id="setono_sylius_shipmondo.event_subscriber.add_menu"
+                 class="Setono\SyliusShipmondoPlugin\EventSubscriber\AddMenuSubscriber">
+            <tag name="kernel.event_subscriber"/>
+        </service>
+
         <service id="setono_sylius_shipmondo.event_subscriber.grid.add_shipmondo_state_column_to_order_grid"
                  class="Setono\SyliusShipmondoPlugin\EventSubscriber\Grid\AddShipmondoStateColumnToOrderGridSubscriber">
             <tag name="kernel.event_subscriber"/>
