@@ -12,7 +12,14 @@ interface WebhookRegistrarInterface
     public function register(): void;
 
     /**
-     * Should return a version (string) that uniquely identifies the webhooks being registered.
+     * Will return a list of webhooks that this registrar will register
+     *
+     * @return iterable<Webhook>
+     */
+    public function getWebhooks(): iterable;
+
+    /**
+     * Should return a version (string) that uniquely identifies the webhooks being registered
      */
     public function getVersion(): string;
 }

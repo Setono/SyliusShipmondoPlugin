@@ -28,11 +28,11 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
 
         foreach ($this->getWebhooks() as $webhook) {
             $this->client->webhooks()->create(new WebhookRequest(
-                $webhook['name'],
-                $webhook['endpoint'],
-                $webhook['key'],
-                $webhook['action'],
-                $webhook['resource'],
+                $webhook->name,
+                $webhook->endpoint,
+                $webhook->key,
+                $webhook->action,
+                $webhook->resource,
             ));
         }
     }
@@ -40,17 +40,17 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
     public function getVersion(): string
     {
         $webhooks = iterator_to_array($this->getWebhooks());
-        usort($webhooks, static fn (array $a, array $b) => $a['name'] <=> $b['name']);
+        usort($webhooks, static fn (Webhook $a, Webhook $b) => $a->name <=> $b->name);
 
-        $webhooks = array_map(static fn (array $webhook) => $webhook['name'] . $webhook['endpoint'] . $webhook['key'] . $webhook['action'] . $webhook['resource'], $webhooks);
+        $webhooks = array_map(static fn (Webhook $webhook) => $webhook->name . $webhook->endpoint . $webhook->key . $webhook->action . $webhook->resource, $webhooks);
 
         return md5(implode('', $webhooks));
     }
 
     /**
-     * @return \Generator<array-key, array{name: string, endpoint: string, key: string, action: string, resource: string}>
+     * @return \Generator<array-key, Webhook>
      */
-    private function getWebhooks(): \Generator
+    public function getWebhooks(): \Generator
     {
         $resources = [
             'Shipments' => ['create', 'cancel'],
@@ -60,9 +60,9 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
 
         foreach ($resources as $resource => $actions) {
             foreach ($actions as $action) {
-                yield [
-                    'name' => sprintf('%s - [%s:%s]', $this->namePrefix, u($resource)->snake()->toString(), $action),
-                    'endpoint' => $this->urlGenerator->generate(
+                yield new Webhook(
+                    sprintf('%s - [%s:%s]', $this->namePrefix, u($resource)->snake()->toString(), $action),
+                    $this->urlGenerator->generate(
                         '_webhook_controller',
                         [
                             'type' => 'shipmondo',
@@ -71,10 +71,10 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
                         ],
                         UrlGeneratorInterface::ABSOLUTE_URL,
                     ),
-                    'key' => $this->webhooksKey,
-                    'action' => $action,
-                    'resource' => $resource,
-                ];
+                    $this->webhooksKey,
+                    $action,
+                    $resource,
+                );
             }
         }
     }
