@@ -10,9 +10,9 @@ interface RegisteredWebhooksInterface extends ResourceInterface
 {
     public function getId(): ?int;
 
-    public function getHash(): ?string;
+    public function getVersion(): ?string;
 
-    public function setHash(?string $hash): void;
+    public function setVersion(?string $version): void;
 
     public function getRegisteredAt(): ?\DateTimeInterface;
 

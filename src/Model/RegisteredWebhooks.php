@@ -8,7 +8,7 @@ class RegisteredWebhooks implements RegisteredWebhooksInterface
 {
     protected ?int $id = null;
 
-    protected ?string $hash = null;
+    protected ?string $version = null;
 
     protected ?\DateTimeInterface $registeredAt = null;
 
@@ -17,14 +17,14 @@ class RegisteredWebhooks implements RegisteredWebhooksInterface
         return $this->id;
     }
 
-    public function getHash(): ?string
+    public function getVersion(): ?string
     {
-        return $this->hash;
+        return $this->version;
     }
 
-    public function setHash(?string $hash): void
+    public function setVersion(?string $version): void
     {
-        $this->hash = $hash;
+        $this->version = $version;
     }
 
     public function getRegisteredAt(): ?\DateTimeInterface

@@ -24,7 +24,7 @@ final class RegisterWebhooksHandler
     {
         $this->webhookRegistrar->register();
 
-        $hash = $this->webhookRegistrar->getHash();
+        $hash = $this->webhookRegistrar->getVersion();
 
         $registeredWebhooks = $this->registeredWebhooksRepository->findOneByHash($hash);
         if (null === $registeredWebhooks) {
@@ -32,7 +32,7 @@ final class RegisterWebhooksHandler
         }
 
         $registeredWebhooks->setRegisteredAt(new \DateTimeImmutable());
-        $registeredWebhooks->setHash($this->webhookRegistrar->getHash());
+        $registeredWebhooks->setVersion($this->webhookRegistrar->getVersion());
 
         $this->registeredWebhooksRepository->add($registeredWebhooks);
     }

@@ -12,8 +12,7 @@ interface WebhookRegistrarInterface
     public function register(): void;
 
     /**
-     * Should return a hash (string) that uniquely identifies the webhooks being registered.
-     * The easiest approach is a hash of the concrete class
+     * Should return a version (string) that uniquely identifies the webhooks being registered.
      */
-    public function getHash(): string;
+    public function getVersion(): string;
 }

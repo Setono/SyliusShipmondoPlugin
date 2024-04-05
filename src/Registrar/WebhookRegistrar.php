@@ -26,6 +26,32 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
             fn (WebhookResponse $webhook) => str_starts_with($webhook->name, $this->namePrefix),
         );
 
+        foreach ($this->getWebhooks() as $webhook) {
+            $this->client->webhooks()->create(new WebhookRequest(
+                $webhook['name'],
+                $webhook['endpoint'],
+                $webhook['key'],
+                $webhook['action'],
+                $webhook['resource'],
+            ));
+        }
+    }
+
+    public function getVersion(): string
+    {
+        $webhooks = iterator_to_array($this->getWebhooks());
+        usort($webhooks, static fn (array $a, array $b) => $a['name'] <=> $b['name']);
+
+        $webhooks = array_map(static fn (array $webhook) => $webhook['name'] . $webhook['endpoint'] . $webhook['key'] . $webhook['action'] . $webhook['resource'], $webhooks);
+
+        return md5(implode($webhooks));
+    }
+
+    /**
+     * @return \Generator<array-key, array{name: string, endpoint: string, key: string, action: string, resource: string}>
+     */
+    private function getWebhooks(): \Generator
+    {
         $resources = [
             'Shipments' => ['create', 'cancel'],
             'Orders' => ['create', 'status_update', 'create_fulfillment', 'create_shipment', 'payment_captured', 'payment_voided', 'delete'],
@@ -34,9 +60,9 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
 
         foreach ($resources as $resource => $actions) {
             foreach ($actions as $action) {
-                $this->client->webhooks()->create(new WebhookRequest(
-                    sprintf('%s - [%s:%s]', $this->namePrefix, u($resource)->snake()->toString(), $action),
-                    $this->urlGenerator->generate(
+                yield [
+                    'name' => sprintf('%s - [%s:%s]', $this->namePrefix, u($resource)->snake()->toString(), $action),
+                    'endpoint' => $this->urlGenerator->generate(
                         '_webhook_controller',
                         [
                             'type' => 'shipmondo',
@@ -45,16 +71,11 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
                         ],
                         UrlGeneratorInterface::ABSOLUTE_URL,
                     ),
-                    $this->webhooksKey,
-                    $action,
-                    $resource,
-                ));
+                    'key' => $this->webhooksKey,
+                    'action' => $action,
+                    'resource' => $resource,
+                ];
             }
         }
-    }
-
-    public function getHash(): string
-    {
-        return md5_file(__FILE__);
     }
 }

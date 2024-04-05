@@ -24,7 +24,7 @@ final class ShipmondoController extends AbstractController
     public function index(): Response
     {
         return $this->render('@SetonoSyliusShipmondoPlugin/admin/shipmondo/index.html.twig', [
-            'registeredWebhooks' => $this->registeredWebhooksRepository->findOneByHash($this->webhookRegistrar->getHash()),
+            'registeredWebhooks' => $this->registeredWebhooksRepository->findOneByHash($this->webhookRegistrar->getVersion()),
         ]);
     }
 
