@@ -24,9 +24,9 @@ final class RegisterWebhooksHandler
     {
         $this->webhookRegistrar->register();
 
-        $hash = $this->webhookRegistrar->getVersion();
+        $version = $this->webhookRegistrar->getVersion();
 
-        $registeredWebhooks = $this->registeredWebhooksRepository->findOneByVersion($hash);
+        $registeredWebhooks = $this->registeredWebhooksRepository->findOneByVersion($version);
         if (null === $registeredWebhooks) {
             $registeredWebhooks = $this->registeredWebhooksFactory->createNew();
         }

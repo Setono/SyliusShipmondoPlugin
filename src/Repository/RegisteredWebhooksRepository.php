@@ -12,7 +12,7 @@ class RegisteredWebhooksRepository extends EntityRepository implements Registere
 {
     public function findOneByVersion(string $version): ?RegisteredWebhooksInterface
     {
-        $obj = $this->findOneBy(['hash' => $version]);
+        $obj = $this->findOneBy(['version' => $version]);
         Assert::nullOrIsInstanceOf($obj, RegisteredWebhooksInterface::class);
 
         return $obj;
