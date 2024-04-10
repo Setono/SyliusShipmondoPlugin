@@ -108,7 +108,7 @@ vendor/bin/expose share https://127.0.0.1:8000
 
 [ico-version]: https://poser.pugx.org/setono/sylius-shipmondo-plugin/v/stable
 [ico-license]: https://poser.pugx.org/setono/sylius-shipmondo-plugin/license
-[ico-github-actions]: https://github.com/Setono/SyliusShipmondoPlugin/workflows/build/badge.svg
+[ico-github-actions]: https://github.com/Setono/SyliusShipmondoPlugin/actions/workflows/build.yaml/badge.svg
 [ico-code-coverage]: https://codecov.io/gh/Setono/SyliusShipmondoPlugin/branch/master/graph/badge.svg
 
 [link-packagist]: https://packagist.org/packages/setono/sylius-shipmondo-plugin
