@@ -13,6 +13,8 @@ trait OrderTrait
      *
      * @ORM\Column(type="integer")
      */
+    #[ORM\Version]
+    #[ORM\Column(type: 'integer')]
     protected int $version = 1;
 
     /**
@@ -20,6 +22,7 @@ trait OrderTrait
      *
      * @ORM\Column(type="string")
      */
+    #[ORM\Column(type: 'string')]
     protected string $shipmondoState = OrderInterface::SHIPMONDO_STATE_PENDING;
 
     public function getVersion(): int
