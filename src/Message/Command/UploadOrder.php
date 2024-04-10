@@ -6,7 +6,10 @@ namespace Setono\SyliusShipmondoPlugin\Message\Command;
 
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 
-final class DispatchOrder implements CommandInterface
+/**
+ * Uploads an order to Shipmondo
+ */
+final class UploadOrder implements CommandInterface
 {
     /**
      * The order id
@@ -14,7 +17,7 @@ final class DispatchOrder implements CommandInterface
     public mixed $order;
 
     /**
-     * If the version is set, it will be used to check if the order has been updated since it was dispatched
+     * If the version is set, it will be used to check if the order has been updated since it was triggered for upload
      */
     public ?int $version = null;
 

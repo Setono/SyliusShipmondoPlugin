@@ -6,7 +6,7 @@ namespace Setono\SyliusShipmondoPlugin\Provider;
 
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 
-interface PreQualifiedDispatchableOrdersProviderInterface
+interface PreQualifiedUploadableOrdersProviderInterface
 {
     /**
      * @return iterable<array-key, OrderInterface>

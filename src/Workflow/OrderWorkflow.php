@@ -17,9 +17,9 @@ final class OrderWorkflow
 
     final public const NAME = 'setono_sylius_shipmondo__order';
 
-    final public const TRANSITION_START_DISPATCH = 'start_dispatch';
+    final public const TRANSITION_START_UPLOAD = 'start_upload';
 
-    final public const TRANSITION_COMPLETE_DISPATCH = 'complete_dispatch';
+    final public const TRANSITION_COMPLETE_UPLOAD = 'complete_upload';
 
     final public const TRANSITION_FAIL = 'fail';
 
@@ -34,8 +34,8 @@ final class OrderWorkflow
     {
         return [
             OrderInterface::SHIPMONDO_STATE_PENDING,
-            OrderInterface::SHIPMONDO_STATE_DISPATCHING,
-            OrderInterface::SHIPMONDO_STATE_DISPATCHED,
+            OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO,
+            OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO,
             OrderInterface::SHIPMONDO_STATE_FAILED,
         ];
     }
@@ -83,9 +83,9 @@ final class OrderWorkflow
     public static function getTransitions(): array
     {
         return [
-            new Transition(self::TRANSITION_START_DISPATCH, [OrderInterface::SHIPMONDO_STATE_PENDING], OrderInterface::SHIPMONDO_STATE_DISPATCHING),
-            new Transition(self::TRANSITION_COMPLETE_DISPATCH, [OrderInterface::SHIPMONDO_STATE_DISPATCHING], OrderInterface::SHIPMONDO_STATE_DISPATCHED),
-            new Transition(self::TRANSITION_FAIL, [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_DISPATCHING], OrderInterface::SHIPMONDO_STATE_FAILED),
+            new Transition(self::TRANSITION_START_UPLOAD, [OrderInterface::SHIPMONDO_STATE_PENDING], OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO),
+            new Transition(self::TRANSITION_COMPLETE_UPLOAD, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO),
+            new Transition(self::TRANSITION_FAIL, [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_FAILED),
         ];
     }
 }
