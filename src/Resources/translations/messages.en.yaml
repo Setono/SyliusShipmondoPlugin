@@ -1,12 +1,12 @@
 setono_sylius_shipmondo:
     ui:
+        failed: Failed
+        pending: Pending
+        register_webhooks: Register webhooks
+        register_webhooks_information: Either you have not registered webhooks yet or you need to re-register them because of changes in the configuration. Either way, please click the "Register webhooks" button below.
         shipmondo: Shipmondo
         shipmondo_index: Manage your Shipmondo settings
         shipmondo_state: Shipmondo state
-        dispatching: Dispatching
-        pending: Pending
-        dispatched: Dispatched
-        failed: Failed
-        register_webhooks: Register webhooks
-        register_webhooks_information: Either you have not registered webhooks yet or you need to re-register them because of changes in the configuration. Either way, please click the "Register webhooks" button below.
+        uploaded_to_shipmondo: Uploaded to Shipmondo
+        uploading_to_shipmondo: Uploading to Shipmondo
         webhooks_registered_information: Webhooks were registered on %date%.

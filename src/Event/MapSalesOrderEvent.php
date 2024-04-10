@@ -11,7 +11,7 @@ final class MapSalesOrderEvent
 {
     public function __construct(
         /**
-         * This is the sales order that will be dispatched to Shipmondo
+         * This is the sales order that will be uploaded to Shipmondo
          */
         public readonly SalesOrder $salesOrder,
         /**

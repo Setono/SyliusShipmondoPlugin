@@ -12,7 +12,7 @@ final class MapShippingOrderLineEvent
 {
     public function __construct(
         /**
-         * This is the order line that will be dispatched to Shipmondo
+         * This is the order line that will be uploaded to Shipmondo
          */
         public readonly OrderLine $orderLine,
         /**
