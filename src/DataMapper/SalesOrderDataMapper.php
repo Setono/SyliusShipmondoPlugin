@@ -49,7 +49,7 @@ final class SalesOrderDataMapper implements SalesOrderDataMapperInterface
                 mobile: $order->getBillingAddress()?->getPhoneNumber(),
             ),
             paymentDetails: new PaymentDetails(
-                amountIncludingVat: self::formatAmount($order->getTotal()),
+                amountIncludingVat: self::formatAmount($order->getTotal()), // todo this is not necessarily correct
                 currencyCode: $order->getCurrencyCode(),
                 vatAmount: self::formatAmount($order->getTaxTotal()),
                 paymentMethod: self::getPaymentMethod($order),
@@ -61,12 +61,21 @@ final class SalesOrderDataMapper implements SalesOrderDataMapperInterface
             $orderItemUnit = $orderItem->getUnits()->first();
             Assert::isInstanceOf($orderItemUnit, OrderItemUnitInterface::class);
 
+            // the following logic is a simple way of finding out whether the tax is included in the price or not
+            // if the tax adjustment is neutral it means the tax is included in the price
+            $tax = 0;
+            $taxAdjustment = $orderItemUnit->getAdjustments(AdjustmentInterface::TAX_ADJUSTMENT)->first();
+            if (false !== $taxAdjustment && $taxAdjustment->isNeutral()) {
+                $tax = $taxAdjustment->getAmount();
+            }
+
             $orderLine = new OrderLine(
                 itemName: sprintf('%s (%s)', (string) $orderItem->getProductName(), (string) $orderItem->getProductName()),
                 itemSku: $orderItem->getVariant()?->getCode(),
                 quantity: $orderItem->getQuantity(),
-                unitPriceExcludingVat: self::formatAmount($orderItem->getUnitPrice() - $orderItemUnit->getTaxTotal()),
+                unitPriceExcludingVat: self::formatAmount($orderItem->getUnitPrice() - $tax),
                 currencyCode: $order->getCurrencyCode(),
+                unitWeight: null === $orderItem->getVariant()?->getWeight() ? null : (int) $orderItem->getVariant()?->getWeight(),
             );
 
             $this->eventDispatcher->dispatch(new MapOrderLineEvent($orderLine, $orderItem, $order));
