@@ -40,7 +40,9 @@ final class UploadOrderHandler
 
         $salesOrder = $this->salesOrderDataMapper->map($order);
 
-        $this->shipmondoClient->salesOrders()->create($salesOrder);
+        $response = $this->shipmondoClient->salesOrders()->create($salesOrder);
+
+        $order->setShipmondoId($response->id);
 
         $this->orderWorkflow->apply($order, OrderWorkflow::TRANSITION_COMPLETE_UPLOAD);
     }

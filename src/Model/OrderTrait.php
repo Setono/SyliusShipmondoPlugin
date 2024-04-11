@@ -25,6 +25,10 @@ trait OrderTrait
     #[ORM\Column(type: 'string')]
     protected string $shipmondoState = OrderInterface::SHIPMONDO_STATE_PENDING;
 
+    /** @ORM\Column(type="integer") */
+    #[ORM\Column(type: 'integer', nullable: true)]
+    protected ?int $shipmondoId = null;
+
     public function getVersion(): int
     {
         return $this->version;
@@ -43,5 +47,15 @@ trait OrderTrait
     public function setShipmondoState(string $shipmondoState): void
     {
         $this->shipmondoState = $shipmondoState;
+    }
+
+    public function getShipmondoId(): ?int
+    {
+        return $this->shipmondoId;
+    }
+
+    public function setShipmondoId(?int $shipmondoId): void
+    {
+        $this->shipmondoId = $shipmondoId;
     }
 }

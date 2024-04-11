@@ -29,7 +29,12 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
         $container->setParameter('setono_sylius_shipmondo.webhooks.key', $config['webhooks']['key']);
         $container->setParameter('setono_sylius_shipmondo.webhooks.name_prefix', $config['webhooks']['name_prefix']);
 
-        $this->registerResources('setono_sylius_shipmondo', SyliusResourceBundle::DRIVER_DOCTRINE_ORM, $config['resources'], $container);
+        $this->registerResources(
+            'setono_sylius_shipmondo',
+            SyliusResourceBundle::DRIVER_DOCTRINE_ORM,
+            $config['resources'],
+            $container,
+        );
 
         $loader->load('services.xml');
     }
@@ -39,7 +44,11 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
         $container->prependExtensionConfig('framework', [
             'messenger' => [
                 'buses' => [
-                    'setono_sylius_shipmondo.command_bus' => null,
+                    'setono_sylius_shipmondo.command_bus' => [
+                        'middleware' => [
+                            'doctrine_transaction',
+                        ],
+                    ],
                 ],
             ],
             'webhook' => [

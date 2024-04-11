@@ -20,4 +20,11 @@ interface OrderInterface extends BaseOrderInterface, VersionedInterface
     public function getShipmondoState(): string;
 
     public function setShipmondoState(string $shipmondoState): void;
+
+    /**
+     * Returns the Shipmondo id (if the order has been uploaded to Shipmondo)
+     */
+    public function getShipmondoId(): ?int;
+
+    public function setShipmondoId(?int $shipmondoId): void;
 }
