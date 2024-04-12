@@ -12,5 +12,5 @@ interface SalesOrderDataMapperInterface
     /**
      * Maps an order to a Shipmondo sales order
      */
-    public function map(OrderInterface $order): SalesOrder;
+    public function map(OrderInterface $order, SalesOrder $salesOrder): void;
 }

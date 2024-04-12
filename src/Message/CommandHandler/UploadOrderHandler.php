@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\Message\CommandHandler;
 
 use Setono\Shipmondo\Client\ClientInterface;
+use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
 use Setono\SyliusShipmondoPlugin\Message\Command\UploadOrder;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
@@ -38,7 +39,8 @@ final class UploadOrderHandler
             throw new UnrecoverableMessageHandlingException(sprintf('Order with id %s has been updated since it was tried to be uploaded', (string) $message->order));
         }
 
-        $salesOrder = $this->salesOrderDataMapper->map($order);
+        $salesOrder = new SalesOrder();
+        $this->salesOrderDataMapper->map($order, $salesOrder);
 
         $response = $this->shipmondoClient->salesOrders()->create($salesOrder);
 

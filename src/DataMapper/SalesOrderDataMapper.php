@@ -23,37 +23,38 @@ final class SalesOrderDataMapper implements SalesOrderDataMapperInterface
     {
     }
 
-    public function map(OrderInterface $order): SalesOrder
+    public function map(OrderInterface $order, SalesOrder $salesOrder): void
     {
-        $salesOrder = new SalesOrder(
-            orderId: (string) $order->getNumber(),
-            orderedAt: $order->getCheckoutCompletedAt(),
-            sourceName: 'Sylius',
-            orderNote: $order->getNotes(),
-            shipTo: new Address(
-                name: $order->getShippingAddress()?->getFullName(),
-                address1: $order->getShippingAddress()?->getStreet(),
-                zipCode: $order->getShippingAddress()?->getPostcode(),
-                city: $order->getShippingAddress()?->getCity(),
-                countryCode: $order->getShippingAddress()?->getCountryCode(),
-                email: $order->getCustomer()?->getEmail(),
-                mobile: $order->getShippingAddress()?->getPhoneNumber(),
-            ),
-            billTo: new Address(
-                name: $order->getBillingAddress()?->getFullName(),
-                address1: $order->getBillingAddress()?->getStreet(),
-                zipCode: $order->getBillingAddress()?->getPostcode(),
-                city: $order->getBillingAddress()?->getCity(),
-                countryCode: $order->getBillingAddress()?->getCountryCode(),
-                email: $order->getCustomer()?->getEmail(),
-                mobile: $order->getBillingAddress()?->getPhoneNumber(),
-            ),
-            paymentDetails: new PaymentDetails(
-                amountIncludingVat: self::formatAmount($order->getTotal()), // todo this is not necessarily correct
-                currencyCode: $order->getCurrencyCode(),
-                vatAmount: self::formatAmount($order->getTaxTotal()),
-                paymentMethod: self::getPaymentMethod($order),
-            ),
+        $salesOrder->orderId = (string) $order->getNumber();
+        $salesOrder->orderedAt = $order->getCheckoutCompletedAt();
+        $salesOrder->sourceName = 'Sylius';
+        $salesOrder->orderNote = $order->getNotes();
+
+        $salesOrder->shipTo = new Address(
+            name: $order->getShippingAddress()?->getFullName(),
+            address1: $order->getShippingAddress()?->getStreet(),
+            zipCode: $order->getShippingAddress()?->getPostcode(),
+            city: $order->getShippingAddress()?->getCity(),
+            countryCode: $order->getShippingAddress()?->getCountryCode(),
+            email: $order->getCustomer()?->getEmail(),
+            mobile: $order->getShippingAddress()?->getPhoneNumber(),
+        );
+
+        $salesOrder->billTo = new Address(
+            name: $order->getBillingAddress()?->getFullName(),
+            address1: $order->getBillingAddress()?->getStreet(),
+            zipCode: $order->getBillingAddress()?->getPostcode(),
+            city: $order->getBillingAddress()?->getCity(),
+            countryCode: $order->getBillingAddress()?->getCountryCode(),
+            email: $order->getCustomer()?->getEmail(),
+            mobile: $order->getBillingAddress()?->getPhoneNumber(),
+        );
+
+        $salesOrder->paymentDetails = new PaymentDetails(
+            amountIncludingVat: self::formatAmount($order->getTotal()), // todo this is not necessarily correct
+            currencyCode: $order->getCurrencyCode(),
+            vatAmount: self::formatAmount($order->getTaxTotal()),
+            paymentMethod: self::getPaymentMethod($order),
         );
 
         foreach ($order->getItems() as $orderItem) {
@@ -99,8 +100,6 @@ final class SalesOrderDataMapper implements SalesOrderDataMapperInterface
         }
 
         $this->eventDispatcher->dispatch(new MapSalesOrderEvent($salesOrder, $order));
-
-        return $salesOrder;
     }
 
     private static function formatAmount(int $amount): string
