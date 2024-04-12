@@ -54,7 +54,9 @@ SHIPMONDO_WEBHOOKS_KEY=
 ###< setono/sylius-shipmondo-plugin ###
 ```
 
-### Extend `Order` entity
+### Extend entities
+
+#### `Order` entity
 
 ```php
 <?php
@@ -72,11 +74,39 @@ use Doctrine\ORM\Mapping as ORM;
 
 /**
  * @ORM\Entity
+ *
  * @ORM\Table(name="sylius_order")
  */
 class Order extends BaseOrder implements ShipmondoOrderInterface
 {
     use ShipmondoOrderTrait;
+}
+```
+
+#### `PaymentMethod` entity
+
+```php
+<?php
+
+# src/Entity/Payment/PaymentMethod.php
+
+declare(strict_types=1);
+
+namespace App\Entity\Payment;
+
+use Doctrine\ORM\Mapping as ORM;
+use Setono\SyliusShipmondoPlugin\Model\PaymentMethodInterface as ShipmondoPaymentMethodInterface;
+use Setono\SyliusShipmondoPlugin\Model\PaymentMethodTrait as ShipmondoPaymentMethodTrait;
+use Sylius\Component\Core\Model\PaymentMethod as BasePaymentMethod;
+
+/**
+ * @ORM\Entity
+ *
+ * @ORM\Table(name="sylius_payment_method")
+ */
+class PaymentMethod extends BasePaymentMethod implements ShipmondoPaymentMethodInterface
+{
+    use ShipmondoPaymentMethodTrait;
 }
 ```
 
