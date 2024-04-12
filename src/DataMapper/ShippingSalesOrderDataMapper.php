@@ -7,7 +7,7 @@ namespace Setono\SyliusShipmondoPlugin\DataMapper;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Setono\Shipmondo\Request\SalesOrders\OrderLine;
 use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
-use Setono\SyliusShipmondoPlugin\Event\MapShippingOrderLineEvent;
+use Setono\SyliusShipmondoPlugin\Event\ShippingOrderLineMappedEvent;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Sylius\Component\Core\Model\AdjustmentInterface;
 use Webmozart\Assert\Assert;
@@ -60,7 +60,7 @@ final class ShippingSalesOrderDataMapper implements SalesOrderDataMapperInterfac
                 currencyCode: $order->getCurrencyCode(),
             );
 
-            $this->eventDispatcher->dispatch(new MapShippingOrderLineEvent($orderLine, $shippingAdjustment, $order));
+            $this->eventDispatcher->dispatch(new ShippingOrderLineMappedEvent($orderLine, $shippingAdjustment, $order));
 
             $salesOrder->orderLines[] = $orderLine;
         }

@@ -11,7 +11,7 @@ use Sylius\Component\Core\Model\OrderItemInterface;
 /**
  * This event is dispatched when we map order items to order lines
  */
-final class MapOrderLineEvent
+final class OrderLineMappedEvent
 {
     public function __construct(
         /**

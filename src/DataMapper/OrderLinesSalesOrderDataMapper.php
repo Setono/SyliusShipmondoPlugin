@@ -7,7 +7,7 @@ namespace Setono\SyliusShipmondoPlugin\DataMapper;
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Setono\Shipmondo\Request\SalesOrders\OrderLine;
 use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
-use Setono\SyliusShipmondoPlugin\Event\MapOrderLineEvent;
+use Setono\SyliusShipmondoPlugin\Event\OrderLineMappedEvent;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Sylius\Component\Core\Model\OrderItemUnitInterface;
 use Webmozart\Assert\Assert;
@@ -37,7 +37,7 @@ final class OrderLinesSalesOrderDataMapper implements SalesOrderDataMapperInterf
                 unitWeight: null === $orderItem->getVariant()?->getWeight() ? null : (int) $orderItem->getVariant()?->getWeight(),
             );
 
-            $this->eventDispatcher->dispatch(new MapOrderLineEvent($orderLine, $orderItem, $order));
+            $this->eventDispatcher->dispatch(new OrderLineMappedEvent($orderLine, $orderItem, $order));
 
             $salesOrder->orderLines[] = $orderLine;
         }
