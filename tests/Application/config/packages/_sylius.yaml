@@ -19,3 +19,9 @@ sylius_order:
         order:
             classes:
                 model: Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order
+                
+sylius_payment:
+    resources:
+        payment_method:
+            classes:
+                model: Tests\Setono\SyliusShipmondoPlugin\Application\Model\PaymentMethod
