@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\DependencyInjection;
 
+use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Bundle\ResourceBundle\DependencyInjection\Extension\AbstractResourceExtension;
 use Sylius\Bundle\ResourceBundle\SyliusResourceBundle;
@@ -23,6 +24,11 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
          */
         $config = $this->processConfiguration($this->getConfiguration([], $container), $configs);
         $loader = new XmlFileLoader($container, new FileLocator(__DIR__ . '/../Resources/config'));
+
+        $container
+            ->registerForAutoconfiguration(SalesOrderDataMapperInterface::class)
+            ->addTag('setono_sylius_shipmondo.sales_order_data_mapper')
+        ;
 
         $container->setParameter('setono_sylius_shipmondo.api.username', $config['api']['username']);
         $container->setParameter('setono_sylius_shipmondo.api.key', $config['api']['key']);
