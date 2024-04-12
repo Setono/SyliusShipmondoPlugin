@@ -7,23 +7,28 @@
 
         <service id="setono_sylius_shipmondo.data_mapper.sales_order.default"
                  class="Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapper">
-            <argument type="service" id="event_dispatcher"/>
-
-            <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="-10"/>
+            <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="10"/>
         </service>
 
         <service id="setono_sylius_shipmondo.data_mapper.sales_order.payment_details"
                  class="Setono\SyliusShipmondoPlugin\DataMapper\PaymentDetailsSalesOrderDataMapper">
             <argument type="service" id="sylius.repository.payment_method"/>
 
-            <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="10"/>
+            <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="20"/>
         </service>
 
         <service id="setono_sylius_shipmondo.data_mapper.sales_order.order_lines"
                  class="Setono\SyliusShipmondoPlugin\DataMapper\OrderLinesSalesOrderDataMapper">
             <argument type="service" id="event_dispatcher"/>
 
-            <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="20"/>
+            <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="30"/>
+        </service>
+
+        <service id="setono_sylius_shipmondo.data_mapper.sales_order.shipping"
+                 class="Setono\SyliusShipmondoPlugin\DataMapper\ShippingSalesOrderDataMapper">
+            <argument type="service" id="event_dispatcher"/>
+
+            <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="40"/>
         </service>
     </services>
 </container>

@@ -8,6 +8,9 @@ use Setono\Shipmondo\Request\SalesOrders\OrderLine;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Sylius\Component\Order\Model\AdjustmentInterface;
 
+/**
+ * This event is dispatched when we map shipping adjustments to order lines
+ */
 final class MapShippingOrderLineEvent
 {
     public function __construct(
