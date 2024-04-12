@@ -1,6 +1,6 @@
 setono_sylius_shipmondo_admin_shipmondo_index:
     path: /shipmondo
-    methods: [GET]
+    methods: [GET,POST]
     defaults:
         _controller: setono_sylius_shipmondo.controller.admin.shipmondo::index
         

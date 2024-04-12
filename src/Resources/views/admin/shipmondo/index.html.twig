@@ -11,14 +11,59 @@
         {{ headers.default(header, 'truck', 'setono_sylius_shipmondo.ui.shipmondo_index'|trans) }}
     </div>
 
-    <div class="ui segment">
-        {% if registeredWebhooks is null %}
-            <p>{{ 'setono_sylius_shipmondo.ui.register_webhooks_information'|trans }}</p>
-        {% else %}
-            <p>{{ 'setono_sylius_shipmondo.ui.webhooks_registered_information'|trans({'%date%': registeredWebhooks.registeredAt|date}) }}</p>
-        {% endif %}
-        <a href="{{ path('setono_sylius_shipmondo_admin_shipmondo_register_webhooks') }}" class="ui primary button">
-            {{ 'setono_sylius_shipmondo.ui.register_webhooks'|trans }}
-        </a>
+    <div class="ui hidden divider"></div>
+
+    <div class="ui grid">
+        <div class="eight wide column">
+            <div class="ui segment">
+                <h4 class="ui header">{{ 'setono_sylius_shipmondo.ui.map_payment_methods'|trans }}</h4>
+
+                {% if shipmondoPaymentMethods|length > 0 %}
+                    <form method="post">
+                        <p>{{ 'setono_sylius_shipmondo.ui.map_payment_methods_information'|trans|raw }}</p>
+                        <table class="ui celled table">
+                            <thead>
+                            <tr>
+                                <th>{{ 'setono_sylius_shipmondo.ui.payment_method_in_sylius'|trans }}</th>
+                                <th>{{ 'setono_sylius_shipmondo.ui.payment_method_in_shipmondo'|trans }}</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for paymentMethod in paymentMethods %}
+                                <tr>
+                                    <td>{{ paymentMethod.name }}</td>
+                                    <td>
+                                        <select name="payment_methods[{{ paymentMethod.id }}]" class="ui dropdown">
+                                            <option value="">{{ 'setono_sylius_shipmondo.ui.select_shipmondo_payment_method'|trans }}</option>
+                                            {% for shipmondoPaymentMethod in shipmondoPaymentMethods %}
+                                                <option value="{{ shipmondoPaymentMethod.id }}" {% if shipmondoPaymentMethod.id == paymentMethod.shipmondoId %}selected{% endif %}>{{ shipmondoPaymentMethod.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                        <button type="submit" class="ui primary button">{{ 'sylius.ui.save_changes'|trans }}</button>
+                    </form>
+                {% else %}
+                    <p>{{ 'setono_sylius_shipmondo.ui.map_payment_methods_empty_information'|trans|raw }}</p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="eight wide column">
+            <div class="ui segment">
+                <h4 class="ui header">{{ 'setono_sylius_shipmondo.ui.webhooks'|trans }}</h4>
+
+                {% if registeredWebhooks is null %}
+                    <p>{{ 'setono_sylius_shipmondo.ui.register_webhooks_information'|trans }}</p>
+                {% else %}
+                    <p>{{ 'setono_sylius_shipmondo.ui.webhooks_registered_information'|trans({'%date%': registeredWebhooks.registeredAt|date}) }}</p>
+                {% endif %}
+                <a href="{{ path('setono_sylius_shipmondo_admin_shipmondo_register_webhooks') }}" class="ui primary button">
+                    {{ 'setono_sylius_shipmondo.ui.register_webhooks'|trans }}
+                </a>
+            </div>
+        </div>
     </div>
 {% endblock %}

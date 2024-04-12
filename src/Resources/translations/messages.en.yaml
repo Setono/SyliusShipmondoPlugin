@@ -1,12 +1,19 @@
 setono_sylius_shipmondo:
     ui:
         failed: Failed
+        map_payment_methods: Map payment methods
+        map_payment_methods_empty_information: 'There are no configured payment gateways inside Shipmondo. Go to <a href="https://app.shipmondo.com/main/app/#/setting/integration/payment-gateway" target="_blank">Shipmondo</a> and create your first payment gateway.'
+        map_payment_methods_information: Map your payment methods to the payment gateways in Shipmondo. This way, you will be able to capture the payment inside Shipmondo when fulfilling the order. If there's no equivalent payment gateway in Shipmondo, leave it empty.
+        payment_method_in_shipmondo: Payment method in Shipmondo
+        payment_method_in_sylius: Payment method in Sylius
         pending: Pending
         register_webhooks: Register webhooks
         register_webhooks_information: Either you have not registered webhooks yet or you need to re-register them because of changes in the configuration. Either way, please click the "Register webhooks" button below.
+        select_shipmondo_payment_method: Select payment method...
         shipmondo: Shipmondo
         shipmondo_index: Manage your Shipmondo settings
         shipmondo_state: Shipmondo state
         uploaded_to_shipmondo: Uploaded to Shipmondo
         uploading_to_shipmondo: Uploading to Shipmondo
+        webhooks: Webhooks
         webhooks_registered_information: Webhooks were registered on %date%.
