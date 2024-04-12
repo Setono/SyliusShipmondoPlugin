@@ -7,7 +7,7 @@ namespace Setono\SyliusShipmondoPlugin\Provider;
 use Doctrine\ORM\EntityRepository;
 use DoctrineBatchUtils\BatchProcessing\SelectBatchIteratorAggregate;
 use Psr\EventDispatcher\EventDispatcherInterface;
-use Setono\SyliusShipmondoPlugin\Event\PreSelectPreQualifiedUploadableOrders;
+use Setono\SyliusShipmondoPlugin\Event\PreQualifiedUploadableOrdersQueryBuilderCreatedEvent;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Sylius\Component\Core\OrderCheckoutStates;
 use Sylius\Component\Core\OrderPaymentStates;
@@ -37,7 +37,7 @@ final class PreQualifiedUploadableOrdersProvider implements PreQualifiedUploadab
             ->setParameter('paymentStates', [OrderPaymentStates::STATE_PAID, OrderPaymentStates::STATE_AUTHORIZED])
         ;
 
-        $this->eventDispatcher->dispatch(new PreSelectPreQualifiedUploadableOrders($qb));
+        $this->eventDispatcher->dispatch(new PreQualifiedUploadableOrdersQueryBuilderCreatedEvent($qb));
 
         /** @var SelectBatchIteratorAggregate<array-key, OrderInterface> $iterator */
         $iterator = SelectBatchIteratorAggregate::fromQuery($qb->getQuery(), 50);
