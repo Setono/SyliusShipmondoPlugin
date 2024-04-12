@@ -25,7 +25,7 @@ trait OrderTrait
     #[ORM\Column(type: 'string')]
     protected string $shipmondoState = OrderInterface::SHIPMONDO_STATE_PENDING;
 
-    /** @ORM\Column(type="integer") */
+    /** @ORM\Column(type="integer", nullable=true) */
     #[ORM\Column(type: 'integer', nullable: true)]
     protected ?int $shipmondoId = null;
 
