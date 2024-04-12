@@ -53,6 +53,7 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
                     'setono_sylius_shipmondo.command_bus' => [
                         'middleware' => [
                             'doctrine_transaction',
+                            'router_context',
                         ],
                     ],
                 ],
