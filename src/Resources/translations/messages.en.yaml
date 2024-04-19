@@ -1,4 +1,8 @@
 setono_sylius_shipmondo:
+    form:
+        shipping_method:
+            pickup_point_delivery: Pickup point delivery
+    
     ui:
         failed: Failed
         map_payment_methods: Map payment methods

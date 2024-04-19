@@ -11,7 +11,22 @@
 composer require setono/sylius-shipmondo-plugin symfony/webhook
 ```
 
-### Import routing:
+### Add plugin class to your `bundles.php`
+
+Make sure you add it before `SyliusGridBundle`, otherwise you'll get
+`You have requested a non-existent parameter "setono_sylius_shipmondo.model.remote_event.class".` exception.
+
+```php
+<?php
+$bundles = [
+    // ...
+    Setono\SyliusShipmondoPlugin\SetonoSyliusShipmondoPlugin::class => ['all' => true],
+    Sylius\Bundle\GridBundle\SyliusGridBundle::class => ['all' => true],
+    // ...
+];
+```
+
+### Import routing
 
 ```yaml
 # config/routes/setono_sylius_shipmondo.yaml
@@ -27,21 +42,6 @@ setono_sylius_shipmondo:
     resource: "@SetonoSyliusShipmondoPlugin/Resources/config/routes_no_locale.yaml"
 ```
 
-### Add plugin class to your `bundles.php`:
-
-Make sure you add it before `SyliusGridBundle`, otherwise you'll get
-`You have requested a non-existent parameter "setono_sylius_shipmondo.model.remote_event.class".` exception.
-
-```php
-<?php
-$bundles = [
-    // ...
-    Setono\SyliusShipmondoPlugin\SetonoSyliusShipmondoPlugin::class => ['all' => true],
-    Sylius\Bundle\GridBundle\SyliusGridBundle::class => ['all' => true],
-    // ...
-];
-```
-
 ### Add environment variables
 
 Add the following variables to your `.env` file:
@@ -52,6 +52,24 @@ SHIPMONDO_USERNAME=
 SHIPMONDO_KEY=
 SHIPMONDO_WEBHOOKS_KEY=
 ###< setono/sylius-shipmondo-plugin ###
+```
+
+### Override template
+
+The shipping method form has to be overriden to be able to edit the `pickupPointDelivery` property on shipping methods.
+
+If you haven't created the file yet, create `templates/bundles/SyliusAdminBundle/ShippingMethod/_form.html.twig`
+and add `{{ form_row(form.pickupPointDelivery) }}` where you want it. An example could be to add it next to the `enabled` field:
+
+```twig
+...
+
+<div class="two fields">
+    {{ form_row(form.enabled) }}
+    {{ form_row(form.pickupPointDelivery) }}
+</div>
+
+...
 ```
 
 ### Extend entities

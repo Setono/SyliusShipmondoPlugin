@@ -9,6 +9,10 @@ use Setono\Shipmondo\Response\ShipmentTemplates\ShipmentTemplate;
 
 trait ShippingMethodTrait
 {
+    /** @ORM\Column(type="boolean") */
+    #[ORM\Column(type: 'boolean')]
+    protected bool $pickupPointDelivery = false;
+
     /**
      * @var list<int>
      *
@@ -16,6 +20,16 @@ trait ShippingMethodTrait
      */
     #[ORM\Column(type: 'json', nullable: true)]
     protected ?array $allowedShipmentTemplates = [];
+
+    public function isPickupPointDelivery(): bool
+    {
+        return $this->pickupPointDelivery;
+    }
+
+    public function setPickupPointDelivery(bool $pickupPointDelivery): void
+    {
+        $this->pickupPointDelivery = $pickupPointDelivery;
+    }
 
     public function getAllowedShipmentTemplates(): array
     {
