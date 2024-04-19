@@ -30,5 +30,12 @@
 
             <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="40"/>
         </service>
+
+        <service id="setono_sylius_shipmondo.data_mapper.sales_order.shipment_template"
+                 class="Setono\SyliusShipmondoPlugin\DataMapper\ShipmentTemplateSalesOrderDataMapper">
+            <argument type="service" id="setono_sylius_shipmondo.client"/>
+
+            <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="50"/>
+        </service>
     </services>
 </container>
