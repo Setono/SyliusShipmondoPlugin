@@ -9,9 +9,9 @@ use Setono\Shipmondo\Client\Endpoint\Endpoint;
 use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
 use Setono\Shipmondo\Resolver\Shipment;
 use Setono\Shipmondo\Resolver\ShipmentTemplateResolver;
-use Setono\Shipmondo\Resolver\SimilarTextBasedShipmentsResemblanceChecker;
 use Setono\Shipmondo\Response\ShipmentTemplates\ShipmentTemplate;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
+use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
 
 final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapperInterface
 {
@@ -26,10 +26,22 @@ final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapper
             return;
         }
 
-        $shippingMethodName = self::getShippingMethodName($order);
+        $shipment = $order->getShipments()->first();
+        if (false === $shipment) {
+            return;
+        }
+
+        $shippingMethod = $shipment->getMethod();
+        if (!$shippingMethod instanceof ShippingMethodInterface) {
+            return;
+        }
+
+        $shippingMethodName = $shippingMethod->getName();
         if (null === $shippingMethodName) {
             return;
         }
+
+        $allowedShipmentTemplates = $shippingMethod->getAllowedShipmentTemplates();
 
         /** @var list<ShipmentTemplate> $shipmentTemplates */
         $shipmentTemplates = [];
@@ -37,8 +49,16 @@ final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapper
         foreach (Endpoint::paginate($this->client->shipmentTemplates()->get(...)) as $collection) {
             /** @var ShipmentTemplate $shipmentTemplate */
             foreach ($collection as $shipmentTemplate) {
+                if (!in_array($shipmentTemplate->id, $allowedShipmentTemplates, true)) {
+                    continue;
+                }
+
                 $shipmentTemplates[] = $shipmentTemplate;
             }
+        }
+
+        if ([] === $shipmentTemplates) {
+            return;
         }
 
         $shipment = new Shipment(
@@ -48,7 +68,8 @@ final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapper
             self::getWeight($order),
         );
 
-        $resolver = new ShipmentTemplateResolver(new SimilarTextBasedShipmentsResemblanceChecker(10));
+        // todo this should be a service
+        $resolver = new ShipmentTemplateResolver();
         $shipmentTemplate = $resolver->resolve($shipment, $shipmentTemplates);
 
         $salesOrder->shipmentTemplateId = $shipmentTemplate?->id;
@@ -72,7 +93,7 @@ final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapper
 
     private static function getShippingMethodName(OrderInterface $order): ?string
     {
-        $shipment = $order->getshipments()->first();
+        $shipment = $order->getShipments()->first();
         if (false === $shipment) {
             return null;
         }

@@ -66,4 +66,54 @@
             </div>
         </div>
     </div>
+    <div class="ui grid">
+        <div class="sixteen wide column">
+            <div class="ui segment">
+                <h4 class="ui header">{{ 'setono_sylius_shipmondo.ui.map_shipping_methods'|trans }}</h4>
+
+                {% if shipmondoShipmentTemplates|length > 0 %}
+                    <form method="post">
+                        <p>{{ 'setono_sylius_shipmondo.ui.map_shipping_methods_information'|trans|raw }}</p>
+                        <table class="ui single line celled table">
+                            <thead>
+                            <tr>
+                                <th>{{ 'setono_sylius_shipmondo.ui.shipping_method_in_sylius'|trans }}</th>
+                                <th>{{ 'setono_sylius_shipmondo.ui.shipment_templates_in_shipmondo'|trans }}</th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            {% for shippingMethod in shippingMethods %}
+                                <tr>
+                                    <td>{{ shippingMethod.name }}</td>
+                                    <td>
+                                        <select name="shipping_methods[{{ shippingMethod.id }}][]" class="ui fluid search dropdown" multiple>
+                                            {% for shipmondoShipmentTemplate in shipmondoShipmentTemplates %}
+                                                <option value="{{ shipmondoShipmentTemplate.id }}" {% if shippingMethod.hasAllowedShipmentTemplate(shipmondoShipmentTemplate) %}selected{% endif %}>{{ shipmondoShipmentTemplate.name }}</option>
+                                            {% endfor %}
+                                        </select>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                        <button type="submit" class="ui primary button">{{ 'sylius.ui.save_changes'|trans }}</button>
+                    </form>
+                {% else %}
+                    <p>{{ 'setono_sylius_shipmondo.ui.map_shipping_methods_empty_information'|trans|raw }}</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+{% endblock %}
+
+{% block javascripts %}
+    {{ parent() }}
+    <script>
+        $(() => {
+            $('.ui.dropdown').dropdown({
+                fullTextSearch: true,
+                match: 'text'
+            });
+        });
+    </script>
 {% endblock %}

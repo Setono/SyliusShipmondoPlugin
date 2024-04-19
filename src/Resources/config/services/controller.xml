@@ -15,6 +15,7 @@
             <argument type="service" id="setono_sylius_shipmondo.command_bus"/>
             <argument type="service" id="setono_sylius_shipmondo.registrar.webhook"/>
             <argument type="service" id="sylius.repository.payment_method"/>
+            <argument type="service" id="sylius.repository.shipping_method"/>
             <argument type="service" id="setono_sylius_shipmondo.client"/>
 
             <call method="setContainer">

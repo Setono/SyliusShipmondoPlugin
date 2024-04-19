@@ -7,11 +7,14 @@ namespace Setono\SyliusShipmondoPlugin\Controller\Admin;
 use Setono\Shipmondo\Client\Client;
 use Setono\Shipmondo\Client\Endpoint\Endpoint;
 use Setono\Shipmondo\Response\PaymentGateways\PaymentGateway;
+use Setono\Shipmondo\Response\ShipmentTemplates\ShipmentTemplate;
 use Setono\SyliusShipmondoPlugin\Message\Command\RegisterWebhooks;
 use Setono\SyliusShipmondoPlugin\Model\PaymentMethodInterface;
+use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
 use Setono\SyliusShipmondoPlugin\Repository\RegisteredWebhooksRepositoryInterface;
 use Sylius\Component\Core\Repository\PaymentMethodRepositoryInterface;
+use Sylius\Component\Core\Repository\ShippingMethodRepositoryInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -26,6 +29,7 @@ final class ShipmondoController extends AbstractController
         private readonly MessageBusInterface $commandBus,
         private readonly WebhookRegistrarInterface $webhookRegistrar,
         private readonly PaymentMethodRepositoryInterface $paymentMethodRepository,
+        private readonly ShippingMethodRepositoryInterface $shippingMethodRepository,
         private readonly Client $client,
     ) {
     }
@@ -34,6 +38,9 @@ final class ShipmondoController extends AbstractController
     {
         /** @var list<PaymentMethodInterface> $paymentMethods */
         $paymentMethods = $this->paymentMethodRepository->findAll();
+
+        /** @var list<ShippingMethodInterface> $shippingMethods */
+        $shippingMethods = $this->shippingMethodRepository->findAll();
 
         /**
          * @var list<PaymentGateway> $shipmondoPaymentMethods
@@ -46,13 +53,24 @@ final class ShipmondoController extends AbstractController
             }
         }
 
+        /**
+         * @var list<ShipmentTemplate> $shipmondoShipmentTemplates
+         */
+        $shipmondoShipmentTemplates = [];
+
+        foreach (Endpoint::paginate($this->client->shipmentTemplates()->get(...)) as $collection) {
+            foreach ($collection as $item) {
+                $shipmondoShipmentTemplates[] = $item;
+            }
+        }
+
         // todo this should be made using Symfony forms
         if ($request->isMethod('POST') && $request->request->has('payment_methods')) {
             /**
-             * Example of posted array (the key is Sylius payment method id, they value is Shipmondo payment method id):
+             * Example of posted array (the key is a Sylius payment method id, the value is a Shipmondo payment method id):
              *
              * [
-             *   1 => "1"
+             *   1 => "1",
              *   2 => ""
              * ]
              *
@@ -64,21 +82,55 @@ final class ShipmondoController extends AbstractController
                     continue;
                 }
 
-                /** @var PaymentMethodInterface|null $paymentMethod */
-                $paymentMethod = $this->paymentMethodRepository->find($paymentMethodId);
-                if (null === $paymentMethod) {
+                /** @var PaymentMethodInterface|null $shippingMethod */
+                $shippingMethod = $this->paymentMethodRepository->find($paymentMethodId);
+                if (null === $shippingMethod) {
                     continue;
                 }
 
-                Assert::isInstanceOf($paymentMethod, PaymentMethodInterface::class);
-                $paymentMethod->setShipmondoId((int) $shipmondoPaymentMethodId);
-                $this->paymentMethodRepository->add($paymentMethod);
+                Assert::isInstanceOf($shippingMethod, PaymentMethodInterface::class);
+                $shippingMethod->setShipmondoId((int) $shipmondoPaymentMethodId);
+                $this->paymentMethodRepository->add($shippingMethod);
+            }
+        }
+
+        // todo this should be made using Symfony forms
+        if ($request->isMethod('POST') && $request->request->has('shipping_methods')) {
+            /**
+             * Example of posted array (the key is a Sylius shipping method id, the value is an array of Shipmondo shipment template ids):
+             *
+             * [
+             *   1 => [
+             *     0 => "664116",
+             *     1 => "664115"
+             *   ],
+             *   2 => [
+             *     0 => "664114",
+             *     1 => "664112"
+             *   ]
+             * ]
+             *
+             * @var array<int, list<string>> $postedShippingMethods
+             */
+            $postedShippingMethods = $request->request->all('shipping_methods');
+            foreach ($postedShippingMethods as $shippingMethodId => $shipmondoShipmentTemplateIds) {
+                /** @var ShippingMethodInterface|null $shippingMethod */
+                $shippingMethod = $this->shippingMethodRepository->find($shippingMethodId);
+                if (null === $shippingMethod) {
+                    continue;
+                }
+
+                Assert::isInstanceOf($shippingMethod, ShippingMethodInterface::class);
+                $shippingMethod->setAllowedShipmentTemplates($shipmondoShipmentTemplateIds);
+                $this->shippingMethodRepository->add($shippingMethod);
             }
         }
 
         return $this->render('@SetonoSyliusShipmondoPlugin/admin/shipmondo/index.html.twig', [
             'paymentMethods' => $paymentMethods,
+            'shippingMethods' => $shippingMethods,
             'shipmondoPaymentMethods' => $shipmondoPaymentMethods,
+            'shipmondoShipmentTemplates' => $shipmondoShipmentTemplates,
             'registeredWebhooks' => $this->registeredWebhooksRepository->findOneByVersion($this->webhookRegistrar->getVersion()),
         ]);
     }

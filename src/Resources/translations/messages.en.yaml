@@ -17,3 +17,7 @@ setono_sylius_shipmondo:
         uploading_to_shipmondo: Uploading to Shipmondo
         webhooks: Webhooks
         webhooks_registered_information: Webhooks were registered on %date%.
+        shipping_method_in_sylius: Shipping method in Sylius
+        shipment_templates_in_shipmondo: Shipment templates in Shipmondo
+        map_shipping_methods: Map shipping methods
+        map_shipping_methods_information: Map your shipping methods to the shipment templates in Shipmondo. This way, shipments inside Shipmondo will have a shipment template assigned automatically. If there's no relevant shipment template in Shipmondo, leave it empty.
