@@ -60,6 +60,7 @@ final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapper
         foreach ($order->getItems() as $item) {
             $unitWeight = $item->getVariant()?->getWeight();
             if (null === $unitWeight) {
+                // todo this should be logged or even better, a notification should be sent to the store owner
                 continue;
             }
 
