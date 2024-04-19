@@ -35,8 +35,16 @@ final class ShipmondoController extends AbstractController
         /** @var list<PaymentMethodInterface> $paymentMethods */
         $paymentMethods = $this->paymentMethodRepository->findAll();
 
-        /** @var list<PaymentGateway> $shipmondoPaymentMethods */
-        $shipmondoPaymentMethods = iterator_to_array(Endpoint::paginate($this->client->paymentGateways()->get(...)));
+        /**
+         * @var list<PaymentGateway> $shipmondoPaymentMethods
+         */
+        $shipmondoPaymentMethods = [];
+
+        foreach (Endpoint::paginate($this->client->paymentGateways()->get(...)) as $collection) {
+            foreach ($collection as $item) {
+                $shipmondoPaymentMethods[] = $item;
+            }
+        }
 
         // todo this should be made using Symfony forms
         if ($request->isMethod('POST') && $request->request->has('payment_methods')) {
