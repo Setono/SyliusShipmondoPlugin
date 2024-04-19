@@ -39,6 +39,8 @@ final class UploadOrderHandler
             throw new UnrecoverableMessageHandlingException(sprintf('Order with id %s has been updated since it was tried to be uploaded', (string) $message->order));
         }
 
+        // todo try catch exceptions and log errors
+
         $salesOrder = new SalesOrder();
         $this->salesOrderDataMapper->map($order, $salesOrder);
 
