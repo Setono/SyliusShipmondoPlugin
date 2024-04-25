@@ -1,0 +1,4 @@
+setono_sylius_shipmondo:
+    shipping_method:
+        carrier_code:
+            not_blank: When the pickup point delivery is set, you have to select a carrier.

@@ -67,5 +67,24 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
             ],
             'workflows' => OrderWorkflow::getConfig(),
         ]);
+
+        $container->prependExtensionConfig('sylius_ui', [
+            'events' => [
+                'sylius.admin.shipping_method.update.javascripts' => [
+                    'blocks' => [
+                        'javascripts' => [
+                            'template' => '@SetonoSyliusShipmondoPlugin/admin/shipping_method/form/_javascripts.html.twig',
+                        ],
+                    ],
+                ],
+                'sylius.admin.shipping_method.create.javascripts' => [
+                    'blocks' => [
+                        'javascripts' => [
+                            'template' => '@SetonoSyliusShipmondoPlugin/admin/shipping_method/form/_javascripts.html.twig',
+                        ],
+                    ],
+                ],
+            ],
+        ]);
     }
 }

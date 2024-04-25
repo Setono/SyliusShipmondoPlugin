@@ -56,21 +56,27 @@ SHIPMONDO_WEBHOOKS_KEY=
 
 ### Override template
 
-The shipping method form has to be overriden to be able to edit the `pickupPointDelivery` property on shipping methods.
+The shipping method form has to be overridden to be able to edit the `pickupPointDelivery` and `carrierCode` properties on the shipping methods.
 
 If you haven't created the file yet, create `templates/bundles/SyliusAdminBundle/ShippingMethod/_form.html.twig`
-and add `{{ form_row(form.pickupPointDelivery) }}` where you want it. An example could be to add it next to the `enabled` field:
+and add `{{ form_row(form.pickupPointDelivery) }}` and `{{ form_row(form.carrierCode) }}` where you want it.
+An example could be to add it next to the `enabled` field:
 
 ```twig
 ...
 
-<div class="two fields">
+<div class="three fields">
     {{ form_row(form.enabled) }}
     {{ form_row(form.pickupPointDelivery) }}
+    {{ form_row(form.carrierCode) }}
 </div>
 
 ...
 ```
+
+which will look like this in the default admin panel:
+
+![Shipping method extra fields](docs/images/shipping-method-extra-fields.png)
 
 ### Extend entities
 

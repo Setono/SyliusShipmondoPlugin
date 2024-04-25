@@ -17,6 +17,13 @@ interface ShippingMethodInterface extends BaseShippingMethodInterface
     public function setPickupPointDelivery(bool $pickupPointDelivery): void;
 
     /**
+     * If the shipping method has pickup point delivery enabled, then this will contain the carrier code to query Shipmondo for service/pickup points
+     */
+    public function getCarrierCode(): ?string;
+
+    public function setCarrierCode(?string $carrierCode): void;
+
+    /**
      * Returns a list Shipmondo shipment template ids that are allowed for this shipping method
      *
      * @return list<int>

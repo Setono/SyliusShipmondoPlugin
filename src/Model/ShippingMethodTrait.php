@@ -13,6 +13,10 @@ trait ShippingMethodTrait
     #[ORM\Column(type: 'boolean')]
     protected bool $pickupPointDelivery = false;
 
+    /** @ORM\Column(type="string", nullable=true) */
+    #[ORM\Column(type: 'string', nullable: true)]
+    protected ?string $carrierCode = null;
+
     /**
      * @var list<int>
      *
@@ -29,6 +33,19 @@ trait ShippingMethodTrait
     public function setPickupPointDelivery(bool $pickupPointDelivery): void
     {
         $this->pickupPointDelivery = $pickupPointDelivery;
+        if (!$pickupPointDelivery) {
+            $this->carrierCode = null;
+        }
+    }
+
+    public function getCarrierCode(): ?string
+    {
+        return $this->carrierCode;
+    }
+
+    public function setCarrierCode(?string $carrierCode): void
+    {
+        $this->carrierCode = $carrierCode;
     }
 
     public function getAllowedShipmentTemplates(): array

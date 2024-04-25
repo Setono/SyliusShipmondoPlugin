@@ -1,6 +1,7 @@
 setono_sylius_shipmondo:
     form:
         shipping_method:
+            carrier_code_placeholder: Select carrier...
             pickup_point_delivery: Pickup point delivery
     
     ui:
