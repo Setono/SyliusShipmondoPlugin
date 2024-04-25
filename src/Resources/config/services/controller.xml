@@ -24,5 +24,13 @@
 
             <tag name="controller.service_arguments"/>
         </service>
+
+        <service id="setono_sylius_shipmondo.controller.shop.get_pickup_points"
+                 class="Setono\SyliusShipmondoPlugin\Controller\Shop\GetPickupPointsAction" public="true">
+            <argument type="service" id="sylius.repository.shipping_method"/>
+            <argument type="service" id="sylius.context.cart"/>
+            <argument type="service" id="setono_sylius_shipmondo.client"/>
+            <argument type="service" id="twig"/>
+        </service>
     </services>
 </container>

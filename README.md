@@ -134,7 +134,7 @@ class PaymentMethod extends BasePaymentMethod implements ShipmondoPaymentMethodI
 }
 ```
 
-#### `PaymentMethod` entity
+#### `ShippingMethod` entity
 
 ```php
 <?php
@@ -158,6 +158,33 @@ use Sylius\Component\Core\Model\ShippingMethod as BaseShippingMethod;
 class ShippingMethod extends BaseShippingMethod implements ShipmondoShippingMethodInterface
 {
     use ShipmondoShippingMethodTrait;
+}
+```
+
+#### `Shipment` entity
+
+```php
+<?php
+
+# src/Entity/Shipping/Shipment.php
+
+declare(strict_types=1);
+
+namespace App\Entity\Shipping;
+
+use Doctrine\ORM\Mapping as ORM;
+use Setono\SyliusShipmondoPlugin\Model\ShipmentInterface as ShipmondoShipmentInterface;
+use Setono\SyliusShipmondoPlugin\Model\ShipmentTrait as ShipmondoShipmentTrait;
+use Sylius\Component\Core\Model\Shipment as BaseShipment;
+
+/**
+ * @ORM\Entity
+ *
+ * @ORM\Table(name="sylius_shipment")
+ */
+class Shipment extends BaseShipment implements ShipmondoShipmentInterface
+{
+    use ShipmondoShipmentTrait;
 }
 ```
 

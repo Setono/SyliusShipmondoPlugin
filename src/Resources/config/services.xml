@@ -12,6 +12,7 @@
         <import resource="services/message.xml"/>
         <import resource="services/provider.xml"/>
         <import resource="services/registrar.xml"/>
+        <import resource="services/twig.xml"/>
         <import resource="services/uploader.xml"/>
         <import resource="services/webhook.xml"/>
     </imports>

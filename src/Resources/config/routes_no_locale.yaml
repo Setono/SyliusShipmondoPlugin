@@ -4,6 +4,9 @@
 
 setono_sylius_shipmondo_global:
     resource: "@SetonoSyliusShipmondoPlugin/Resources/config/routes/global.yaml"
+    
+setono_sylius_shipmondo_shop:
+    resource: "@SetonoSyliusShipmondoPlugin/Resources/config/routes/shop.yaml"
 
 setono_sylius_shipmondo_admin:
     resource: "@SetonoSyliusShipmondoPlugin/Resources/config/routes/admin.yaml"

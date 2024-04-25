@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<container xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://symfony.com/schema/dic/services"
+           xsi:schemaLocation="http://symfony.com/schema/dic/services http://symfony.com/schema/dic/services/services-1.0.xsd">
+    <services>
+        <service id="setono_sylius_shipmondo.twig.extension"
+                 class="Setono\SyliusShipmondoPlugin\Twig\Extension">
+            <tag name="twig.extension"/>
+        </service>
+
+        <service id="setono_sylius_shipmondo.twig.runtime"
+                 class="Setono\SyliusShipmondoPlugin\Twig\Runtime">
+            <argument type="service" id="sylius.repository.shipping_method"/>
+
+            <tag name="twig.runtime"/>
+        </service>
+    </services>
+</container>
