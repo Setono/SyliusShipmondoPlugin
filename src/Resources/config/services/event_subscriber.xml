@@ -11,5 +11,10 @@
                  class="Setono\SyliusShipmondoPlugin\EventSubscriber\Grid\AddShipmondoStateColumnToOrderGridSubscriber">
             <tag name="kernel.event_subscriber"/>
         </service>
+
+        <service id="setono_sylius_shipmondo.event_subscriber.grid.add_pickup_point_delivery_to_shipping_method_grid"
+                 class="Setono\SyliusShipmondoPlugin\EventSubscriber\Grid\AddPickupPointDeliveryToShippingMethodGridSubscriber">
+            <tag name="kernel.event_subscriber"/>
+        </service>
     </services>
 </container>
