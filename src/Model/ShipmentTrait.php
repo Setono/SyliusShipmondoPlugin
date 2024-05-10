@@ -9,6 +9,7 @@ use Doctrine\ORM\Mapping as ORM;
 trait ShipmentTrait
 {
     /** @ORM\Column(type="json", nullable=true) */
+    #[ORM\Column(type: 'json', nullable: true)]
     protected ?array $shipmondoPickupPoint = null;
 
     public function setShipmondoPickupPoint(?array $shipmondoPickupPoint): void
