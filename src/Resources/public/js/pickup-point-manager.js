@@ -78,9 +78,9 @@ class PickupPointManager {
       return;
     }
 
-    radio.dispatchEvent(new CustomEvent('pickup_point_manager:insert_html', { bubbles: true, detail: { radio: radio, shippingMethod: radio.value } }));
-
     this.#config.insertHtmlCallback.call(this, radio);
+
+    radio.dispatchEvent(new CustomEvent('pickup_point_manager:inserted_html', { bubbles: true, detail: { radio: radio, shippingMethod: radio.value } }));
   }
 
   /**
