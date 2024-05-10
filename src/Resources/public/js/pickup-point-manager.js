@@ -117,7 +117,7 @@ class PickupPointManager {
     }
 
     const data = await response.json();
-    data.html = data.html.replace('%fieldName%', radio.name.replace('[method]', '[shipmondoPickupPoint]'));
+    data.html = data.html.replaceAll('%fieldName%', radio.name.replace('[method]', '[shipmondoPickupPoint]'));
 
     this.#data[radio.value] = data;
   }
