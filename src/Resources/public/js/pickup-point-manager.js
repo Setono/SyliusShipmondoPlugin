@@ -23,7 +23,7 @@ class PickupPointManager {
       endpoint: null,
       allowedShippingMethods: [],
       shippingMethodSelector: 'input[type="radio"][name^="sylius_checkout_select_shipping[shipments]"]',
-      insertHtmlCallback: (radio) => {
+      insertHtmlCallback: function (radio) {
         radio.closest('.item').insertAdjacentHTML('afterend', this.getHtml(radio.value));
       },
     }, config);
@@ -67,8 +67,7 @@ class PickupPointManager {
   /**
    * @param {HTMLInputElement} radio
    */
-  #insertHtml(radio)
-  {
+  #insertHtml(radio) {
     if(!this.hasData(radio.value)) {
       radio.dispatchEvent(new CustomEvent('pickup_point_manager:loading', { bubbles: true, detail: { radio: radio, shippingMethod: radio.value } }));
 
@@ -127,8 +126,7 @@ class PickupPointManager {
    * @param {string} shippingMethod
    * @return {boolean}
    */
-  hasData(shippingMethod)
-  {
+  hasData(shippingMethod) {
     return Object.hasOwn(this.#data, shippingMethod);
   }
 
@@ -136,8 +134,7 @@ class PickupPointManager {
    * @param {string} shippingMethod
    * @return {string}
    */
-  getHtml(shippingMethod)
-  {
+  getHtml(shippingMethod) {
     if(!this.hasData(shippingMethod)) {
       throw new Error('No pickup point data found for shipping method ' + shippingMethod);
     }
