@@ -2,7 +2,7 @@
     <script type="module">
         import { PickupPointManager } from '{{ asset('bundles/setonosyliusshipmondoplugin/js/pickup-point-manager.js') }}';
 
-        const pickupPointManagerConfig = pickupPointManagerConfig || {};
+        var pickupPointManagerConfig = window.pickupPointManagerConfig || {};
 
         const manager = new PickupPointManager(Object.assign({
             endpoint: '{{ path('setono_sylius_shipmondo_shop_ajax_get_pickup_points') }}',
