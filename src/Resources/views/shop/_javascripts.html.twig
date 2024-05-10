@@ -1,0 +1,11 @@
+{% if app.current_route == 'sylius_shop_checkout_select_shipping' %}
+    <script type="module">
+        import { PickupPointManager } from '{{ asset('bundles/setonosyliusshipmondoplugin/js/pickup-point-manager.js') }}';
+
+        const manager = new PickupPointManager({
+            endpoint: '{{ path('setono_sylius_shipmondo_shop_ajax_get_pickup_points') }}',
+            allowedShippingMethods: {{ sss_shipping_methods_with_pickup_point_delivery()|json_encode|raw }}
+        });
+        manager.init();
+    </script>
+{% endif %}

@@ -6,5 +6,10 @@
                  class="Setono\SyliusShipmondoPlugin\Form\Extension\ShippingMethodTypeExtension">
             <tag name="form.type_extension"/>
         </service>
+
+        <service id="setono_sylius_shipmondo.form.type_extension.shipment"
+                 class="Setono\SyliusShipmondoPlugin\Form\Extension\ShipmentTypeExtension">
+            <tag name="form.type_extension"/>
+        </service>
     </services>
 </container>

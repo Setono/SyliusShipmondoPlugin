@@ -1,0 +1,29 @@
+{# @var pickupPoints \Setono\Shipmondo\Response\PickupPoints\PickupPoint[] #}
+<div class="item pickup-points-container">
+    <div class="field" style="width: 17px">&nbsp;</div>
+    <div class="content">
+        {% for pickupPoint in pickupPoints %}
+            <div class="ui grid" style="margin-bottom: 20px; padding: 20px; background-color: #F3F4F5">
+                <div class="one wide column">
+                    <input type="radio" name="%fieldName%" value="{{ pickupPoint|json_encode|e('html_attr') }}"{{ loop.index0 == 0 ? ' checked' : '' }}>
+                </div>
+                <div class="eight wide column">
+                    <h4>Delivery address</h4>
+                    <div style="font-size: 12px">
+                        {{ pickupPoint.name }}<br>
+                        {{ pickupPoint.address }}<br>
+                        {{ pickupPoint.zipcode }} {{ pickupPoint.city }}
+                    </div>
+                </div>
+                <div class="seven wide column" style="text-align: right">
+                    <h4>Opening hours</h4>
+                    <div style="font-size: 12px">
+                        {% for openingHour in pickupPoint.openingHours %}
+                            <div>{{ openingHour }}</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+</div>

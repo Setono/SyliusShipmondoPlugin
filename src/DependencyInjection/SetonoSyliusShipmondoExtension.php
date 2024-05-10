@@ -84,6 +84,13 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
                         ],
                     ],
                 ],
+                'sylius.shop.layout.javascripts' => [
+                    'blocks' => [
+                        'javascripts' => [
+                            'template' => '@SetonoSyliusShipmondoPlugin/shop/_javascripts.html.twig',
+                        ],
+                    ],
+                ],
             ],
         ]);
     }

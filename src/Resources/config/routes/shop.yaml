@@ -1,0 +1,5 @@
+setono_sylius_shipmondo_shop_ajax_get_pickup_points:
+    path: /ajax/get-pickup-points
+    methods: [GET]
+    defaults:
+        _controller: setono_sylius_shipmondo.controller.shop.get_pickup_points

@@ -31,3 +31,6 @@ sylius_shipping:
         shipping_method:
             classes:
                 model: Tests\Setono\SyliusShipmondoPlugin\Application\Model\ShippingMethod
+        shipment:
+            classes:
+                model: Tests\Setono\SyliusShipmondoPlugin\Application\Model\Shipment
