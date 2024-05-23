@@ -27,8 +27,13 @@ final class OrderLinesSalesOrderDataMapper implements SalesOrderDataMapperInterf
 
             $unitPriceExcludingVat = $orderItemUnit->getTotal() - $orderItemUnit->getTaxTotal();
 
+            $itemName = (string) $orderItem->getProductName();
+            if ($orderItem->getVariantName() !== null) {
+                $itemName .= sprintf(' (%s)', (string) $orderItem->getVariantName());
+            }
+
             $orderLine = new OrderLine(
-                itemName: sprintf('%s (%s)', (string) $orderItem->getProductName(), (string) $orderItem->getVariantName()),
+                itemName: $itemName,
                 itemSku: $orderItem->getVariant()?->getCode(),
                 quantity: $orderItem->getQuantity(),
                 unitPriceExcludingVat: self::formatAmount($unitPriceExcludingVat),
