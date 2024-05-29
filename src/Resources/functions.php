@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin;
 
-if (!\function_exists('formatAmount')) {
+if (!\function_exists(formatAmount::class)) {
     function formatAmount(int $amount): string
     {
         return (string) round($amount / 100, 2);
