@@ -8,6 +8,7 @@ use Psr\EventDispatcher\EventDispatcherInterface;
 use Setono\Shipmondo\Request\SalesOrders\OrderLine;
 use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
 use Setono\SyliusShipmondoPlugin\Event\OrderLineMappedEvent;
+use function Setono\SyliusShipmondoPlugin\formatAmount;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Sylius\Component\Core\Model\OrderItemUnitInterface;
 use Webmozart\Assert\Assert;
@@ -36,7 +37,7 @@ final class OrderLinesSalesOrderDataMapper implements SalesOrderDataMapperInterf
                 itemName: $itemName,
                 itemSku: $orderItem->getVariant()?->getCode(),
                 quantity: $orderItem->getQuantity(),
-                unitPriceExcludingVat: self::formatAmount($unitPriceExcludingVat),
+                unitPriceExcludingVat: formatAmount($unitPriceExcludingVat),
                 vatPercent: (string) ($orderItemUnit->getTaxTotal() / $unitPriceExcludingVat),
                 currencyCode: $order->getCurrencyCode(),
                 unitWeight: null === $orderItem->getVariant()?->getWeight() ? null : (int) $orderItem->getVariant()?->getWeight(),
@@ -46,10 +47,5 @@ final class OrderLinesSalesOrderDataMapper implements SalesOrderDataMapperInterf
 
             $salesOrder->orderLines[] = $orderLine;
         }
-    }
-
-    private static function formatAmount(int $amount): string
-    {
-        return (string) round($amount / 100, 2);
     }
 }

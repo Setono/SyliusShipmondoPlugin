@@ -81,6 +81,7 @@
         "psr-4": {
             "Tests\\Setono\\SyliusShipmondoPlugin\\": "tests/"
         },
+        "files": [ "src/Resources/functions.php" ],
         "classmap": [
             "tests/Application/Kernel.php"
         ]
