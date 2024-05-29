@@ -90,14 +90,4 @@ final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapper
 
         return (int) $weight;
     }
-
-    private static function getShippingMethodName(OrderInterface $order): ?string
-    {
-        $shipment = $order->getShipments()->first();
-        if (false === $shipment) {
-            return null;
-        }
-
-        return $shipment->getMethod()?->getName();
-    }
 }
