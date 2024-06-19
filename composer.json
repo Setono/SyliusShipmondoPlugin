@@ -59,7 +59,7 @@
         "phpunit/phpunit": "^9.6",
         "psalm/plugin-phpunit": "^0.18",
         "psalm/plugin-symfony": "^5.1",
-        "setono/code-quality-pack": "^2.7.2",
+        "setono/code-quality-pack": "^2.8",
         "sylius/sylius": "~1.12.13",
         "symfony/debug-bundle": "^6.4",
         "symfony/dotenv": "^6.4",
