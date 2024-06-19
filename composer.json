@@ -76,7 +76,9 @@
         "psr-4": {
             "Setono\\SyliusShipmondoPlugin\\": "src/"
         },
-        "files": [ "src/Resources/functions.php" ]
+        "files": [
+            "src/Resources/functions.php"
+        ]
     },
     "autoload-dev": {
         "psr-4": {
