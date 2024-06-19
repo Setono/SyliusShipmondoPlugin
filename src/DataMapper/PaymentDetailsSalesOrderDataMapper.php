@@ -17,10 +17,15 @@ final class PaymentDetailsSalesOrderDataMapper implements SalesOrderDataMapperIn
     {
         $paymentMethod = self::getPaymentMethod($order);
 
+        $amountExcludingVat = $order->getTotal() - $order->getTaxTotal();
+
         $salesOrder->paymentDetails = new PaymentDetails(
-            amountIncludingVat: formatAmount($order->getTotal()), // todo this is not necessarily correct
+            amountExcludingVat: formatAmount($amountExcludingVat),
+            amountIncludingVat: formatAmount($order->getTotal()),
+            authorizedAmount: formatAmount($order->getTotal()),
             currencyCode: $order->getCurrencyCode(),
             vatAmount: formatAmount($order->getTaxTotal()),
+            vatPercent: (string) ($order->getTaxTotal() / $amountExcludingVat),
             paymentMethod: $paymentMethod?->getName(),
             paymentGatewayId: null === $paymentMethod ? null : (string) $paymentMethod->getShipmondoId(),
         );
