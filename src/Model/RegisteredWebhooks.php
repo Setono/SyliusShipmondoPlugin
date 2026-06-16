@@ -8,31 +8,31 @@ class RegisteredWebhooks implements RegisteredWebhooksInterface
 {
     protected ?int $id = null;
 
-    protected string $version;
+    protected ?string $version = null;
 
-    protected \DateTimeInterface $registeredAt;
+    protected ?\DateTimeInterface $registeredAt = null;
 
     public function getId(): ?int
     {
         return $this->id;
     }
 
-    public function getVersion(): string
+    public function getVersion(): ?string
     {
         return $this->version;
     }
 
-    public function setVersion(string $version): void
+    public function setVersion(?string $version): void
     {
         $this->version = $version;
     }
 
-    public function getRegisteredAt(): \DateTimeInterface
+    public function getRegisteredAt(): ?\DateTimeInterface
     {
         return $this->registeredAt;
     }
 
-    public function setRegisteredAt(\DateTimeInterface $registeredAt): void
+    public function setRegisteredAt(?\DateTimeInterface $registeredAt): void
     {
         $this->registeredAt = $registeredAt;
     }

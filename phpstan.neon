@@ -21,6 +21,9 @@ parameters:
     doctrine:
         repositoryClass: Doctrine\ORM\EntityRepository
         objectManagerLoader: tests/PHPStan/object_manager.php
+        # Entity properties are nullable (they default to null until set) while the columns are required in
+        # the database; the values are always set before the entity is persisted.
+        allowNullablePropertyForRequiredField: true
 
     reportUnmatchedIgnoredErrors: false
     treatPhpDocTypesAsCertain: false
@@ -42,3 +45,8 @@ parameters:
             identifier: argument.type
             paths:
                 - src/Twig/Extension.php
+        # Doctrine proxies extend the entity but do not redefine its constructor, so a final constructor is safe.
+        -
+            identifier: doctrine.finalConstructor
+            paths:
+                - src/Model/RemoteEvent.php

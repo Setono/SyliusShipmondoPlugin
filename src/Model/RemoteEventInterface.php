@@ -13,11 +13,11 @@ interface RemoteEventInterface extends ResourceInterface
 {
     public function getId(): ?int;
 
-    public function getResource(): string;
+    public function getResource(): ?string;
 
     public function setResource(string $resource): void;
 
-    public function getAction(): string;
+    public function getAction(): ?string;
 
     public function setAction(string $action): void;
 
