@@ -12,6 +12,7 @@ class RemoteEvent implements RemoteEventInterface
 
     protected ?string $action = null;
 
+    /** @var array<array-key, mixed>|null */
     protected ?array $payload = null;
 
     protected readonly \DateTimeInterface $createdAt;
@@ -46,11 +47,17 @@ class RemoteEvent implements RemoteEventInterface
         $this->action = $action;
     }
 
+    /**
+     * @return array<array-key, mixed>
+     */
     public function getPayload(): array
     {
         return $this->payload ?? [];
     }
 
+    /**
+     * @param array<array-key, mixed> $payload
+     */
     public function setPayload(array $payload): void
     {
         $this->payload = $payload;

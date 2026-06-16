@@ -6,20 +6,26 @@ namespace Setono\SyliusShipmondoPlugin\Factory;
 
 use Setono\SyliusShipmondoPlugin\Model\RemoteEventInterface;
 use Sylius\Component\Resource\Factory\FactoryInterface;
+use Webmozart\Assert\Assert;
 
 final class RemoteEventFactory implements RemoteEventFactoryInterface
 {
     public function __construct(
-        /** @var FactoryInterface<RemoteEventInterface> $decoratedFactory */
         private readonly FactoryInterface $decoratedFactory,
     ) {
     }
 
     public function createNew(): RemoteEventInterface
     {
-        return $this->decoratedFactory->createNew();
+        $remoteEvent = $this->decoratedFactory->createNew();
+        Assert::isInstanceOf($remoteEvent, RemoteEventInterface::class);
+
+        return $remoteEvent;
     }
 
+    /**
+     * @param array<array-key, mixed> $payload
+     */
     public function createWithData(string $resource, string $action, array $payload): RemoteEventInterface
     {
         $obj = $this->createNew();

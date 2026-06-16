@@ -27,7 +27,6 @@ final class UploadOrderHandler
 
     public function __invoke(UploadOrder $message): void
     {
-        /** @var OrderInterface|null $order */
         $order = $this->orderRepository->find($message->order);
         if (null === $order) {
             throw new UnrecoverableMessageHandlingException(sprintf('Order with id %s does not exist', (string) $message->order));

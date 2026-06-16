@@ -9,13 +9,13 @@ use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooksInterface;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
 use Setono\SyliusShipmondoPlugin\Repository\RegisteredWebhooksRepositoryInterface;
 use Sylius\Component\Resource\Factory\FactoryInterface;
+use Webmozart\Assert\Assert;
 
 final class RegisterWebhooksHandler
 {
     public function __construct(
         private readonly RegisteredWebhooksRepositoryInterface $registeredWebhooksRepository,
         private readonly WebhookRegistrarInterface $webhookRegistrar,
-        /** @var FactoryInterface<RegisteredWebhooksInterface> $registeredWebhooksFactory */
         private readonly FactoryInterface $registeredWebhooksFactory,
     ) {
     }
@@ -29,6 +29,7 @@ final class RegisterWebhooksHandler
         $registeredWebhooks = $this->registeredWebhooksRepository->findOneByVersion($version);
         if (null === $registeredWebhooks) {
             $registeredWebhooks = $this->registeredWebhooksFactory->createNew();
+            Assert::isInstanceOf($registeredWebhooks, RegisteredWebhooksInterface::class);
         }
 
         $registeredWebhooks->setRegisteredAt(new \DateTimeImmutable());

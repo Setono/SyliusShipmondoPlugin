@@ -21,8 +21,14 @@ interface RemoteEventInterface extends ResourceInterface
 
     public function setAction(string $action): void;
 
+    /**
+     * @return array<array-key, mixed>
+     */
     public function getPayload(): array;
 
+    /**
+     * @param array<array-key, mixed> $payload
+     */
     public function setPayload(array $payload): void;
 
     public function getCreatedAt(): \DateTimeInterface;

@@ -40,6 +40,9 @@ final class OrderWorkflow
         ];
     }
 
+    /**
+     * @return array<string, mixed>
+     */
     public static function getConfig(): array
     {
         $transitions = [];

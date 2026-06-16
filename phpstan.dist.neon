@@ -1,0 +1,15 @@
+parameters:
+    level: max
+    paths:
+        - src
+        - tests
+    excludePaths:
+        - tests/Application
+        # JWT debug helper; uses dynamic/mixed payloads and was excluded from static analysis under Psalm too
+        - src/Controller/DebugWebhookController.php
+    ignoreErrors:
+        # Entity traits are consumed by the application's entities (outside this package), so PHPStan sees them as unused
+        -
+            identifier: trait.unused
+            paths:
+                - src/Model/*Trait.php

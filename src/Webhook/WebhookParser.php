@@ -34,7 +34,7 @@ final class WebhookParser extends AbstractRequestParser
         ]);
     }
 
-    protected function doParse(Request $request, #[\SensitiveParameter] string $secret): ?BaseRemoteEvent
+    protected function doParse(Request $request, #[\SensitiveParameter] string $secret): BaseRemoteEvent
     {
         /** @var array{data: string} $payload */
         $payload = $request->toArray();
