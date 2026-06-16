@@ -17,7 +17,7 @@ class RemoteEvent implements RemoteEventInterface
 
     protected readonly \DateTimeInterface $createdAt;
 
-    final public function __construct()
+    public function __construct()
     {
         $this->createdAt = new \DateTimeImmutable();
     }

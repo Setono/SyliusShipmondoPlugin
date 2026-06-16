@@ -10,7 +10,7 @@
             <generator strategy="AUTO"/>
         </id>
 
-        <field name="version" type="string"/>
-        <field name="registeredAt" type="datetime"/>
+        <field name="version" type="string" nullable="true"/>
+        <field name="registeredAt" type="datetime" nullable="true"/>
     </mapped-superclass>
 </doctrine-mapping>

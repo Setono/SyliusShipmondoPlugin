@@ -10,8 +10,8 @@
             <generator strategy="AUTO"/>
         </id>
 
-        <field name="resource" type="string"/>
-        <field name="action" type="string"/>
+        <field name="resource" type="string" nullable="true"/>
+        <field name="action" type="string" nullable="true"/>
         <field name="payload" type="json"/>
         <field name="createdAt" type="datetime"/>
     </mapped-superclass>
