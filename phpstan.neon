@@ -1,0 +1,52 @@
+parameters:
+    level: max
+
+    paths:
+        - src
+        - tests
+
+    excludePaths:
+        - tests/Application/*
+        # JWT debug helper; uses dynamic/mixed payloads and was excluded from static analysis under Psalm too
+        - src/Controller/DebugWebhookController.php
+
+    bootstrapFiles:
+        - vendor/autoload.php
+
+    # Symfony Configuration
+    symfony:
+        consoleApplicationLoader: tests/PHPStan/console_application.php
+
+    # Doctrine Configuration
+    doctrine:
+        repositoryClass: Doctrine\ORM\EntityRepository
+        objectManagerLoader: tests/PHPStan/object_manager.php
+        # Entity properties are nullable (they default to null until set) while the columns are required in
+        # the database; the values are always set before the entity is persisted.
+        allowNullablePropertyForRequiredField: true
+
+    reportUnmatchedIgnoredErrors: false
+    treatPhpDocTypesAsCertain: false
+
+    ignoreErrors:
+        # Entity traits are consumed by the application's entities (outside this package), so PHPStan sees them as unused
+        -
+            identifier: trait.unused
+            paths:
+                - src/Model/*Trait.php
+        # Many Sylius factory/repository interfaces are @template-generic in the split packages that consumers
+        # install, but not in the sylius/sylius dev metapackage, and the set differs between dependency versions.
+        # The plugin declares no generics of its own, so this only ever concerns these third-party interfaces.
+        -
+            identifier: missingType.generics
+        # Twig\TwigFunction's $callable type hint is stricter in older Twig releases (lowest deps), where it
+        # rejects the [Runtime::class, 'method'] lazy-runtime callable convention.
+        -
+            identifier: argument.type
+            paths:
+                - src/Twig/Extension.php
+        # Doctrine proxies extend the entity but do not redefine its constructor, so a final constructor is safe.
+        -
+            identifier: doctrine.finalConstructor
+            paths:
+                - src/Model/RemoteEvent.php

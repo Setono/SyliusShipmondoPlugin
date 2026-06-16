@@ -53,7 +53,9 @@ vendor/bin/rector process --dry-run
 vendor/bin/composer-dependency-analyser
 ```
 
-PHPStan runs at `level: max` with strict rules against `src/` and `tests/` (config in `phpstan.dist.neon`), excluding `tests/Application/` and `src/Controller/DebugWebhookController.php`. The strict, PHPUnit, webmozart-assert, Prophecy and Symfony extensions are auto-registered via `phpstan/extension-installer`. Dependency hygiene is checked by `shipmonk/composer-dependency-analyser` (config in `composer-dependency-analyser.php`); the `sylius/*` ignores there work around `sylius/sylius` being a dev metapackage that `replace`s the required split components.
+Most dev tooling (PHPStan + its strict/phpunit/doctrine/symfony/prophecy extensions, Rector, Infection, PHPUnit, ECS via `sylius-labs/coding-standard`, `ergebnis/composer-normalize` and `sylius/sylius` itself) is pulled in via **`setono/sylius-plugin-pack`**, so it is not listed individually in `require-dev`.
+
+PHPStan runs at `level: max` with strict rules against `src/` and `tests/` (config in `phpstan.neon`), excluding `tests/Application/` and `src/Controller/DebugWebhookController.php`. It boots the test-app kernel (`tests/PHPStan/console_application.php` + `object_manager.php`) for Symfony- and Doctrine-aware analysis, so the kernel must boot for `composer analyse` to run. `phpstan-webmozart-assert` is kept in `require-dev` (not in the pack). Dependency hygiene is checked by `shipmonk/composer-dependency-analyser` (config in `composer-dependency-analyser.php`), which excludes `tests/`; the CI dependency-analysis job unsets `require-dev` first so `src/` is analysed against the split Sylius packages consumers actually install.
 
 ### Test Application Setup
 ```bash
@@ -100,12 +102,12 @@ bin/console lint:twig ../../src/Resources
 CI (`.github/workflows/build.yaml`) gates merges on the following — run them locally before pushing to avoid red builds:
 - `composer validate --strict` and `composer normalize --dry-run`
 - `composer check-style` and `vendor/bin/rector process --dry-run`
-- `vendor/bin/phpstan analyse` (static-analysis job removes `sylius/sylius` first, so analysis runs against the split component packages)
-- `composer-dependency-analyser` (dependency-analysis job, runs on PHP 8.1)
+- `composer analyse` (PHPStan; static-analysis job removes `sylius/sylius` first, so analysis runs against the split component packages)
+- `vendor/bin/composer-dependency-analyser` (dependency-analysis job unsets `require-dev`, re-adds shipmonk, then analyses)
 - `lint:yaml` / `lint:twig` and `bin/console lint:container`
 - `vendor/bin/phpunit` and `vendor/bin/infection` (mutation tests)
 
-Coding-standards and dependency-analysis jobs run on **PHP 8.1** (the lowest supported version) — write syntax compatible with 8.1, not just the locally linked PHP.
+The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires `symfony/webhook` + `symfony/remote-event`, so Symfony 5.4 is not supported). Coding-standards runs on PHP 8.1 — write syntax compatible with 8.1, not just the locally linked PHP.
 
 ## Architecture
 
@@ -174,9 +176,9 @@ The plugin extends these Sylius entities via traits:
 ## Important Notes
 
 - The plugin uses Shipmondo PHP SDK v1 (`setono/shipmondo-php-sdk`)
-- PHP 8.1+ required (PHPUnit is pinned to ^9 and Infection to ^0.27 to stay 8.1-compatible)
-- Symfony 6.4+ required
-- Compatible with Sylius ~1.12.13
+- PHP 8.1+ required (kept 8.1-compatible; the test app is verified on 8.1/8.2/8.3)
+- Symfony 6.4 required (the plugin uses `symfony/webhook` + `symfony/remote-event`, so Symfony 5.4 is not supported)
+- Compatible with Sylius ~1.14 (the test app tracks the SyliusPluginSkeleton 1.14.x)
 
 ## Testing Strategy
 
