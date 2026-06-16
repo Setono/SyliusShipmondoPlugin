@@ -17,8 +17,6 @@ final class RemoteEventTest extends TestCase
         $remoteEvent = new RemoteEvent();
 
         self::assertNull($remoteEvent->getId());
-        self::assertNull($remoteEvent->getResource());
-        self::assertNull($remoteEvent->getAction());
         self::assertSame([], $remoteEvent->getPayload());
         self::assertInstanceOf(\DateTimeImmutable::class, $remoteEvent->getCreatedAt());
     }

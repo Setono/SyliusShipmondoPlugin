@@ -8,9 +8,9 @@ class RemoteEvent implements RemoteEventInterface
 {
     protected ?int $id = null;
 
-    protected ?string $resource = null;
+    protected string $resource;
 
-    protected ?string $action = null;
+    protected string $action;
 
     /** @var array<array-key, mixed>|null */
     protected ?array $payload = null;
@@ -27,7 +27,7 @@ class RemoteEvent implements RemoteEventInterface
         return $this->id;
     }
 
-    public function getResource(): ?string
+    public function getResource(): string
     {
         return $this->resource;
     }
@@ -37,7 +37,7 @@ class RemoteEvent implements RemoteEventInterface
         $this->resource = $resource;
     }
 
-    public function getAction(): ?string
+    public function getAction(): string
     {
         return $this->action;
     }
