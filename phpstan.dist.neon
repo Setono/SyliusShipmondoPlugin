@@ -1,5 +1,9 @@
 parameters:
     level: max
+    # The static-analysis CI job analyses against the split Sylius component packages (sylius/sylius removed)
+    # and both the lowest and highest dependency versions. Some findings below only surface in a subset of
+    # those environments, so unmatched ignores must not be treated as errors.
+    reportUnmatchedIgnoredErrors: false
     paths:
         - src
         - tests
@@ -13,3 +17,20 @@ parameters:
             identifier: trait.unused
             paths:
                 - src/Model/*Trait.php
+        # Sylius's resource FactoryInterface/RepositoryInterface are @template-generic in the split packages that
+        # consumers install, but not in the sylius/sylius dev metapackage used locally. The generic type can
+        # therefore be neither always-specified nor always-omitted across environments; the concrete return types
+        # are already pinned explicitly on the methods these interfaces declare.
+        -
+            identifier: missingType.generics
+            paths:
+                - src/Factory/RemoteEventFactory.php
+                - src/Factory/RemoteEventFactoryInterface.php
+                - src/Message/CommandHandler/RegisterWebhooksHandler.php
+                - src/Repository/RegisteredWebhooksRepositoryInterface.php
+        # Twig\TwigFunction's $callable type hint is stricter in older Twig releases (lowest deps), where it
+        # rejects the [Runtime::class, 'method'] lazy-runtime callable convention.
+        -
+            identifier: argument.type
+            paths:
+                - src/Twig/Extension.php
