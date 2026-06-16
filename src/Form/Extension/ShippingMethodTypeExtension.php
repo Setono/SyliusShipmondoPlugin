@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Form\Extension;
 
-use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
 use Sylius\Bundle\ShippingBundle\Form\Type\ShippingMethodType;
 use Symfony\Component\Form\AbstractTypeExtension;
 use Symfony\Component\Form\Extension\Core\Type\CheckboxType;
@@ -12,9 +11,6 @@ use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
 use Symfony\Component\Form\FormBuilderInterface;
 use Symfony\Component\Validator\Constraints as Assert;
 
-/**
- * @extends AbstractTypeExtension<ShippingMethodInterface>
- */
 final class ShippingMethodTypeExtension extends AbstractTypeExtension
 {
     public function buildForm(FormBuilderInterface $builder, array $options): void

@@ -82,7 +82,6 @@ final class ShipmondoController extends AbstractController
                     continue;
                 }
 
-                /** @var PaymentMethodInterface|null $shippingMethod */
                 $shippingMethod = $this->paymentMethodRepository->find($paymentMethodId);
                 if (null === $shippingMethod) {
                     continue;
@@ -114,7 +113,6 @@ final class ShipmondoController extends AbstractController
              */
             $postedShippingMethods = $request->request->all('shipping_methods');
             foreach ($postedShippingMethods as $shippingMethodId => $shipmondoShipmentTemplateIds) {
-                /** @var ShippingMethodInterface|null $shippingMethod */
                 $shippingMethod = $this->shippingMethodRepository->find($shippingMethodId);
                 if (null === $shippingMethod) {
                     continue;

@@ -4,16 +4,12 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Form\Extension;
 
-use Setono\SyliusShipmondoPlugin\Model\ShipmentInterface;
 use Sylius\Bundle\CoreBundle\Form\Type\Checkout\ShipmentType;
 use Symfony\Component\Form\AbstractTypeExtension;
 use Symfony\Component\Form\CallbackTransformer;
 use Symfony\Component\Form\Extension\Core\Type\HiddenType;
 use Symfony\Component\Form\FormBuilderInterface;
 
-/**
- * @extends AbstractTypeExtension<ShipmentInterface>
- */
 final class ShipmentTypeExtension extends AbstractTypeExtension
 {
     public function buildForm(FormBuilderInterface $builder, array $options): void

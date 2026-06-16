@@ -11,6 +11,9 @@ use Symfony\Component\RemoteEvent\RemoteEvent as BaseRemoteEvent;
  */
 final class RemoteEvent extends BaseRemoteEvent
 {
+    /**
+     * @param array<array-key, mixed> $payload
+     */
     public function __construct(
         string $name,
         array $payload,

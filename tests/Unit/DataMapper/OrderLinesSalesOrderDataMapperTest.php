@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Tests\Setono\SyliusShipmondoPlugin\DataMapper;
+namespace Tests\Setono\SyliusShipmondoPlugin\Unit\DataMapper;
 
 use PHPUnit\Framework\TestCase;
 use Prophecy\PhpUnit\ProphecyTrait;

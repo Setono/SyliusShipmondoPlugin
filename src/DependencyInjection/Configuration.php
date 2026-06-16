@@ -21,7 +21,6 @@ final class Configuration implements ConfigurationInterface
         $treeBuilder = new TreeBuilder('setono_sylius_shipmondo');
         $rootNode = $treeBuilder->getRootNode();
 
-        /** @psalm-suppress UndefinedInterfaceMethod,PossiblyNullReference,MixedMethodCall */
         $rootNode
             ->addDefaultsIfNotSet()
             ->children()
@@ -59,9 +58,6 @@ final class Configuration implements ConfigurationInterface
 
     private function addResourcesSection(ArrayNodeDefinition $node): void
     {
-        /**
-         * @psalm-suppress MixedMethodCall,UndefinedInterfaceMethod,PossiblyUndefinedMethod,PossiblyNullReference
-         */
         $node
             ->children()
                 ->arrayNode('resources')

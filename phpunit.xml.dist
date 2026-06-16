@@ -9,7 +9,7 @@
     </coverage>
     <testsuites>
         <testsuite name="SetonoSyliusShipmondoPlugin Test Suite">
-            <directory>tests</directory>
+            <directory>tests/Unit</directory>
         </testsuite>
     </testsuites>
     <php>

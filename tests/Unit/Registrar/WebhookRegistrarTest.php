@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Tests\Setono\SyliusShipmondoPlugin\Registrar;
+namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Registrar;
 
 use PHPUnit\Framework\TestCase;
 use Prophecy\Argument;

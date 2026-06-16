@@ -30,7 +30,7 @@ final class OrderLinesSalesOrderDataMapper implements SalesOrderDataMapperInterf
 
             $itemName = (string) $orderItem->getProductName();
             if ($orderItem->getVariantName() !== null) {
-                $itemName .= sprintf(' (%s)', (string) $orderItem->getVariantName());
+                $itemName .= sprintf(' (%s)', $orderItem->getVariantName());
             }
 
             $orderLine = new OrderLine(
@@ -40,7 +40,7 @@ final class OrderLinesSalesOrderDataMapper implements SalesOrderDataMapperInterf
                 unitPriceExcludingVat: formatAmount($unitPriceExcludingVat),
                 vatPercent: (string) ($orderItemUnit->getTaxTotal() / $unitPriceExcludingVat),
                 currencyCode: $order->getCurrencyCode(),
-                unitWeight: null === $orderItem->getVariant()?->getWeight() ? null : (int) $orderItem->getVariant()?->getWeight(),
+                unitWeight: null === $orderItem->getVariant()?->getWeight() ? null : (int) $orderItem->getVariant()->getWeight(),
             );
 
             $this->eventDispatcher->dispatch(new OrderLineMappedEvent($orderLine, $orderItem, $order));
