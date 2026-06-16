@@ -17,17 +17,13 @@ parameters:
             identifier: trait.unused
             paths:
                 - src/Model/*Trait.php
-        # Sylius's resource FactoryInterface/RepositoryInterface are @template-generic in the split packages that
-        # consumers install, but not in the sylius/sylius dev metapackage used locally. The generic type can
-        # therefore be neither always-specified nor always-omitted across environments; the concrete return types
-        # are already pinned explicitly on the methods these interfaces declare.
+        # Many Sylius factory/repository interfaces are @template-generic in the split packages that consumers
+        # install, but not in the sylius/sylius dev metapackage used locally, and the set differs between the
+        # lowest and highest dependency versions. The generic type can therefore be neither always-specified nor
+        # always-omitted across environments. The plugin declares no generics of its own, so this only ever
+        # concerns these version-varying third-party interfaces.
         -
             identifier: missingType.generics
-            paths:
-                - src/Factory/RemoteEventFactory.php
-                - src/Factory/RemoteEventFactoryInterface.php
-                - src/Message/CommandHandler/RegisterWebhooksHandler.php
-                - src/Repository/RegisteredWebhooksRepositoryInterface.php
         # Twig\TwigFunction's $callable type hint is stricter in older Twig releases (lowest deps), where it
         # rejects the [Runtime::class, 'method'] lazy-runtime callable convention.
         -
