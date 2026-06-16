@@ -47,21 +47,31 @@ final class ShipmondoController extends AbstractController
          */
         $shipmondoPaymentMethods = [];
 
-        foreach (Endpoint::paginate($this->client->paymentGateways()->get(...)) as $collection) {
-            foreach ($collection as $item) {
-                $shipmondoPaymentMethods[] = $item;
-            }
-        }
-
         /**
          * @var list<ShipmentTemplate> $shipmondoShipmentTemplates
          */
         $shipmondoShipmentTemplates = [];
 
-        foreach (Endpoint::paginate($this->client->shipmentTemplates()->get(...)) as $collection) {
-            foreach ($collection as $item) {
-                $shipmondoShipmentTemplates[] = $item;
+        // The data below is fetched from the Shipmondo API. If the API is unreachable or the credentials are
+        // missing/invalid we still want to render the page (e.g. so the webhooks can be registered), so we
+        // degrade gracefully and surface the error as a flash message instead of letting it become an HTTP 500.
+        try {
+            foreach (Endpoint::paginate($this->client->paymentGateways()->get(...)) as $collection) {
+                foreach ($collection as $item) {
+                    $shipmondoPaymentMethods[] = $item;
+                }
             }
+
+            foreach (Endpoint::paginate($this->client->shipmentTemplates()->get(...)) as $collection) {
+                foreach ($collection as $item) {
+                    $shipmondoShipmentTemplates[] = $item;
+                }
+            }
+        } catch (\Throwable $e) {
+            $this->addFlash('error', sprintf(
+                'Could not fetch data from the Shipmondo API. Please check your Shipmondo credentials. Error: %s',
+                $e->getMessage(),
+            ));
         }
 
         // todo this should be made using Symfony forms
