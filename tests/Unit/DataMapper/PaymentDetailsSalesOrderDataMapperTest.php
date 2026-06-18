@@ -6,7 +6,7 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Unit\DataMapper;
 
 use PHPUnit\Framework\TestCase;
 use Prophecy\PhpUnit\ProphecyTrait;
-use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
+use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\DataMapper\PaymentDetailsSalesOrderDataMapper;
 use Sylius\Component\Core\Model\Adjustment;
 use Sylius\Component\Core\Model\AdjustmentInterface;
@@ -25,11 +25,12 @@ final class PaymentDetailsSalesOrderDataMapperTest extends TestCase
      */
     public function it_maps_payment_details(): void
     {
-        $salesOrder = new SalesOrder();
+        $salesOrder = new SalesOrderRequest();
 
         $mapper = new PaymentDetailsSalesOrderDataMapper();
         $mapper->map(self::getOrder(), $salesOrder);
 
+        self::assertNotNull($salesOrder->paymentDetails);
         self::assertSame('USD', $salesOrder->paymentDetails->currencyCode);
         self::assertSame('Credit Card', $salesOrder->paymentDetails->paymentMethod);
         self::assertSame('123', $salesOrder->paymentDetails->paymentGatewayId);
@@ -52,11 +53,12 @@ final class PaymentDetailsSalesOrderDataMapperTest extends TestCase
 
         $order = self::getOrder();
         $order->addItem($orderItem);
-        $salesOrder = new SalesOrder();
+        $salesOrder = new SalesOrderRequest();
 
         $mapper = new PaymentDetailsSalesOrderDataMapper();
         $mapper->map($order, $salesOrder);
 
+        self::assertNotNull($salesOrder->paymentDetails);
         self::assertSame('1', $salesOrder->paymentDetails->amountIncludingVat);
         self::assertSame('0.2', $salesOrder->paymentDetails->vatAmount);
     }
@@ -78,11 +80,12 @@ final class PaymentDetailsSalesOrderDataMapperTest extends TestCase
 
         $order = self::getOrder();
         $order->addItem($orderItem);
-        $salesOrder = new SalesOrder();
+        $salesOrder = new SalesOrderRequest();
 
         $mapper = new PaymentDetailsSalesOrderDataMapper();
         $mapper->map($order, $salesOrder);
 
+        self::assertNotNull($salesOrder->paymentDetails);
         self::assertSame('1.25', $salesOrder->paymentDetails->amountIncludingVat);
         self::assertSame('0.25', $salesOrder->paymentDetails->vatAmount);
     }

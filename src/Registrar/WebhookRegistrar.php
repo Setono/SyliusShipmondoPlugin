@@ -5,8 +5,10 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\Registrar;
 
 use Setono\Shipmondo\Client\ClientInterface;
-use Setono\Shipmondo\Request\Webhooks\Webhook as WebhookRequest;
-use Setono\Shipmondo\Response\Webhooks\Webhook as WebhookResponse;
+use Setono\Shipmondo\Enum\WebhookAction;
+use Setono\Shipmondo\Enum\WebhookResourceName;
+use Setono\Shipmondo\Request\Webhook\WebhookRequest;
+use Setono\Shipmondo\Response\Webhook\Webhook as WebhookResponse;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use function Symfony\Component\String\u;
 
@@ -31,8 +33,8 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
                 $webhook->name,
                 $webhook->endpoint,
                 $webhook->key,
-                $webhook->action,
-                $webhook->resource,
+                WebhookAction::from($webhook->action),
+                WebhookResourceName::from($webhook->resource),
             ));
         }
     }

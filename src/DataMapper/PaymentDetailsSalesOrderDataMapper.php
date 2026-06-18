@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\DataMapper;
 
-use Setono\Shipmondo\Request\SalesOrders\PaymentDetails;
-use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
+use Setono\Shipmondo\Request\SalesOrder\PaymentDetails;
+use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use function Setono\SyliusShipmondoPlugin\formatAmount;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\PaymentMethodInterface;
@@ -13,7 +13,7 @@ use Webmozart\Assert\Assert;
 
 final class PaymentDetailsSalesOrderDataMapper implements SalesOrderDataMapperInterface
 {
-    public function map(OrderInterface $order, SalesOrder $salesOrder): void
+    public function map(OrderInterface $order, SalesOrderRequest $salesOrder): void
     {
         $paymentMethod = self::getPaymentMethod($order);
 

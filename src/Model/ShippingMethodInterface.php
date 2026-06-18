@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Model;
 
-use Setono\Shipmondo\Response\ShipmentTemplates\ShipmentTemplate;
+use Setono\Shipmondo\Response\ShipmentTemplate\ShipmentTemplate;
 use Sylius\Component\Core\Model\ShippingMethodInterface as BaseShippingMethodInterface;
 
 interface ShippingMethodInterface extends BaseShippingMethodInterface

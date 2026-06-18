@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Event;
 
-use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
+use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 
 /**
@@ -13,7 +13,7 @@ use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 final class SalesOrderMappedEvent
 {
     public function __construct(
-        public readonly SalesOrder $salesOrder,
+        public readonly SalesOrderRequest $salesOrder,
         public readonly OrderInterface $order,
     ) {
     }

@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\DataMapper;
 
 use Psr\EventDispatcher\EventDispatcherInterface;
-use Setono\Shipmondo\Request\SalesOrders\OrderLine;
-use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
+use Setono\Shipmondo\Request\SalesOrder\OrderLine;
+use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\Event\OrderLineMappedEvent;
 use function Setono\SyliusShipmondoPlugin\formatAmount;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
@@ -19,7 +19,7 @@ final class OrderLinesSalesOrderDataMapper implements SalesOrderDataMapperInterf
     {
     }
 
-    public function map(OrderInterface $order, SalesOrder $salesOrder): void
+    public function map(OrderInterface $order, SalesOrderRequest $salesOrder): void
     {
         foreach ($order->getItems() as $orderItem) {
             /** @var OrderItemUnitInterface|false $orderItemUnit */
