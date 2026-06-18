@@ -5,11 +5,10 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\DataMapper;
 
 use Setono\Shipmondo\Client\Client;
-use Setono\Shipmondo\Client\Endpoint\Endpoint;
-use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
+use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\Shipmondo\Resolver\Shipment;
 use Setono\Shipmondo\Resolver\ShipmentTemplateResolver;
-use Setono\Shipmondo\Response\ShipmentTemplates\ShipmentTemplate;
+use Setono\Shipmondo\Response\ShipmentTemplate\ShipmentTemplate;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
 
@@ -19,7 +18,7 @@ final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapper
     {
     }
 
-    public function map(OrderInterface $order, SalesOrder $salesOrder): void
+    public function map(OrderInterface $order, SalesOrderRequest $salesOrder): void
     {
         $receiverCountry = $order->getShippingAddress()?->getCountryCode();
         if (null === $receiverCountry) {
@@ -46,15 +45,12 @@ final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapper
         /** @var list<ShipmentTemplate> $shipmentTemplates */
         $shipmentTemplates = [];
 
-        foreach (Endpoint::paginate($this->client->shipmentTemplates()->get(...)) as $collection) {
-            /** @var ShipmentTemplate $shipmentTemplate */
-            foreach ($collection as $shipmentTemplate) {
-                if (!in_array($shipmentTemplate->id, $allowedShipmentTemplates, true)) {
-                    continue;
-                }
-
-                $shipmentTemplates[] = $shipmentTemplate;
+        foreach ($this->client->shipmentTemplates()->paginate() as $shipmentTemplate) {
+            if (!in_array($shipmentTemplate->id, $allowedShipmentTemplates, true)) {
+                continue;
             }
+
+            $shipmentTemplates[] = $shipmentTemplate;
         }
 
         if ([] === $shipmentTemplates) {

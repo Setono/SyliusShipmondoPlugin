@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\DataMapper;
 
-use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
-use Setono\Shipmondo\Request\SalesOrders\ServicePoint;
+use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
+use Setono\Shipmondo\Request\SalesOrder\ServicePoint;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShipmentInterface;
 
@@ -14,7 +14,7 @@ use Setono\SyliusShipmondoPlugin\Model\ShipmentInterface;
  */
 final class ServicePointDataMapper implements SalesOrderDataMapperInterface
 {
-    public function map(OrderInterface $order, SalesOrder $salesOrder): void
+    public function map(OrderInterface $order, SalesOrderRequest $salesOrder): void
     {
         $shipment = $order->getShipments()->first();
         if (!$shipment instanceof ShipmentInterface) {
@@ -24,7 +24,7 @@ final class ServicePointDataMapper implements SalesOrderDataMapperInterface
         /**
          * todo make the shipmondo pickup point a value object that's mapped in Doctrine
          *
-         * The keys below match the properties from this class: \Setono\Shipmondo\Response\PickupPoints\PickupPoint
+         * The keys below match the properties from this class: \Setono\Shipmondo\Response\PickupPoint\PickupPoint
          *
          * @var array{id: string, name: string, address: string, zipcode: string, city: string, country: string, address2: string|null}|null $pickupPoint
          */
@@ -37,7 +37,7 @@ final class ServicePointDataMapper implements SalesOrderDataMapperInterface
             id: $pickupPoint['id'],
             name: $pickupPoint['name'],
             address1: $pickupPoint['address'],
-            zipCode: $pickupPoint['zipcode'],
+            zipcode: $pickupPoint['zipcode'],
             city: $pickupPoint['city'],
             countryCode: $pickupPoint['country'],
             address2: $pickupPoint['address2'] ?? null,

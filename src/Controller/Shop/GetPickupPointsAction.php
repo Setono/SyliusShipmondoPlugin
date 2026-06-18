@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\Controller\Shop;
 
 use Setono\Shipmondo\Client\ClientInterface;
-use Setono\Shipmondo\Request\PickupPoints\PickupPointsCollectionQuery;
-use Setono\Shipmondo\Response\PickupPoints\PickupPoint;
+use Setono\Shipmondo\Request\PickupPointSearch;
+use Setono\Shipmondo\Response\PickupPoint\PickupPoint;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShipmentInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
@@ -62,12 +62,12 @@ final class GetPickupPointsAction
         }
 
         try {
-            $pickupPoints = $this->client->pickupPoints()->get(new PickupPointsCollectionQuery(
+            $pickupPoints = $this->client->pickupPoints()->search(new PickupPointSearch(
                 carrierCode: (string) $shippingMethod->getCarrierCode(),
                 countryCode: (string) $shippingAddress->getCountryCode(),
                 zipCode: (string) $shippingAddress->getPostcode(),
                 address: (string) $shippingAddress->getStreet(),
-            ))->items;
+            ));
         } catch (\InvalidArgumentException) {
             return new JsonResponse(status: Response::HTTP_BAD_REQUEST);
         }

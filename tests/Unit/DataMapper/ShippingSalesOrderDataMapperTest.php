@@ -7,7 +7,7 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Unit\DataMapper;
 use PHPUnit\Framework\TestCase;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Psr\EventDispatcher\EventDispatcherInterface;
-use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
+use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\DataMapper\ShippingSalesOrderDataMapper;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Sylius\Component\Core\Model\Adjustment;
@@ -27,7 +27,7 @@ final class ShippingSalesOrderDataMapperTest extends TestCase
         $order = self::getOrder();
         self::addShipment($order, 100, 20, true);
 
-        $salesOrder = new SalesOrder();
+        $salesOrder = new SalesOrderRequest();
 
         $eventDispatcher = $this->prophesize(EventDispatcherInterface::class);
 
@@ -48,7 +48,7 @@ final class ShippingSalesOrderDataMapperTest extends TestCase
         $order = self::getOrder();
         self::addShipment($order, 100, 20, false);
 
-        $salesOrder = new SalesOrder();
+        $salesOrder = new SalesOrderRequest();
 
         $eventDispatcher = $this->prophesize(EventDispatcherInterface::class);
 

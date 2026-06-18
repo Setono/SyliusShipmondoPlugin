@@ -5,9 +5,8 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\Controller\Admin;
 
 use Setono\Shipmondo\Client\Client;
-use Setono\Shipmondo\Client\Endpoint\Endpoint;
-use Setono\Shipmondo\Response\PaymentGateways\PaymentGateway;
-use Setono\Shipmondo\Response\ShipmentTemplates\ShipmentTemplate;
+use Setono\Shipmondo\Response\PaymentGateway\PaymentGateway;
+use Setono\Shipmondo\Response\ShipmentTemplate\ShipmentTemplate;
 use Setono\SyliusShipmondoPlugin\Message\Command\RegisterWebhooks;
 use Setono\SyliusShipmondoPlugin\Model\PaymentMethodInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
@@ -56,16 +55,12 @@ final class ShipmondoController extends AbstractController
         // missing/invalid we still want to render the page (e.g. so the webhooks can be registered), so we
         // degrade gracefully and surface the error as a flash message instead of letting it become an HTTP 500.
         try {
-            foreach (Endpoint::paginate($this->client->paymentGateways()->get(...)) as $collection) {
-                foreach ($collection as $item) {
-                    $shipmondoPaymentMethods[] = $item;
-                }
+            foreach ($this->client->paymentGateways()->paginate() as $item) {
+                $shipmondoPaymentMethods[] = $item;
             }
 
-            foreach (Endpoint::paginate($this->client->shipmentTemplates()->get(...)) as $collection) {
-                foreach ($collection as $item) {
-                    $shipmondoShipmentTemplates[] = $item;
-                }
+            foreach ($this->client->shipmentTemplates()->paginate() as $item) {
+                $shipmondoShipmentTemplates[] = $item;
             }
         } catch (\Throwable $e) {
             $this->addFlash('error', sprintf(

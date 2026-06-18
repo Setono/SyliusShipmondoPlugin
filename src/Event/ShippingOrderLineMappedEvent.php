@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Event;
 
-use Setono\Shipmondo\Request\SalesOrders\OrderLine;
+use Setono\Shipmondo\Request\SalesOrder\OrderLine;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Sylius\Component\Order\Model\AdjustmentInterface;
 

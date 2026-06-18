@@ -5,8 +5,9 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\DataMapper;
 
 use Psr\EventDispatcher\EventDispatcherInterface;
-use Setono\Shipmondo\Request\SalesOrders\OrderLine;
-use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
+use Setono\Shipmondo\Enum\OrderLineType;
+use Setono\Shipmondo\Request\SalesOrder\OrderLine;
+use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\Event\ShippingOrderLineMappedEvent;
 use function Setono\SyliusShipmondoPlugin\formatAmount;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
@@ -19,7 +20,7 @@ final class ShippingSalesOrderDataMapper implements SalesOrderDataMapperInterfac
     {
     }
 
-    public function map(OrderInterface $order, SalesOrder $salesOrder): void
+    public function map(OrderInterface $order, SalesOrderRequest $salesOrder): void
     {
         foreach ($order->getShipments() as $shipment) {
             $shippingAdjustments = $shipment->getAdjustments(AdjustmentInterface::SHIPPING_ADJUSTMENT);
@@ -59,7 +60,7 @@ final class ShippingSalesOrderDataMapper implements SalesOrderDataMapperInterfac
             }
 
             $orderLine = new OrderLine(
-                lineType: OrderLine::LINE_TYPE_SHIPPING,
+                lineType: OrderLineType::Shipping,
                 itemName: $shippingAdjustment->getLabel(),
                 quantity: 1,
                 unitPriceExcludingVat: formatAmount($unitPriceExcludingVat),

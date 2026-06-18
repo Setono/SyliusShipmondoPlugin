@@ -6,7 +6,7 @@ namespace Setono\SyliusShipmondoPlugin\DataMapper;
 
 use Psr\EventDispatcher\EventDispatcherInterface;
 use Setono\CompositeCompilerPass\CompositeService;
-use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
+use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\Event\SalesOrderMappedEvent;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 
@@ -19,7 +19,7 @@ final class CompositeSalesOrderDataMapper extends CompositeService implements Sa
     {
     }
 
-    public function map(OrderInterface $order, SalesOrder $salesOrder): void
+    public function map(OrderInterface $order, SalesOrderRequest $salesOrder): void
     {
         foreach ($this->services as $service) {
             $service->map($order, $salesOrder);

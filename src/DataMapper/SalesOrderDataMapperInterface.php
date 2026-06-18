@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\DataMapper;
 
-use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
+use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 
 interface SalesOrderDataMapperInterface
@@ -12,5 +12,5 @@ interface SalesOrderDataMapperInterface
     /**
      * Maps an order to a Shipmondo sales order
      */
-    public function map(OrderInterface $order, SalesOrder $salesOrder): void;
+    public function map(OrderInterface $order, SalesOrderRequest $salesOrder): void;
 }

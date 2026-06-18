@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\Model;
 
 use Doctrine\ORM\Mapping as ORM;
-use Setono\Shipmondo\Response\ShipmentTemplates\ShipmentTemplate;
+use Setono\Shipmondo\Response\ShipmentTemplate\ShipmentTemplate;
 
 trait ShippingMethodTrait
 {

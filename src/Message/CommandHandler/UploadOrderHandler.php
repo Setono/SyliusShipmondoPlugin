@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\Message\CommandHandler;
 
 use Setono\Shipmondo\Client\ClientInterface;
-use Setono\Shipmondo\Request\SalesOrders\SalesOrder;
+use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
 use Setono\SyliusShipmondoPlugin\Message\Command\UploadOrder;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
@@ -40,7 +40,7 @@ final class UploadOrderHandler
 
         // todo try catch exceptions and log errors
 
-        $salesOrder = new SalesOrder();
+        $salesOrder = new SalesOrderRequest();
         $this->salesOrderDataMapper->map($order, $salesOrder);
 
         $response = $this->shipmondoClient->salesOrders()->create($salesOrder);
