@@ -9,8 +9,7 @@
 
         <service id="setono_sylius_shipmondo.webhook.webhook_consumer"
                  class="Setono\SyliusShipmondoPlugin\Webhook\WebhookConsumer">
-            <argument type="service" id="setono_sylius_shipmondo.factory.remote_event"/>
-            <argument type="service" id="doctrine"/>
+            <argument type="service" id="setono_sylius_shipmondo.webhook.remote_event_handler.composite"/>
 
             <tag name="remote_event.consumer" consumer="shipmondo"/>
         </service>

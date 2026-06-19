@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\DependencyInjection;
 
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
+use Setono\SyliusShipmondoPlugin\Webhook\Handler\RemoteEventHandlerInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Bundle\ResourceBundle\DependencyInjection\Extension\AbstractResourceExtension;
 use Sylius\Bundle\ResourceBundle\SyliusResourceBundle;
@@ -26,6 +27,11 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
         $container
             ->registerForAutoconfiguration(SalesOrderDataMapperInterface::class)
             ->addTag('setono_sylius_shipmondo.sales_order_data_mapper')
+        ;
+
+        $container
+            ->registerForAutoconfiguration(RemoteEventHandlerInterface::class)
+            ->addTag('setono_sylius_shipmondo.remote_event_handler')
         ;
 
         $container->setParameter('setono_sylius_shipmondo.api.username', $config['api']['username']);
