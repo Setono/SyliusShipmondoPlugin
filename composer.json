@@ -22,6 +22,7 @@
         "sylius/core-bundle": "^1.0",
         "sylius/grid-bundle": "^1.0",
         "sylius/order": "^1.0",
+        "sylius/payment": "^1.0",
         "sylius/resource-bundle": "^1.0",
         "sylius/shipping": "^1.0",
         "sylius/shipping-bundle": "^1.0",
