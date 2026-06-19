@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<container xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://symfony.com/schema/dic/services"
+           xsi:schemaLocation="http://symfony.com/schema/dic/services http://symfony.com/schema/dic/services/services-1.0.xsd">
+    <services>
+        <service id="setono_sylius_shipmondo.webhook.remote_event_handler.composite"
+                 class="Setono\SyliusShipmondoPlugin\Webhook\Handler\CompositeRemoteEventHandler"/>
+
+        <service id="setono_sylius_shipmondo.webhook.order_resolver"
+                 class="Setono\SyliusShipmondoPlugin\Webhook\OrderResolver">
+            <argument type="service" id="sylius.repository.order"/>
+        </service>
+
+        <service id="setono_sylius_shipmondo.webhook.handler.fulfill_order"
+                 class="Setono\SyliusShipmondoPlugin\Webhook\Handler\FulfillOrderHandler">
+            <argument type="service" id="setono_sylius_shipmondo.webhook.order_resolver"/>
+            <argument type="service" id="Sylius\Abstraction\StateMachine\StateMachineInterface"/>
+            <argument type="service" id="sylius.state_resolver.order"/>
+            <argument type="service" id="sylius.manager.order"/>
+
+            <tag name="setono_sylius_shipmondo.remote_event_handler" priority="10"/>
+        </service>
+
+        <service id="setono_sylius_shipmondo.webhook.handler.cancel_order"
+                 class="Setono\SyliusShipmondoPlugin\Webhook\Handler\CancelOrderHandler">
+            <argument type="service" id="setono_sylius_shipmondo.webhook.order_resolver"/>
+            <argument type="service" id="Sylius\Abstraction\StateMachine\StateMachineInterface"/>
+            <argument type="service" id="sylius.manager.order"/>
+
+            <tag name="setono_sylius_shipmondo.remote_event_handler" priority="20"/>
+        </service>
+    </services>
+</container>

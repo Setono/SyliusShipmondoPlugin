@@ -86,8 +86,26 @@ registration, the `Client` constructor, exceptions, …), read the SDK's own upg
 full set of changes:
 <https://github.com/Setono/shipmondo-php-sdk/blob/2.x/UPGRADE.md>
 
+### 4. Incoming webhooks now transition the order — `RemoteEvent` persistence removed
+
+In 1.x, received webhooks were only stored in the `setono_sylius_shipmondo__remote_event` table and
+nothing acted on them. In 2.x the plugin **reacts to webhooks immediately**:
+
+- `orders / status_update` — when Shipmondo reports the order fully shipped, the Sylius shipment(s) are
+  transitioned to `shipped` (which fulfils the order once payment is complete).
+- order cancellation in Shipmondo → the Sylius order is cancelled.
+
+Reactions run through a tagged **`RemoteEventHandlerInterface`** framework (tag
+`setono_sylius_shipmondo.remote_event_handler`), so you can add your own handlers — the same way you
+add data mappers.
+
+Because of this, the **write-only `RemoteEvent` Sylius resource/entity was removed**: the
+`setono_sylius_shipmondo__remote_event` table is no longer used and **can be dropped** (generate a
+migration in your app). If you referenced `Setono\SyliusShipmondoPlugin\Model\RemoteEvent(Interface)`
+or `RemoteEventFactory`, those are gone. (The unrelated `Setono\SyliusShipmondoPlugin\RemoteEvent\RemoteEvent`
+value object used by the webhook parser/handlers remains.)
+
 ### Unchanged
 
-Shipping-method / payment-method mapping, webhook registration, order upload and the order
-workflow behave exactly as in 1.x — only the underlying SDK types and the new `sandbox` switch
-changed.
+Shipping-method / payment-method mapping, webhook registration and order upload behave exactly as in
+1.x — only the underlying SDK types, the new `sandbox` switch, and the new webhook reactions changed.
