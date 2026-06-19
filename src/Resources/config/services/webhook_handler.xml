@@ -28,5 +28,14 @@
 
             <tag name="setono_sylius_shipmondo.remote_event_handler" priority="20"/>
         </service>
+
+        <service id="setono_sylius_shipmondo.webhook.handler.payment_state"
+                 class="Setono\SyliusShipmondoPlugin\Webhook\Handler\PaymentStateHandler">
+            <argument type="service" id="setono_sylius_shipmondo.webhook.order_resolver"/>
+            <argument type="service" id="Sylius\Abstraction\StateMachine\StateMachineInterface"/>
+            <argument type="service" id="doctrine"/>
+
+            <tag name="setono_sylius_shipmondo.remote_event_handler" priority="15"/>
+        </service>
     </services>
 </container>

@@ -97,6 +97,9 @@ nothing acted on them. In 2.x the plugin **reacts to webhooks immediately**:
   same `shipped_percent` reaching 100.
 - `orders / delete` (Shipmondo has no separate "cancel" — cancelling a sales order deletes/archives it)
   cancels the Sylius order.
+- `orders / payment_captured` completes the Sylius payment(s) → the order's payment state becomes `paid`
+  (orders are uploaded while either `paid` or `authorized`, so an authorized payment can be captured
+  later in Shipmondo), and `orders / payment_voided` cancels the order's payment state.
 
 Reactions run through a tagged **`RemoteEventHandlerInterface`** framework (tag
 `setono_sylius_shipmondo.remote_event_handler`), so you can add your own handlers — the same way you
