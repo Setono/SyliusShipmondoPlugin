@@ -162,7 +162,7 @@ The plugin extends these Sylius entities via traits:
 ### Configuration
 
 - Plugin must be registered **before** `SyliusGridBundle` in `bundles.php`
-- Environment variables required: `SHIPMONDO_USERNAME`, `SHIPMONDO_KEY`, `SHIPMONDO_WEBHOOKS_KEY`
+- Environment variables required: `SHIPMONDO_USERNAME`, `SHIPMONDO_KEY`, `SHIPMONDO_WEBHOOKS_KEY`, `SHIPMONDO_SANDBOX` (bool; selects the production vs. sandbox API — the `api.sandbox` option defaults to `%env(bool:SHIPMONDO_SANDBOX)%`)
 - Routes: Use `routes.yaml` for locale-aware apps, `routes_no_locale.yaml` otherwise
 - Config location: `src/Resources/config/`
 
@@ -175,7 +175,8 @@ The plugin extends these Sylius entities via traits:
 
 ## Important Notes
 
-- The plugin uses Shipmondo PHP SDK v1 (`setono/shipmondo-php-sdk`)
+- The plugin uses Shipmondo PHP SDK v2 (`setono/shipmondo-php-sdk:^2.0`). See `UPGRADE.md` for the 1.x → 2.x consumer upgrade.
+- **Always keep `UPGRADE.md` up to date.** Whenever a change affects how consumers integrate or upgrade the plugin — a BC break, a renamed/removed/added public class, interface or service signature, a new required environment variable or config option, or a behavioural change — document it in `UPGRADE.md` (under the relevant version section) as part of the *same* change.
 - PHP 8.1+ required (kept 8.1-compatible; the test app is verified on 8.1/8.2/8.3)
 - Symfony 6.4 required (the plugin uses `symfony/webhook` + `symfony/remote-event`, so Symfony 5.4 is not supported)
 - Compatible with Sylius ~1.14 (the test app tracks the SyliusPluginSkeleton 1.14.x)
