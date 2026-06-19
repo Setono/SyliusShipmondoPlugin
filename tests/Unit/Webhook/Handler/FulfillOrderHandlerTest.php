@@ -19,6 +19,7 @@ use Sylius\Abstraction\StateMachine\StateMachineInterface;
 use Sylius\Component\Core\Model\ShipmentInterface;
 use Sylius\Component\Order\StateResolver\StateResolverInterface;
 use Sylius\Component\Shipping\ShipmentTransitions;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\Webhook\WebhookPayloadFixtures;
 
 final class FulfillOrderHandlerTest extends TestCase
 {
@@ -51,20 +52,22 @@ final class FulfillOrderHandlerTest extends TestCase
     /**
      * @test
      */
-    public function it_ships_the_shipments_and_fulfils_the_order_when_fully_shipped(): void
+    public function it_ships_and_fulfils_the_order_on_create_shipment(): void
     {
-        $shipment = $this->prophesize(ShipmentInterface::class)->reveal();
-        $order = $this->prophesize(OrderInterface::class);
-        $order->getShipments()->willReturn(new ArrayCollection([$shipment]));
+        // real captured payload: a fully shipped order (order_status "sent", shipped_percent 100)
+        $payload = WebhookPayloadFixtures::load('orders_create_shipment');
+        $this->expectShipAndFulfil($payload);
 
-        $payload = ['id' => 1, 'shipped_percent' => 100];
-        $this->orderResolver->resolveFromPayload($payload)->willReturn($order->reveal());
+        $this->handle($payload, 'orders', 'create_shipment');
+    }
 
-        $this->stateMachine->can($shipment, ShipmentTransitions::GRAPH, ShipmentTransitions::TRANSITION_SHIP)->willReturn(true);
-        $this->stateMachine->apply($shipment, ShipmentTransitions::GRAPH, ShipmentTransitions::TRANSITION_SHIP)->shouldBeCalled();
-        $this->orderStateResolver->resolve($order->reveal())->shouldBeCalled();
-        $this->managerRegistry->getManagerForClass(Argument::any())->willReturn($this->entityManager->reveal());
-        $this->entityManager->flush()->shouldBeCalled();
+    /**
+     * @test
+     */
+    public function it_also_fulfils_when_a_status_update_reports_full_shipment(): void
+    {
+        $payload = WebhookPayloadFixtures::load('orders_create_shipment');
+        $this->expectShipAndFulfil($payload);
 
         $this->handle($payload, 'orders', 'status_update');
     }
@@ -72,21 +75,13 @@ final class FulfillOrderHandlerTest extends TestCase
     /**
      * @test
      */
-    public function it_does_nothing_for_another_resource(): void
+    public function it_does_nothing_on_a_status_update_that_is_only_fulfilled_not_shipped(): void
     {
-        $this->expectNoTransition();
+        // real captured payload: order is fulfilled/packed (fulfilled_percent 100) but shipped_percent 0
+        $payload = WebhookPayloadFixtures::load('orders_status_update');
+        $this->expectNoResolutionOrTransition();
 
-        $this->handle(['shipped_percent' => 100], 'shipments', 'status_update');
-    }
-
-    /**
-     * @test
-     */
-    public function it_does_nothing_for_another_action(): void
-    {
-        $this->expectNoTransition();
-
-        $this->handle(['shipped_percent' => 100], 'orders', 'create');
+        $this->handle($payload, 'orders', 'status_update');
     }
 
     /**
@@ -94,22 +89,33 @@ final class FulfillOrderHandlerTest extends TestCase
      */
     public function it_does_nothing_when_not_fully_shipped(): void
     {
-        // an order + shippable shipment is available, so the only reason not to ship is the percentage
-        $this->resolvesToShippableOrder();
-        $this->expectNoTransition();
+        $payload = WebhookPayloadFixtures::load('orders_create_shipment');
+        $payload['shipped_percent'] = 99;
+        $this->expectNoResolutionOrTransition();
 
-        $this->handle(['id' => 1, 'shipped_percent' => 99], 'orders', 'status_update');
+        $this->handle($payload, 'orders', 'create_shipment');
     }
 
     /**
      * @test
      */
-    public function it_does_nothing_when_shipped_percent_is_missing(): void
+    public function it_does_nothing_on_create_fulfillment(): void
     {
-        $this->resolvesToShippableOrder();
-        $this->expectNoTransition();
+        $payload = WebhookPayloadFixtures::load('orders_create_fulfillment');
+        $this->expectNoResolutionOrTransition();
 
-        $this->handle(['id' => 1], 'orders', 'status_update');
+        $this->handle($payload, 'orders', 'create_fulfillment');
+    }
+
+    /**
+     * @test
+     */
+    public function it_does_nothing_for_another_resource(): void
+    {
+        $payload = WebhookPayloadFixtures::load('orders_create_shipment');
+        $this->expectNoResolutionOrTransition();
+
+        $this->handle($payload, 'shipments', 'create');
     }
 
     /**
@@ -117,12 +123,13 @@ final class FulfillOrderHandlerTest extends TestCase
      */
     public function it_does_nothing_when_the_order_cannot_be_resolved(): void
     {
-        $this->orderResolver->resolveFromPayload(Argument::any())->willReturn(null);
+        $payload = WebhookPayloadFixtures::load('orders_create_shipment');
+        $this->orderResolver->resolveFromPayload($payload)->willReturn(null);
         $this->stateMachine->apply(Argument::cetera())->shouldNotBeCalled();
         $this->orderStateResolver->resolve(Argument::any())->shouldNotBeCalled();
         $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
 
-        $this->handle(['id' => 1, 'shipped_percent' => 100], 'orders', 'status_update');
+        $this->handle($payload, 'orders', 'create_shipment');
     }
 
     /**
@@ -130,37 +137,49 @@ final class FulfillOrderHandlerTest extends TestCase
      */
     public function it_does_not_fulfil_when_the_shipments_are_already_shipped(): void
     {
+        $payload = WebhookPayloadFixtures::load('orders_create_shipment');
+
         $shipment = $this->prophesize(ShipmentInterface::class)->reveal();
         $order = $this->prophesize(OrderInterface::class);
         $order->getShipments()->willReturn(new ArrayCollection([$shipment]));
-        $this->orderResolver->resolveFromPayload(Argument::any())->willReturn($order->reveal());
+        $this->orderResolver->resolveFromPayload($payload)->willReturn($order->reveal());
 
         $this->stateMachine->can($shipment, ShipmentTransitions::GRAPH, ShipmentTransitions::TRANSITION_SHIP)->willReturn(false);
         $this->stateMachine->apply(Argument::cetera())->shouldNotBeCalled();
         $this->orderStateResolver->resolve(Argument::any())->shouldNotBeCalled();
         $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
 
-        $this->handle(['id' => 1, 'shipped_percent' => 100], 'orders', 'status_update');
+        $this->handle($payload, 'orders', 'create_shipment');
     }
 
-    private function resolvesToShippableOrder(): void
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function expectShipAndFulfil(array $payload): void
     {
         $shipment = $this->prophesize(ShipmentInterface::class)->reveal();
         $order = $this->prophesize(OrderInterface::class);
         $order->getShipments()->willReturn(new ArrayCollection([$shipment]));
-        $this->orderResolver->resolveFromPayload(Argument::any())->willReturn($order->reveal());
+        $orderRevealed = $order->reveal();
+
+        $this->orderResolver->resolveFromPayload($payload)->willReturn($orderRevealed);
         $this->stateMachine->can($shipment, ShipmentTransitions::GRAPH, ShipmentTransitions::TRANSITION_SHIP)->willReturn(true);
+        $this->stateMachine->apply($shipment, ShipmentTransitions::GRAPH, ShipmentTransitions::TRANSITION_SHIP)->shouldBeCalled();
+        $this->orderStateResolver->resolve($orderRevealed)->shouldBeCalled();
+        $this->managerRegistry->getManagerForClass(Argument::any())->willReturn($this->entityManager->reveal());
+        $this->entityManager->flush()->shouldBeCalled();
     }
 
-    private function expectNoTransition(): void
+    private function expectNoResolutionOrTransition(): void
     {
+        $this->orderResolver->resolveFromPayload(Argument::any())->shouldNotBeCalled();
         $this->stateMachine->apply(Argument::cetera())->shouldNotBeCalled();
         $this->orderStateResolver->resolve(Argument::any())->shouldNotBeCalled();
         $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
     }
 
     /**
-     * @param array<array-key, mixed> $payload
+     * @param array<string, mixed> $payload
      */
     private function handle(array $payload, string $resource, string $action): void
     {

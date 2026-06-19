@@ -12,17 +12,13 @@ use Sylius\Abstraction\StateMachine\StateMachineInterface;
 use Sylius\Component\Order\OrderTransitions;
 
 /**
- * Cancels the Sylius order when the order is cancelled/deleted in Shipmondo.
+ * Cancels the Sylius order when the sales order is deleted in Shipmondo.
+ *
+ * Shipmondo has no dedicated "cancel" action for sales orders — cancelling an order archives/deletes
+ * it and fires the `orders/delete` webhook (the deleted order reports `order_status: "archived"`).
  */
 final class CancelOrderHandler implements RemoteEventHandlerInterface
 {
-    /**
-     * The `order_status` value Shipmondo reports for a cancelled order.
-     *
-     * @todo confirm against a real webhook payload (see UPGRADE/verification)
-     */
-    private const SHIPMONDO_ORDER_STATUS_CANCELLED = 'cancelled';
-
     use ORMTrait;
 
     public function __construct(
@@ -35,7 +31,7 @@ final class CancelOrderHandler implements RemoteEventHandlerInterface
 
     public function handle(RemoteEvent $remoteEvent): void
     {
-        if ('orders' !== $remoteEvent->getResource() || !self::isCancellation($remoteEvent)) {
+        if ('orders' !== $remoteEvent->getResource() || 'delete' !== $remoteEvent->getAction()) {
             return;
         }
 
@@ -50,18 +46,5 @@ final class CancelOrderHandler implements RemoteEventHandlerInterface
 
         $this->stateMachine->apply($order, OrderTransitions::GRAPH, OrderTransitions::TRANSITION_CANCEL);
         $this->getManager($order)->flush();
-    }
-
-    private static function isCancellation(RemoteEvent $remoteEvent): bool
-    {
-        if ('delete' === $remoteEvent->getAction()) {
-            return true;
-        }
-
-        if ('status_update' === $remoteEvent->getAction()) {
-            return self::SHIPMONDO_ORDER_STATUS_CANCELLED === ($remoteEvent->getPayload()['order_status'] ?? '');
-        }
-
-        return false;
     }
 }

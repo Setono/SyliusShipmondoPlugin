@@ -79,6 +79,19 @@ final class OrderResolverTest extends TestCase
         self::assertNull($this->resolver()->resolveFromPayload([]));
     }
 
+    /**
+     * @test
+     */
+    public function it_resolves_a_real_webhook_payload_by_shipmondo_id(): void
+    {
+        // the real captured sales-order payload carries `id` as an integer
+        $payload = WebhookPayloadFixtures::load('orders_delete');
+        $order = $this->prophesize(OrderInterface::class)->reveal();
+        $this->orderRepository->findOneBy(['shipmondoId' => 37707018])->willReturn($order);
+
+        self::assertSame($order, $this->resolver()->resolveFromPayload($payload));
+    }
+
     private function resolver(): OrderResolver
     {
         return new OrderResolver($this->orderRepository->reveal());
