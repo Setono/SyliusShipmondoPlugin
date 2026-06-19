@@ -16,6 +16,7 @@ use Setono\SyliusShipmondoPlugin\Webhook\Handler\CancelOrderHandler;
 use Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface;
 use Sylius\Abstraction\StateMachine\StateMachineInterface;
 use Sylius\Component\Order\OrderTransitions;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\Webhook\WebhookPayloadFixtures;
 
 final class CancelOrderHandlerTest extends TestCase
 {
@@ -44,25 +45,31 @@ final class CancelOrderHandlerTest extends TestCase
     /**
      * @test
      */
-    public function it_cancels_the_order_on_a_cancelled_status_update(): void
+    public function it_cancels_the_order_on_delete(): void
     {
-        $order = $this->resolvesToCancellableOrder();
-        $this->stateMachine->apply($order, OrderTransitions::GRAPH, OrderTransitions::TRANSITION_CANCEL)->shouldBeCalled();
-        $this->expectFlush();
+        // real captured payload of a deleted/archived Shipmondo sales order
+        $payload = WebhookPayloadFixtures::load('orders_delete');
 
-        $this->handle(['id' => 1, 'order_status' => 'cancelled'], 'orders', 'status_update');
+        $order = $this->prophesize(OrderInterface::class)->reveal();
+        $this->orderResolver->resolveFromPayload($payload)->willReturn($order);
+        $this->stateMachine->can($order, OrderTransitions::GRAPH, OrderTransitions::TRANSITION_CANCEL)->willReturn(true);
+        $this->stateMachine->apply($order, OrderTransitions::GRAPH, OrderTransitions::TRANSITION_CANCEL)->shouldBeCalled();
+        $this->managerRegistry->getManagerForClass(Argument::any())->willReturn($this->entityManager->reveal());
+        $this->entityManager->flush()->shouldBeCalled();
+
+        $this->handle($payload, 'orders', 'delete');
     }
 
     /**
      * @test
      */
-    public function it_cancels_the_order_on_a_delete_action(): void
+    public function it_does_nothing_for_a_non_delete_action(): void
     {
-        $order = $this->resolvesToCancellableOrder();
-        $this->stateMachine->apply($order, OrderTransitions::GRAPH, OrderTransitions::TRANSITION_CANCEL)->shouldBeCalled();
-        $this->expectFlush();
+        // the deleted-order payload arriving via a different action must not cancel anything
+        $payload = WebhookPayloadFixtures::load('orders_delete');
+        $this->expectNoCancellation();
 
-        $this->handle(['id' => 1], 'orders', 'delete');
+        $this->handle($payload, 'orders', 'status_update');
     }
 
     /**
@@ -70,29 +77,10 @@ final class CancelOrderHandlerTest extends TestCase
      */
     public function it_does_nothing_for_another_resource(): void
     {
+        $payload = WebhookPayloadFixtures::load('orders_delete');
         $this->expectNoCancellation();
 
-        $this->handle(['id' => 1], 'shipments', 'cancel');
-    }
-
-    /**
-     * @test
-     */
-    public function it_does_nothing_when_the_status_is_not_cancelled(): void
-    {
-        $this->expectNoCancellation();
-
-        $this->handle(['id' => 1, 'order_status' => 'received'], 'orders', 'status_update');
-    }
-
-    /**
-     * @test
-     */
-    public function it_does_nothing_for_a_non_cancellation_action(): void
-    {
-        $this->expectNoCancellation();
-
-        $this->handle(['id' => 1], 'orders', 'create');
+        $this->handle($payload, 'shipments', 'cancel');
     }
 
     /**
@@ -100,11 +88,12 @@ final class CancelOrderHandlerTest extends TestCase
      */
     public function it_does_nothing_when_the_order_cannot_be_resolved(): void
     {
-        $this->orderResolver->resolveFromPayload(Argument::any())->willReturn(null);
+        $payload = WebhookPayloadFixtures::load('orders_delete');
+        $this->orderResolver->resolveFromPayload($payload)->willReturn(null);
         $this->stateMachine->apply(Argument::cetera())->shouldNotBeCalled();
         $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
 
-        $this->handle(['id' => 1], 'orders', 'delete');
+        $this->handle($payload, 'orders', 'delete');
     }
 
     /**
@@ -112,28 +101,15 @@ final class CancelOrderHandlerTest extends TestCase
      */
     public function it_does_not_cancel_when_the_transition_is_not_allowed(): void
     {
+        $payload = WebhookPayloadFixtures::load('orders_delete');
+
         $order = $this->prophesize(OrderInterface::class)->reveal();
-        $this->orderResolver->resolveFromPayload(Argument::any())->willReturn($order);
+        $this->orderResolver->resolveFromPayload($payload)->willReturn($order);
         $this->stateMachine->can($order, OrderTransitions::GRAPH, OrderTransitions::TRANSITION_CANCEL)->willReturn(false);
         $this->stateMachine->apply(Argument::cetera())->shouldNotBeCalled();
         $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
 
-        $this->handle(['id' => 1], 'orders', 'delete');
-    }
-
-    private function resolvesToCancellableOrder(): OrderInterface
-    {
-        $order = $this->prophesize(OrderInterface::class)->reveal();
-        $this->orderResolver->resolveFromPayload(Argument::any())->willReturn($order);
-        $this->stateMachine->can($order, OrderTransitions::GRAPH, OrderTransitions::TRANSITION_CANCEL)->willReturn(true);
-
-        return $order;
-    }
-
-    private function expectFlush(): void
-    {
-        $this->managerRegistry->getManagerForClass(Argument::any())->willReturn($this->entityManager->reveal());
-        $this->entityManager->flush()->shouldBeCalled();
+        $this->handle($payload, 'orders', 'delete');
     }
 
     private function expectNoCancellation(): void
@@ -144,7 +120,7 @@ final class CancelOrderHandlerTest extends TestCase
     }
 
     /**
-     * @param array<array-key, mixed> $payload
+     * @param array<string, mixed> $payload
      */
     private function handle(array $payload, string $resource, string $action): void
     {

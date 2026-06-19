@@ -91,13 +91,17 @@ full set of changes:
 In 1.x, received webhooks were only stored in the `setono_sylius_shipmondo__remote_event` table and
 nothing acted on them. In 2.x the plugin **reacts to webhooks immediately**:
 
-- `orders / status_update` — when Shipmondo reports the order fully shipped, the Sylius shipment(s) are
-  transitioned to `shipped` (which fulfils the order once payment is complete).
-- order cancellation in Shipmondo → the Sylius order is cancelled.
+- `orders / create_shipment` (a shipment was created in Shipmondo — the order moves to `order_status`
+  "sent" with `shipped_percent` 100) transitions the Sylius shipment(s) to `shipped`, which fulfils the
+  order once payment is complete. `orders / status_update` is also honoured for robustness, gated on the
+  same `shipped_percent` reaching 100.
+- `orders / delete` (Shipmondo has no separate "cancel" — cancelling a sales order deletes/archives it)
+  cancels the Sylius order.
 
 Reactions run through a tagged **`RemoteEventHandlerInterface`** framework (tag
 `setono_sylius_shipmondo.remote_event_handler`), so you can add your own handlers — the same way you
-add data mappers.
+add data mappers. A handler receives the Shipmondo resource object directly (the webhook's `data`
+envelope is unwrapped by the parser).
 
 Because of this, the **write-only `RemoteEvent` Sylius resource/entity was removed**: the
 `setono_sylius_shipmondo__remote_event` table is no longer used and **can be dropped** (generate a

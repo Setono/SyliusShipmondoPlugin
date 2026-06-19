@@ -36,18 +36,24 @@ final class WebhookParser extends AbstractRequestParser
 
     protected function doParse(Request $request, #[\SensitiveParameter] string $secret): BaseRemoteEvent
     {
-        /** @var array{data: string} $payload */
-        $payload = $request->toArray();
+        /** @var array{data: string} $body */
+        $body = $request->toArray();
 
         try {
-            $payload = (array) JWT::decode($payload['data'], new Key($this->webhooksKey, 'HS256'));
+            $decoded = JWT::decode($body['data'], new Key($this->webhooksKey, 'HS256'));
         } catch (\Throwable $e) {
             throw new RejectWebhookException(message: $e->getMessage(), previous: $e);
         }
 
+        // Shipmondo wraps the resource object (the sales order, shipment, ...) in a `data` envelope,
+        // alongside `webhook` and `url` metadata. Decode to associative arrays and unwrap `data` so
+        // handlers receive the resource object itself (e.g. $payload['id'], $payload['order_status']).
+        $decoded = json_decode((string) json_encode($decoded), true);
+        $data = is_array($decoded) ? ($decoded['data'] ?? null) : null;
+
         return new RemoteEvent(
             'shipmondo.event',
-            $payload,
+            is_array($data) ? $data : [],
             (string) $request->query->get('resource'),
             (string) $request->query->get('action'),
         );

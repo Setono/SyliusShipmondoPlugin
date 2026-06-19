@@ -13,8 +13,13 @@ use Sylius\Component\Order\StateResolver\StateResolverInterface;
 use Sylius\Component\Shipping\ShipmentTransitions;
 
 /**
- * When Shipmondo reports that an order has been fully shipped/handled, ship the Sylius shipment(s),
- * which resolves the order to "fulfilled" (when payment is complete too).
+ * When Shipmondo reports that an order has been fully shipped, ship the Sylius shipment(s), which
+ * resolves the order to "fulfilled" (when payment is complete too).
+ *
+ * Handling an order in Shipmondo fires `orders/create_shipment` once a shipment exists (the order
+ * moves to order_status "sent" and shipped_percent 100). `status_update` is also honoured so a later
+ * status change reporting full shipment is reacted to; both are gated on shipped_percent reaching 100
+ * (the `status_update` that accompanies mere fulfilment still reports shipped_percent 0).
  */
 final class FulfillOrderHandler implements RemoteEventHandlerInterface
 {
@@ -31,7 +36,10 @@ final class FulfillOrderHandler implements RemoteEventHandlerInterface
 
     public function handle(RemoteEvent $remoteEvent): void
     {
-        if ('orders' !== $remoteEvent->getResource() || 'status_update' !== $remoteEvent->getAction()) {
+        $action = $remoteEvent->getAction();
+        if ('orders' !== $remoteEvent->getResource() ||
+            ('create_shipment' !== $action && 'status_update' !== $action)
+        ) {
             return;
         }
 
