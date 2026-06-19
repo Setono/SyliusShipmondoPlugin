@@ -18,7 +18,7 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
     public function load(array $configs, ContainerBuilder $container): void
     {
         /**
-         * @var array{api: array{username: string, key: string, sandbox: bool}, webhooks: array{key: string, name_prefix: string}, resources: array<string, mixed>} $config
+         * @var array{api: array{username: string, key: string, sandbox: bool|string}, webhooks: array{key: string, name_prefix: string}, resources: array<string, mixed>} $config
          */
         $config = $this->processConfiguration($this->getConfiguration([], $container), $configs);
         $loader = new XmlFileLoader($container, new FileLocator(__DIR__ . '/../Resources/config'));

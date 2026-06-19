@@ -28,5 +28,6 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
 
         $this->assertContainerBuilderHasParameter('setono_sylius_shipmondo.api.username', '%env(SHIPMONDO_USERNAME)%');
         $this->assertContainerBuilderHasParameter('setono_sylius_shipmondo.api.key', '%env(SHIPMONDO_KEY)%');
+        $this->assertContainerBuilderHasParameter('setono_sylius_shipmondo.api.sandbox', '%env(bool:SHIPMONDO_SANDBOX)%');
     }
 }
