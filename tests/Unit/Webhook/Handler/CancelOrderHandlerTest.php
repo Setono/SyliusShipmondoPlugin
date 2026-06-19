@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Webhook\Handler;
 
-use Doctrine\Persistence\ObjectManager;
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\Persistence\ManagerRegistry;
 use PHPUnit\Framework\TestCase;
 use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
@@ -26,14 +27,18 @@ final class CancelOrderHandlerTest extends TestCase
     /** @var ObjectProphecy<StateMachineInterface> */
     private ObjectProphecy $stateMachine;
 
-    /** @var ObjectProphecy<ObjectManager> */
-    private ObjectProphecy $objectManager;
+    /** @var ObjectProphecy<ManagerRegistry> */
+    private ObjectProphecy $managerRegistry;
+
+    /** @var ObjectProphecy<EntityManagerInterface> */
+    private ObjectProphecy $entityManager;
 
     protected function setUp(): void
     {
         $this->orderResolver = $this->prophesize(OrderResolverInterface::class);
         $this->stateMachine = $this->prophesize(StateMachineInterface::class);
-        $this->objectManager = $this->prophesize(ObjectManager::class);
+        $this->managerRegistry = $this->prophesize(ManagerRegistry::class);
+        $this->entityManager = $this->prophesize(EntityManagerInterface::class);
     }
 
     /**
@@ -43,7 +48,7 @@ final class CancelOrderHandlerTest extends TestCase
     {
         $order = $this->resolvesToCancellableOrder();
         $this->stateMachine->apply($order, OrderTransitions::GRAPH, OrderTransitions::TRANSITION_CANCEL)->shouldBeCalled();
-        $this->objectManager->flush()->shouldBeCalled();
+        $this->expectFlush();
 
         $this->handle(['id' => 1, 'order_status' => 'cancelled'], 'orders', 'status_update');
     }
@@ -55,7 +60,7 @@ final class CancelOrderHandlerTest extends TestCase
     {
         $order = $this->resolvesToCancellableOrder();
         $this->stateMachine->apply($order, OrderTransitions::GRAPH, OrderTransitions::TRANSITION_CANCEL)->shouldBeCalled();
-        $this->objectManager->flush()->shouldBeCalled();
+        $this->expectFlush();
 
         $this->handle(['id' => 1], 'orders', 'delete');
     }
@@ -97,7 +102,7 @@ final class CancelOrderHandlerTest extends TestCase
     {
         $this->orderResolver->resolveFromPayload(Argument::any())->willReturn(null);
         $this->stateMachine->apply(Argument::cetera())->shouldNotBeCalled();
-        $this->objectManager->flush()->shouldNotBeCalled();
+        $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
 
         $this->handle(['id' => 1], 'orders', 'delete');
     }
@@ -111,7 +116,7 @@ final class CancelOrderHandlerTest extends TestCase
         $this->orderResolver->resolveFromPayload(Argument::any())->willReturn($order);
         $this->stateMachine->can($order, OrderTransitions::GRAPH, OrderTransitions::TRANSITION_CANCEL)->willReturn(false);
         $this->stateMachine->apply(Argument::cetera())->shouldNotBeCalled();
-        $this->objectManager->flush()->shouldNotBeCalled();
+        $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
 
         $this->handle(['id' => 1], 'orders', 'delete');
     }
@@ -125,11 +130,17 @@ final class CancelOrderHandlerTest extends TestCase
         return $order;
     }
 
+    private function expectFlush(): void
+    {
+        $this->managerRegistry->getManagerForClass(Argument::any())->willReturn($this->entityManager->reveal());
+        $this->entityManager->flush()->shouldBeCalled();
+    }
+
     private function expectNoCancellation(): void
     {
         $this->orderResolver->resolveFromPayload(Argument::any())->shouldNotBeCalled();
         $this->stateMachine->apply(Argument::cetera())->shouldNotBeCalled();
-        $this->objectManager->flush()->shouldNotBeCalled();
+        $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
     }
 
     /**
@@ -140,7 +151,7 @@ final class CancelOrderHandlerTest extends TestCase
         $handler = new CancelOrderHandler(
             $this->orderResolver->reveal(),
             $this->stateMachine->reveal(),
-            $this->objectManager->reveal(),
+            $this->managerRegistry->reveal(),
         );
 
         $handler->handle(new RemoteEvent('shipmondo.event', $payload, $resource, $action));

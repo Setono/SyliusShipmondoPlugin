@@ -5,7 +5,8 @@ declare(strict_types=1);
 namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Webhook\Handler;
 
 use Doctrine\Common\Collections\ArrayCollection;
-use Doctrine\Persistence\ObjectManager;
+use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\Persistence\ManagerRegistry;
 use PHPUnit\Framework\TestCase;
 use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
@@ -32,15 +33,19 @@ final class FulfillOrderHandlerTest extends TestCase
     /** @var ObjectProphecy<StateResolverInterface> */
     private ObjectProphecy $orderStateResolver;
 
-    /** @var ObjectProphecy<ObjectManager> */
-    private ObjectProphecy $objectManager;
+    /** @var ObjectProphecy<ManagerRegistry> */
+    private ObjectProphecy $managerRegistry;
+
+    /** @var ObjectProphecy<EntityManagerInterface> */
+    private ObjectProphecy $entityManager;
 
     protected function setUp(): void
     {
         $this->orderResolver = $this->prophesize(OrderResolverInterface::class);
         $this->stateMachine = $this->prophesize(StateMachineInterface::class);
         $this->orderStateResolver = $this->prophesize(StateResolverInterface::class);
-        $this->objectManager = $this->prophesize(ObjectManager::class);
+        $this->managerRegistry = $this->prophesize(ManagerRegistry::class);
+        $this->entityManager = $this->prophesize(EntityManagerInterface::class);
     }
 
     /**
@@ -58,7 +63,8 @@ final class FulfillOrderHandlerTest extends TestCase
         $this->stateMachine->can($shipment, ShipmentTransitions::GRAPH, ShipmentTransitions::TRANSITION_SHIP)->willReturn(true);
         $this->stateMachine->apply($shipment, ShipmentTransitions::GRAPH, ShipmentTransitions::TRANSITION_SHIP)->shouldBeCalled();
         $this->orderStateResolver->resolve($order->reveal())->shouldBeCalled();
-        $this->objectManager->flush()->shouldBeCalled();
+        $this->managerRegistry->getManagerForClass(Argument::any())->willReturn($this->entityManager->reveal());
+        $this->entityManager->flush()->shouldBeCalled();
 
         $this->handle($payload, 'orders', 'status_update');
     }
@@ -114,7 +120,7 @@ final class FulfillOrderHandlerTest extends TestCase
         $this->orderResolver->resolveFromPayload(Argument::any())->willReturn(null);
         $this->stateMachine->apply(Argument::cetera())->shouldNotBeCalled();
         $this->orderStateResolver->resolve(Argument::any())->shouldNotBeCalled();
-        $this->objectManager->flush()->shouldNotBeCalled();
+        $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
 
         $this->handle(['id' => 1, 'shipped_percent' => 100], 'orders', 'status_update');
     }
@@ -132,7 +138,7 @@ final class FulfillOrderHandlerTest extends TestCase
         $this->stateMachine->can($shipment, ShipmentTransitions::GRAPH, ShipmentTransitions::TRANSITION_SHIP)->willReturn(false);
         $this->stateMachine->apply(Argument::cetera())->shouldNotBeCalled();
         $this->orderStateResolver->resolve(Argument::any())->shouldNotBeCalled();
-        $this->objectManager->flush()->shouldNotBeCalled();
+        $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
 
         $this->handle(['id' => 1, 'shipped_percent' => 100], 'orders', 'status_update');
     }
@@ -150,7 +156,7 @@ final class FulfillOrderHandlerTest extends TestCase
     {
         $this->stateMachine->apply(Argument::cetera())->shouldNotBeCalled();
         $this->orderStateResolver->resolve(Argument::any())->shouldNotBeCalled();
-        $this->objectManager->flush()->shouldNotBeCalled();
+        $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
     }
 
     /**
@@ -162,7 +168,7 @@ final class FulfillOrderHandlerTest extends TestCase
             $this->orderResolver->reveal(),
             $this->stateMachine->reveal(),
             $this->orderStateResolver->reveal(),
-            $this->objectManager->reveal(),
+            $this->managerRegistry->reveal(),
         );
 
         $handler->handle(new RemoteEvent('shipmondo.event', $payload, $resource, $action));
