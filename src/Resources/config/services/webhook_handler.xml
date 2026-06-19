@@ -15,7 +15,7 @@
             <argument type="service" id="setono_sylius_shipmondo.webhook.order_resolver"/>
             <argument type="service" id="Sylius\Abstraction\StateMachine\StateMachineInterface"/>
             <argument type="service" id="sylius.state_resolver.order"/>
-            <argument type="service" id="sylius.manager.order"/>
+            <argument type="service" id="doctrine"/>
 
             <tag name="setono_sylius_shipmondo.remote_event_handler" priority="10"/>
         </service>
@@ -24,7 +24,7 @@
                  class="Setono\SyliusShipmondoPlugin\Webhook\Handler\CancelOrderHandler">
             <argument type="service" id="setono_sylius_shipmondo.webhook.order_resolver"/>
             <argument type="service" id="Sylius\Abstraction\StateMachine\StateMachineInterface"/>
-            <argument type="service" id="sylius.manager.order"/>
+            <argument type="service" id="doctrine"/>
 
             <tag name="setono_sylius_shipmondo.remote_event_handler" priority="20"/>
         </service>

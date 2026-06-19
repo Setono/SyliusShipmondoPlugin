@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Webhook\Handler;
 
-use Doctrine\Persistence\ObjectManager;
+use Doctrine\Persistence\ManagerRegistry;
+use Setono\Doctrine\ORMTrait;
 use Setono\SyliusShipmondoPlugin\RemoteEvent\RemoteEvent;
 use Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface;
 use Sylius\Abstraction\StateMachine\StateMachineInterface;
@@ -22,11 +23,14 @@ final class CancelOrderHandler implements RemoteEventHandlerInterface
      */
     private const SHIPMONDO_ORDER_STATUS_CANCELLED = 'cancelled';
 
+    use ORMTrait;
+
     public function __construct(
         private readonly OrderResolverInterface $orderResolver,
         private readonly StateMachineInterface $stateMachine,
-        private readonly ObjectManager $orderManager,
+        ManagerRegistry $managerRegistry,
     ) {
+        $this->managerRegistry = $managerRegistry;
     }
 
     public function handle(RemoteEvent $remoteEvent): void
@@ -45,7 +49,7 @@ final class CancelOrderHandler implements RemoteEventHandlerInterface
         }
 
         $this->stateMachine->apply($order, OrderTransitions::GRAPH, OrderTransitions::TRANSITION_CANCEL);
-        $this->orderManager->flush();
+        $this->getManager($order)->flush();
     }
 
     private static function isCancellation(RemoteEvent $remoteEvent): bool

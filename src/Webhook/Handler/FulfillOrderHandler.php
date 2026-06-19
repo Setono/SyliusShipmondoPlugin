@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Webhook\Handler;
 
-use Doctrine\Persistence\ObjectManager;
+use Doctrine\Persistence\ManagerRegistry;
+use Setono\Doctrine\ORMTrait;
 use Setono\SyliusShipmondoPlugin\RemoteEvent\RemoteEvent;
 use Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface;
 use Sylius\Abstraction\StateMachine\StateMachineInterface;
@@ -17,12 +18,15 @@ use Sylius\Component\Shipping\ShipmentTransitions;
  */
 final class FulfillOrderHandler implements RemoteEventHandlerInterface
 {
+    use ORMTrait;
+
     public function __construct(
         private readonly OrderResolverInterface $orderResolver,
         private readonly StateMachineInterface $stateMachine,
         private readonly StateResolverInterface $orderStateResolver,
-        private readonly ObjectManager $orderManager,
+        ManagerRegistry $managerRegistry,
     ) {
+        $this->managerRegistry = $managerRegistry;
     }
 
     public function handle(RemoteEvent $remoteEvent): void
@@ -55,7 +59,7 @@ final class FulfillOrderHandler implements RemoteEventHandlerInterface
 
         // Shipping resolves the order's shipping state; this resolves the order state to fulfilled
         $this->orderStateResolver->resolve($order);
-        $this->orderManager->flush();
+        $this->getManager($order)->flush();
     }
 
     /**

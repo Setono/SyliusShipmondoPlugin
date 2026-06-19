@@ -16,7 +16,7 @@
         "ocramius/doctrine-batch-utils": "^2.4",
         "psr/event-dispatcher": "^1.0",
         "setono/composite-compiler-pass": "^1.1",
-        "setono/doctrine-object-manager-trait": "^1.1",
+        "setono/doctrine-orm-trait": "^1.4",
         "setono/shipmondo-php-sdk": "^2.0@alpha",
         "sylius/core": "^1.0",
         "sylius/core-bundle": "^1.0",
