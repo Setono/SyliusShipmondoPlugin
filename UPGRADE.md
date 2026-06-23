@@ -109,7 +109,7 @@ envelope is unwrapped by the parser).
 Because of this, the **write-only `RemoteEvent` Sylius resource/entity was removed**: the
 `setono_sylius_shipmondo__remote_event` table is no longer used and **can be dropped** (generate a
 migration in your app). If you referenced `Setono\SyliusShipmondoPlugin\Model\RemoteEvent(Interface)`
-or `RemoteEventFactory`, those are gone. (The unrelated `Setono\SyliusShipmondoPlugin\RemoteEvent\RemoteEvent`
+or `RemoteEventFactory`, those are gone. (The unrelated `Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent`
 value object used by the webhook parser/handlers remains.)
 
 ### Unchanged

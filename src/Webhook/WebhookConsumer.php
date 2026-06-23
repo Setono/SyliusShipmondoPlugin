@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Webhook;
 
-use Setono\SyliusShipmondoPlugin\RemoteEvent\RemoteEvent;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\RemoteEventHandlerInterface;
 use Symfony\Component\RemoteEvent\Consumer\ConsumerInterface;
 use Symfony\Component\RemoteEvent\RemoteEvent as BaseRemoteEvent;

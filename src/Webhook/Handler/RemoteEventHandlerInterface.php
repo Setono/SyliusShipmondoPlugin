@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Webhook\Handler;
 
-use Setono\SyliusShipmondoPlugin\RemoteEvent\RemoteEvent;
+use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
 
 interface RemoteEventHandlerInterface
 {

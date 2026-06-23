@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Setono\SyliusShipmondoPlugin\RemoteEvent;
+namespace Setono\SyliusShipmondoPlugin\Webhook;
 
 use Symfony\Component\RemoteEvent\RemoteEvent as BaseRemoteEvent;
 

@@ -6,8 +6,8 @@ namespace Setono\SyliusShipmondoPlugin\Webhook\Handler;
 
 use Doctrine\Persistence\ManagerRegistry;
 use Setono\Doctrine\ORMTrait;
-use Setono\SyliusShipmondoPlugin\RemoteEvent\RemoteEvent;
 use Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface;
+use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
 use Sylius\Abstraction\StateMachine\StateMachineInterface;
 use Sylius\Component\Order\StateResolver\StateResolverInterface;
 use Sylius\Component\Shipping\ShipmentTransitions;

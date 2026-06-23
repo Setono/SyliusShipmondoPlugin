@@ -6,7 +6,7 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Webhook;
 
 use Firebase\JWT\JWT;
 use PHPUnit\Framework\TestCase;
-use Setono\SyliusShipmondoPlugin\RemoteEvent\RemoteEvent;
+use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
 use Setono\SyliusShipmondoPlugin\Webhook\WebhookParser;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\Webhook\Exception\RejectWebhookException;
