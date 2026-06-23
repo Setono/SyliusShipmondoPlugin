@@ -7,16 +7,16 @@ namespace Setono\SyliusShipmondoPlugin\RequestMatcher;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestMatcherInterface;
 
+/**
+ * Identifies an incoming Shipmondo webhook by the metadata headers Shipmondo sends with every
+ * delivery. SMD-Resource-Type and SMD-Action are present on every delivery (including the
+ * verification ping sent when a webhook is created), so they reliably distinguish a Shipmondo
+ * webhook from other traffic hitting the endpoint.
+ */
 final class IsShipmondoWebhookRequestMatcher implements RequestMatcherInterface
 {
     public function matches(Request $request): bool
     {
-        try {
-            $data = $request->toArray();
-        } catch (\Throwable) {
-            return false;
-        }
-
-        return isset($data['data']) && is_string($data['data']);
+        return $request->headers->has('SMD-Resource-Type') && $request->headers->has('SMD-Action');
     }
 }

@@ -104,7 +104,17 @@ nothing acted on them. In 2.x the plugin **reacts to webhooks immediately**:
 Reactions run through a tagged **`RemoteEventHandlerInterface`** framework (tag
 `setono_sylius_shipmondo.remote_event_handler`), so you can add your own handlers — the same way you
 add data mappers. A handler receives the Shipmondo resource object directly (the webhook's `data`
-envelope is unwrapped by the parser).
+envelope is unwrapped by the parser), and reads the event's resource/action via
+`RemoteEvent::getResource()` / `getAction()`, which now return the SDK enums
+`Setono\Shipmondo\Enum\WebhookResourceName` / `WebhookAction` instead of strings.
+
+Webhook verification and parsing are delegated to the SDK's `Setono\Shipmondo\Webhook\WebhookParser`
+(the plugin requires `setono/shipmondo-php-sdk:^2.0` and `firebase/php-jwt:^7.0`). Shipmondo identifies
+each delivery with `SMD-*` request headers, so the registered endpoint no longer carries
+`resource`/`action` query parameters — **re-run `setono:sylius-shipmondo:register-webhooks`** after
+upgrading. The SDK signs and verifies deliveries with HS256, which requires a key of at least 32 bytes,
+so **`SHIPMONDO_WEBHOOKS_KEY` must now be at least 32 bytes long** (a shorter key is rejected both when
+registering and when verifying).
 
 Because of this, the **write-only `RemoteEvent` Sylius resource/entity was removed**: the
 `setono_sylius_shipmondo__remote_event` table is no longer used and **can be dropped** (generate a

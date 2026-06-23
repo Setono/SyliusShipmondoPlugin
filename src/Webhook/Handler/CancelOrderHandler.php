@@ -6,6 +6,8 @@ namespace Setono\SyliusShipmondoPlugin\Webhook\Handler;
 
 use Doctrine\Persistence\ManagerRegistry;
 use Setono\Doctrine\ORMTrait;
+use Setono\Shipmondo\Enum\WebhookAction;
+use Setono\Shipmondo\Enum\WebhookResourceName;
 use Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
@@ -35,7 +37,7 @@ final class CancelOrderHandler implements RemoteEventHandlerInterface
 
     public function handle(RemoteEvent $remoteEvent): void
     {
-        if ('orders' !== $remoteEvent->getResource() || 'delete' !== $remoteEvent->getAction()) {
+        if (WebhookResourceName::Orders !== $remoteEvent->getResource() || WebhookAction::Delete !== $remoteEvent->getAction()) {
             return;
         }
 

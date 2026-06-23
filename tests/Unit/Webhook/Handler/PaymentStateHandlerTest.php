@@ -11,6 +11,8 @@ use PHPUnit\Framework\TestCase;
 use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
+use Setono\Shipmondo\Enum\WebhookAction;
+use Setono\Shipmondo\Enum\WebhookResourceName;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\PaymentStateHandler;
 use Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface;
@@ -62,7 +64,7 @@ final class PaymentStateHandlerTest extends TestCase
         $this->stateMachine->apply($payment, PaymentTransitions::GRAPH, PaymentTransitions::TRANSITION_COMPLETE)->shouldBeCalled();
         $this->expectFlush();
 
-        $this->handle($payload, 'orders', 'payment_captured');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::PaymentCaptured);
     }
 
     /**
@@ -79,18 +81,18 @@ final class PaymentStateHandlerTest extends TestCase
         $this->stateMachine->apply($order, OrderPaymentTransitions::GRAPH, OrderPaymentTransitions::TRANSITION_CANCEL)->shouldBeCalled();
         $this->expectFlush();
 
-        $this->handle($payload, 'orders', 'payment_voided');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::PaymentVoided);
     }
 
     /**
      * @test
      */
-    public function it_does_nothing_for_another_payment_action(): void
+    public function it_does_nothing_for_a_non_payment_action(): void
     {
         $payload = WebhookPayloadFixtures::load('orders_payment_captured');
         $this->expectNoTransition();
 
-        $this->handle($payload, 'orders', 'payment_refunded');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::StatusUpdate);
     }
 
     /**
@@ -101,7 +103,7 @@ final class PaymentStateHandlerTest extends TestCase
         $payload = WebhookPayloadFixtures::load('orders_payment_captured');
         $this->expectNoTransition();
 
-        $this->handle($payload, 'shipments', 'create');
+        $this->handle($payload, WebhookResourceName::Shipments, WebhookAction::Create);
     }
 
     /**
@@ -114,7 +116,7 @@ final class PaymentStateHandlerTest extends TestCase
         $this->stateMachine->apply(Argument::cetera())->shouldNotBeCalled();
         $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
 
-        $this->handle($payload, 'orders', 'payment_captured');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::PaymentCaptured);
     }
 
     /**
@@ -133,7 +135,7 @@ final class PaymentStateHandlerTest extends TestCase
         $this->stateMachine->apply(Argument::cetera())->shouldNotBeCalled();
         $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
 
-        $this->handle($payload, 'orders', 'payment_captured');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::PaymentCaptured);
     }
 
     /**
@@ -149,7 +151,7 @@ final class PaymentStateHandlerTest extends TestCase
         $this->stateMachine->apply(Argument::cetera())->shouldNotBeCalled();
         $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
 
-        $this->handle($payload, 'orders', 'payment_voided');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::PaymentVoided);
     }
 
     private function expectFlush(): void
@@ -168,7 +170,7 @@ final class PaymentStateHandlerTest extends TestCase
     /**
      * @param array<string, mixed> $payload
      */
-    private function handle(array $payload, string $resource, string $action): void
+    private function handle(array $payload, WebhookResourceName $resource, WebhookAction $action): void
     {
         $handler = new PaymentStateHandler(
             $this->orderResolver->reveal(),

@@ -6,6 +6,8 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Webhook\Handler;
 
 use PHPUnit\Framework\TestCase;
 use Prophecy\PhpUnit\ProphecyTrait;
+use Setono\Shipmondo\Enum\WebhookAction;
+use Setono\Shipmondo\Enum\WebhookResourceName;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\CompositeRemoteEventHandler;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\RemoteEventHandlerInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
@@ -19,7 +21,7 @@ final class CompositeRemoteEventHandlerTest extends TestCase
      */
     public function it_delegates_to_every_added_handler(): void
     {
-        $event = new RemoteEvent('shipmondo.event', [], 'orders', 'status_update');
+        $event = new RemoteEvent('shipmondo.event', [], WebhookResourceName::Orders, WebhookAction::StatusUpdate);
 
         $first = $this->prophesize(RemoteEventHandlerInterface::class);
         $first->handle($event)->shouldBeCalled();
