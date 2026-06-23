@@ -73,6 +73,25 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
             'workflows' => OrderWorkflow::getConfig(),
         ]);
 
+        // Hook order cancellation so the order's Shipmondo sales order is deleted. Sylius 1.14 runs
+        // `sylius_order` on winzou by default (this callback); the Symfony Workflow path is handled by
+        // the event listener tagged in event_listener.xml, for when `sylius_order` uses that adapter.
+        if ($container->hasExtension('winzou_state_machine')) {
+            $container->prependExtensionConfig('winzou_state_machine', [
+                'sylius_order' => [
+                    'callbacks' => [
+                        'after' => [
+                            'setono_sylius_shipmondo_delete_sales_order' => [
+                                'on' => ['cancel'],
+                                'do' => ['@setono_sylius_shipmondo.event_listener.order_cancellation', '__invoke'],
+                                'args' => ['object'],
+                            ],
+                        ],
+                    ],
+                ],
+            ]);
+        }
+
         $container->prependExtensionConfig('sylius_ui', [
             'events' => [
                 'sylius.admin.shipping_method.update.javascripts' => [

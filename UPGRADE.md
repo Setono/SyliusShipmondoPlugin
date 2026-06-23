@@ -123,7 +123,23 @@ migration in your app). If you referenced `Setono\SyliusShipmondoPlugin\Model\Re
 or `RemoteEventFactory`, those are gone. (The unrelated `Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent`
 value object used by the webhook parser/handlers remains.)
 
+### Cancelling a Sylius order deletes its Shipmondo sales order
+
+When an order is cancelled in Sylius, the plugin deletes the corresponding sales order in Shipmondo (if it
+was uploaded) and flashes a message in the admin so the user knows it happened. The cancellation is caught
+on **both** state-machine backends — a winzou callback on the `sylius_order` `cancel` transition (Sylius
+1.14's default) and a Symfony Workflow listener on `workflow.sylius_order.completed.cancel` (for apps whose
+`sylius_order` graph uses the Workflow adapter) — so it keeps working as Sylius migrates from winzou to
+Symfony Workflow.
+
+The deletion runs through a new `Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder` command on the
+`setono_sylius_shipmondo.command_bus`, handled synchronously by default; route it to an async transport if
+you don't want the Shipmondo API call inside the cancellation request. (Conversely, deleting a sales order
+*in Shipmondo* resets the Sylius order's upload state so it is re-uploaded — see above — it is not treated
+as a cancellation.)
+
 ### Unchanged
 
 Shipping-method / payment-method mapping, webhook registration and order upload behave exactly as in
-1.x — only the underlying SDK types, the new `sandbox` switch, and the new webhook reactions changed.
+1.x — only the underlying SDK types, the new `sandbox` switch, the new webhook reactions, and the new
+cancel-deletes-in-Shipmondo behaviour changed.
