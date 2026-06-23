@@ -29,13 +29,13 @@ final class UploadOrderHandler
     {
         $order = $this->orderRepository->find($message->order);
         if (null === $order) {
-            throw new UnrecoverableMessageHandlingException(sprintf('Order with id %s does not exist', (string) $message->order));
+            throw new UnrecoverableMessageHandlingException(sprintf('Order with id %s does not exist', $message->order));
         }
 
         Assert::isInstanceOf($order, OrderInterface::class);
 
         if (null !== $message->version && $order->getVersion() !== $message->version) {
-            throw new UnrecoverableMessageHandlingException(sprintf('Order with id %s has been updated since it was tried to be uploaded', (string) $message->order));
+            throw new UnrecoverableMessageHandlingException(sprintf('Order with id %s has been updated since it was tried to be uploaded', $message->order));
         }
 
         // todo try catch exceptions and log errors
