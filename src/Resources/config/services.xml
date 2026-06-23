@@ -6,8 +6,8 @@
         <import resource="services/command.xml"/>
         <import resource="services/controller.xml"/>
         <import resource="services/data_mapper.xml"/>
+        <import resource="services/event_listener.xml"/>
         <import resource="services/event_subscriber.xml"/>
-        <import resource="services/factory.xml"/>
         <import resource="services/form.xml"/>
         <import resource="services/message.xml"/>
         <import resource="services/provider.xml"/>
@@ -15,5 +15,6 @@
         <import resource="services/twig.xml"/>
         <import resource="services/uploader.xml"/>
         <import resource="services/webhook.xml"/>
+        <import resource="services/webhook_handler.xml"/>
     </imports>
 </container>

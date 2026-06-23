@@ -4,10 +4,7 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Webhook;
 
-use Firebase\JWT\JWT;
-use Firebase\JWT\Key;
-use Setono\SyliusShipmondoPlugin\RemoteEvent\RemoteEvent;
-use Setono\SyliusShipmondoPlugin\RequestMatcher\HasQueryParameterRequestMatcher;
+use Setono\Shipmondo\Webhook\WebhookParserInterface as ShipmondoWebhookParserInterface;
 use Setono\SyliusShipmondoPlugin\RequestMatcher\IsShipmondoWebhookRequestMatcher;
 use Symfony\Component\HttpFoundation\ChainRequestMatcher;
 use Symfony\Component\HttpFoundation\Request;
@@ -18,10 +15,18 @@ use Symfony\Component\RemoteEvent\RemoteEvent as BaseRemoteEvent;
 use Symfony\Component\Webhook\Client\AbstractRequestParser;
 use Symfony\Component\Webhook\Exception\RejectWebhookException;
 
+/**
+ * Adapts an incoming Shipmondo webhook (verified and parsed by the SDK) to a Symfony remote event.
+ *
+ * The SDK's parser verifies the HS256 signature, reads the `SMD-*` headers and unwraps the `data`
+ * envelope; this class only maps the resulting event onto the plugin's {@see RemoteEvent}.
+ */
 final class WebhookParser extends AbstractRequestParser
 {
-    public function __construct(private readonly string $webhooksKey)
-    {
+    public function __construct(
+        private readonly ShipmondoWebhookParserInterface $shipmondoWebhookParser,
+        private readonly string $webhooksKey,
+    ) {
     }
 
     protected function getRequestMatcher(): RequestMatcherInterface
@@ -29,27 +34,27 @@ final class WebhookParser extends AbstractRequestParser
         return new ChainRequestMatcher([
             new MethodRequestMatcher('POST'),
             new IsShipmondoWebhookRequestMatcher(),
-            new HasQueryParameterRequestMatcher('resource'),
-            new HasQueryParameterRequestMatcher('action'),
         ]);
     }
 
     protected function doParse(Request $request, #[\SensitiveParameter] string $secret): BaseRemoteEvent
     {
-        /** @var array{data: string} $payload */
-        $payload = $request->toArray();
+        $headers = [];
+        foreach ($request->headers->keys() as $name) {
+            $headers[$name] = $request->headers->get($name) ?? '';
+        }
 
         try {
-            $payload = (array) JWT::decode($payload['data'], new Key($this->webhooksKey, 'HS256'));
+            $event = $this->shipmondoWebhookParser->parsePayload((string) $request->getContent(), $headers, $this->webhooksKey);
         } catch (\Throwable $e) {
             throw new RejectWebhookException(message: $e->getMessage(), previous: $e);
         }
 
         return new RemoteEvent(
             'shipmondo.event',
-            $payload,
-            (string) $request->query->get('resource'),
-            (string) $request->query->get('action'),
+            $event->data,
+            $event->resourceType,
+            $event->action,
         );
     }
 

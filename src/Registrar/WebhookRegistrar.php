@@ -33,8 +33,8 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
                 $webhook->name,
                 $webhook->endpoint,
                 $webhook->key,
-                WebhookAction::from($webhook->action),
-                WebhookResourceName::from($webhook->resource),
+                $webhook->action,
+                $webhook->resource,
             ));
         }
     }
@@ -44,7 +44,7 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
         $webhooks = iterator_to_array($this->getWebhooks());
         usort($webhooks, static fn (Webhook $a, Webhook $b) => $a->name <=> $b->name);
 
-        $webhooks = array_map(static fn (Webhook $webhook) => $webhook->name . $webhook->endpoint . $webhook->key . $webhook->action . $webhook->resource, $webhooks);
+        $webhooks = array_map(static fn (Webhook $webhook) => $webhook->name . $webhook->endpoint . $webhook->key . $webhook->action->value . $webhook->resource->value, $webhooks);
 
         return md5(implode('', $webhooks));
     }
@@ -55,22 +55,18 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
     public function getWebhooks(): \Generator
     {
         $resources = [
-            'Shipments' => ['create', 'cancel'],
-            'Orders' => ['create', 'status_update', 'create_fulfillment', 'create_shipment', 'payment_captured', 'payment_voided', 'delete'],
-            'Shipment Monitor' => ['latest', 'delivered'],
+            [WebhookResourceName::Shipments, [WebhookAction::Create, WebhookAction::Cancel]],
+            [WebhookResourceName::Orders, [WebhookAction::Create, WebhookAction::StatusUpdate, WebhookAction::CreateFulfillment, WebhookAction::CreateShipment, WebhookAction::PaymentCaptured, WebhookAction::PaymentVoided, WebhookAction::Delete]],
+            [WebhookResourceName::ShipmentMonitor, [WebhookAction::Latest, WebhookAction::Delivered]],
         ];
 
-        foreach ($resources as $resource => $actions) {
+        foreach ($resources as [$resource, $actions]) {
             foreach ($actions as $action) {
                 yield new Webhook(
-                    sprintf('%s - [%s:%s]', $this->namePrefix, u($resource)->snake()->toString(), $action),
+                    sprintf('%s - [%s:%s]', $this->namePrefix, u($resource->value)->snake()->toString(), $action->value),
                     $this->urlGenerator->generate(
                         '_webhook_controller',
-                        [
-                            'type' => 'shipmondo',
-                            'resource' => u($resource)->snake()->toString(),
-                            'action' => $action,
-                        ],
+                        ['type' => 'shipmondo'],
                         UrlGeneratorInterface::ABSOLUTE_URL,
                     ),
                     $this->webhooksKey,

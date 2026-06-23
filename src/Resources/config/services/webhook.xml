@@ -2,15 +2,18 @@
 <container xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://symfony.com/schema/dic/services"
            xsi:schemaLocation="http://symfony.com/schema/dic/services http://symfony.com/schema/dic/services/services-1.0.xsd">
     <services>
+        <service id="setono_sylius_shipmondo.webhook.shipmondo_webhook_parser"
+                 class="Setono\Shipmondo\Webhook\WebhookParser"/>
+
         <service id="setono_sylius_shipmondo.webhook.webhook_parser"
                  class="Setono\SyliusShipmondoPlugin\Webhook\WebhookParser">
+            <argument type="service" id="setono_sylius_shipmondo.webhook.shipmondo_webhook_parser"/>
             <argument>%setono_sylius_shipmondo.webhooks.key%</argument>
         </service>
 
         <service id="setono_sylius_shipmondo.webhook.webhook_consumer"
                  class="Setono\SyliusShipmondoPlugin\Webhook\WebhookConsumer">
-            <argument type="service" id="setono_sylius_shipmondo.factory.remote_event"/>
-            <argument type="service" id="doctrine"/>
+            <argument type="service" id="setono_sylius_shipmondo.webhook.remote_event_handler.composite"/>
 
             <tag name="remote_event.consumer" consumer="shipmondo"/>
         </service>

@@ -12,6 +12,14 @@
             <tag name="messenger.message_handler"/>
         </service>
 
+        <service id="setono_sylius_shipmondo.message.command_handler.delete_order"
+                 class="Setono\SyliusShipmondoPlugin\Message\CommandHandler\DeleteOrderHandler">
+            <argument type="service" id="sylius.repository.order"/>
+            <argument type="service" id="setono_sylius_shipmondo.client"/>
+
+            <tag name="messenger.message_handler"/>
+        </service>
+
         <service id="setono_sylius_shipmondo.message.command_handler.register_webhooks"
                  class="Setono\SyliusShipmondoPlugin\Message\CommandHandler\RegisterWebhooksHandler">
             <argument type="service" id="setono_sylius_shipmondo.repository.registered_webhooks"/>
