@@ -6,6 +6,8 @@ namespace Setono\SyliusShipmondoPlugin\Webhook\Handler;
 
 use Doctrine\Persistence\ManagerRegistry;
 use Setono\Doctrine\ORMTrait;
+use Setono\Shipmondo\Enum\WebhookAction;
+use Setono\Shipmondo\Enum\WebhookResourceName;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
@@ -41,12 +43,12 @@ final class PaymentStateHandler implements RemoteEventHandlerInterface
 
     public function handle(RemoteEvent $remoteEvent): void
     {
-        if ('orders' !== $remoteEvent->getResource()) {
+        if (WebhookResourceName::Orders !== $remoteEvent->getResource()) {
             return;
         }
 
         $action = $remoteEvent->getAction();
-        if ('payment_captured' !== $action && 'payment_voided' !== $action) {
+        if (WebhookAction::PaymentCaptured !== $action && WebhookAction::PaymentVoided !== $action) {
             return;
         }
 
@@ -55,7 +57,7 @@ final class PaymentStateHandler implements RemoteEventHandlerInterface
             return;
         }
 
-        $applied = 'payment_captured' === $action ? $this->capture($order) : $this->void($order);
+        $applied = WebhookAction::PaymentCaptured === $action ? $this->capture($order) : $this->void($order);
         if (!$applied) {
             return;
         }

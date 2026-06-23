@@ -11,6 +11,8 @@ use PHPUnit\Framework\TestCase;
 use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
+use Setono\Shipmondo\Enum\WebhookAction;
+use Setono\Shipmondo\Enum\WebhookResourceName;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\FulfillOrderHandler;
 use Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface;
@@ -58,7 +60,7 @@ final class FulfillOrderHandlerTest extends TestCase
         $payload = WebhookPayloadFixtures::load('orders_create_shipment');
         $this->expectShipAndFulfil($payload);
 
-        $this->handle($payload, 'orders', 'create_shipment');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::CreateShipment);
     }
 
     /**
@@ -69,7 +71,7 @@ final class FulfillOrderHandlerTest extends TestCase
         $payload = WebhookPayloadFixtures::load('orders_create_shipment');
         $this->expectShipAndFulfil($payload);
 
-        $this->handle($payload, 'orders', 'status_update');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::StatusUpdate);
     }
 
     /**
@@ -81,7 +83,7 @@ final class FulfillOrderHandlerTest extends TestCase
         $payload = WebhookPayloadFixtures::load('orders_status_update');
         $this->expectNoResolutionOrTransition();
 
-        $this->handle($payload, 'orders', 'status_update');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::StatusUpdate);
     }
 
     /**
@@ -93,7 +95,7 @@ final class FulfillOrderHandlerTest extends TestCase
         $payload['shipped_percent'] = 99;
         $this->expectNoResolutionOrTransition();
 
-        $this->handle($payload, 'orders', 'create_shipment');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::CreateShipment);
     }
 
     /**
@@ -104,7 +106,7 @@ final class FulfillOrderHandlerTest extends TestCase
         $payload = WebhookPayloadFixtures::load('orders_create_fulfillment');
         $this->expectNoResolutionOrTransition();
 
-        $this->handle($payload, 'orders', 'create_fulfillment');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::CreateFulfillment);
     }
 
     /**
@@ -115,7 +117,7 @@ final class FulfillOrderHandlerTest extends TestCase
         $payload = WebhookPayloadFixtures::load('orders_create_shipment');
         $this->expectNoResolutionOrTransition();
 
-        $this->handle($payload, 'shipments', 'create');
+        $this->handle($payload, WebhookResourceName::Shipments, WebhookAction::Create);
     }
 
     /**
@@ -129,7 +131,7 @@ final class FulfillOrderHandlerTest extends TestCase
         $this->orderStateResolver->resolve(Argument::any())->shouldNotBeCalled();
         $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
 
-        $this->handle($payload, 'orders', 'create_shipment');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::CreateShipment);
     }
 
     /**
@@ -149,7 +151,7 @@ final class FulfillOrderHandlerTest extends TestCase
         $this->orderStateResolver->resolve(Argument::any())->shouldNotBeCalled();
         $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
 
-        $this->handle($payload, 'orders', 'create_shipment');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::CreateShipment);
     }
 
     /**
@@ -181,7 +183,7 @@ final class FulfillOrderHandlerTest extends TestCase
     /**
      * @param array<string, mixed> $payload
      */
-    private function handle(array $payload, string $resource, string $action): void
+    private function handle(array $payload, WebhookResourceName $resource, WebhookAction $action): void
     {
         $handler = new FulfillOrderHandler(
             $this->orderResolver->reveal(),

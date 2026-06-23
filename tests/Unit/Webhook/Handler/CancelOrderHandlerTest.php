@@ -10,6 +10,8 @@ use PHPUnit\Framework\TestCase;
 use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
+use Setono\Shipmondo\Enum\WebhookAction;
+use Setono\Shipmondo\Enum\WebhookResourceName;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\CancelOrderHandler;
 use Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface;
@@ -65,7 +67,7 @@ final class CancelOrderHandlerTest extends TestCase
         $this->orderWorkflow->apply($order, OrderWorkflow::TRANSITION_RESET)->willReturn(new Marking())->shouldBeCalled();
         $this->expectFlush();
 
-        $this->handle($payload, 'orders', 'delete');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::Delete);
     }
 
     /**
@@ -83,7 +85,7 @@ final class CancelOrderHandlerTest extends TestCase
         $this->orderWorkflow->apply($order, OrderWorkflow::TRANSITION_RESET)->willReturn(new Marking())->shouldBeCalled();
         $this->expectFlush();
 
-        $this->handle($payload, 'orders', 'delete');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::Delete);
     }
 
     /**
@@ -101,7 +103,7 @@ final class CancelOrderHandlerTest extends TestCase
         $this->orderWorkflow->apply(Argument::cetera())->shouldNotBeCalled();
         $this->expectFlush();
 
-        $this->handle($payload, 'orders', 'delete');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::Delete);
     }
 
     /**
@@ -119,7 +121,7 @@ final class CancelOrderHandlerTest extends TestCase
         $this->orderWorkflow->apply(Argument::cetera())->shouldNotBeCalled();
         $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
 
-        $this->handle($payload, 'orders', 'delete');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::Delete);
     }
 
     /**
@@ -130,7 +132,7 @@ final class CancelOrderHandlerTest extends TestCase
         $payload = WebhookPayloadFixtures::load('orders_delete');
         $this->expectNoInteraction();
 
-        $this->handle($payload, 'orders', 'status_update');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::StatusUpdate);
     }
 
     /**
@@ -141,7 +143,7 @@ final class CancelOrderHandlerTest extends TestCase
         $payload = WebhookPayloadFixtures::load('orders_delete');
         $this->expectNoInteraction();
 
-        $this->handle($payload, 'shipments', 'cancel');
+        $this->handle($payload, WebhookResourceName::Shipments, WebhookAction::Cancel);
     }
 
     /**
@@ -155,7 +157,7 @@ final class CancelOrderHandlerTest extends TestCase
         $this->orderWorkflow->apply(Argument::cetera())->shouldNotBeCalled();
         $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
 
-        $this->handle($payload, 'orders', 'delete');
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::Delete);
     }
 
     private function expectFlush(): void
@@ -175,7 +177,7 @@ final class CancelOrderHandlerTest extends TestCase
     /**
      * @param array<string, mixed> $payload
      */
-    private function handle(array $payload, string $resource, string $action): void
+    private function handle(array $payload, WebhookResourceName $resource, WebhookAction $action): void
     {
         $handler = new CancelOrderHandler(
             $this->orderResolver->reveal(),

@@ -6,6 +6,8 @@ namespace Setono\SyliusShipmondoPlugin\Webhook\Handler;
 
 use Doctrine\Persistence\ManagerRegistry;
 use Setono\Doctrine\ORMTrait;
+use Setono\Shipmondo\Enum\WebhookAction;
+use Setono\Shipmondo\Enum\WebhookResourceName;
 use Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
 use Sylius\Abstraction\StateMachine\StateMachineInterface;
@@ -37,8 +39,8 @@ final class FulfillOrderHandler implements RemoteEventHandlerInterface
     public function handle(RemoteEvent $remoteEvent): void
     {
         $action = $remoteEvent->getAction();
-        if ('orders' !== $remoteEvent->getResource() ||
-            ('create_shipment' !== $action && 'status_update' !== $action)
+        if (WebhookResourceName::Orders !== $remoteEvent->getResource() ||
+            (WebhookAction::CreateShipment !== $action && WebhookAction::StatusUpdate !== $action)
         ) {
             return;
         }
