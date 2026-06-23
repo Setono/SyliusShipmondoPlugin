@@ -20,10 +20,9 @@
             <tag name="setono_sylius_shipmondo.remote_event_handler" priority="10"/>
         </service>
 
-        <service id="setono_sylius_shipmondo.webhook.handler.cancel_order"
-                 class="Setono\SyliusShipmondoPlugin\Webhook\Handler\CancelOrderHandler">
+        <service id="setono_sylius_shipmondo.webhook.handler.reset_upload_state"
+                 class="Setono\SyliusShipmondoPlugin\Webhook\Handler\ResetUploadStateHandler">
             <argument type="service" id="setono_sylius_shipmondo.webhook.order_resolver"/>
-            <argument type="service" id="Sylius\Abstraction\StateMachine\StateMachineInterface"/>
             <argument type="service" id="state_machine.setono_sylius_shipmondo__order"/>
             <argument type="service" id="doctrine"/>
 
