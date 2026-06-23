@@ -6,9 +6,9 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Webhook\Handler;
 
 use PHPUnit\Framework\TestCase;
 use Prophecy\PhpUnit\ProphecyTrait;
-use Setono\SyliusShipmondoPlugin\RemoteEvent\RemoteEvent;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\CompositeRemoteEventHandler;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\RemoteEventHandlerInterface;
+use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
 
 final class CompositeRemoteEventHandlerTest extends TestCase
 {

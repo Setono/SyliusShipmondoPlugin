@@ -7,8 +7,8 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Webhook;
 use PHPUnit\Framework\TestCase;
 use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
-use Setono\SyliusShipmondoPlugin\RemoteEvent\RemoteEvent;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\RemoteEventHandlerInterface;
+use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
 use Setono\SyliusShipmondoPlugin\Webhook\WebhookConsumer;
 use Symfony\Component\RemoteEvent\RemoteEvent as BaseRemoteEvent;
 

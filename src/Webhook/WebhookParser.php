@@ -6,7 +6,6 @@ namespace Setono\SyliusShipmondoPlugin\Webhook;
 
 use Firebase\JWT\JWT;
 use Firebase\JWT\Key;
-use Setono\SyliusShipmondoPlugin\RemoteEvent\RemoteEvent;
 use Setono\SyliusShipmondoPlugin\RequestMatcher\HasQueryParameterRequestMatcher;
 use Setono\SyliusShipmondoPlugin\RequestMatcher\IsShipmondoWebhookRequestMatcher;
 use Symfony\Component\HttpFoundation\ChainRequestMatcher;
