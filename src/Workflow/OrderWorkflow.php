@@ -23,6 +23,8 @@ final class OrderWorkflow
 
     final public const TRANSITION_FAIL = 'fail';
 
+    final public const TRANSITION_RESET = 'reset';
+
     private function __construct()
     {
     }
@@ -89,6 +91,8 @@ final class OrderWorkflow
             new Transition(self::TRANSITION_START_UPLOAD, [OrderInterface::SHIPMONDO_STATE_PENDING], OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO),
             new Transition(self::TRANSITION_COMPLETE_UPLOAD, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO),
             new Transition(self::TRANSITION_FAIL, [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_FAILED),
+            // when an order is deleted in Shipmondo it is no longer uploaded, so reset it to pending
+            new Transition(self::TRANSITION_RESET, [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_PENDING),
         ];
     }
 }
