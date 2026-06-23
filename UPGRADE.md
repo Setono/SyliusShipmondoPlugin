@@ -95,8 +95,9 @@ nothing acted on them. In 2.x the plugin **reacts to webhooks immediately**:
   "sent" with `shipped_percent` 100) transitions the Sylius shipment(s) to `shipped`, which fulfils the
   order once payment is complete. `orders / status_update` is also honoured for robustness, gated on the
   same `shipped_percent` reaching 100.
-- `orders / delete` (Shipmondo has no separate "cancel" — cancelling a sales order deletes/archives it)
-  cancels the Sylius order.
+- `orders / delete` (a sales order was deleted in Shipmondo) resets the order's Shipmondo upload state
+  (back to `pending`, clearing its `shipmondoId`), so the next `upload-orders` run re-uploads it. It is
+  deliberately *not* treated as a cancellation — cancelling an order is a Sylius-side decision.
 - `orders / payment_captured` completes the Sylius payment(s) → the order's payment state becomes `paid`
   (orders are uploaded while either `paid` or `authorized`, so an authorized payment can be captured
   later in Shipmondo), and `orders / payment_voided` cancels the order's payment state.
