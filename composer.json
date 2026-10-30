@@ -57,6 +57,7 @@
         "jms/serializer-bundle": "^4.2",
         "lexik/jwt-authentication-bundle": "^2.17",
         "nyholm/psr7": "^1.8",
+        "payum/payum-bundle": "^2.7.1",
         "phpstan/phpstan-webmozart-assert": "^2.0",
         "setono/sylius-plugin-pack": "~1.14.1",
         "shipmonk/composer-dependency-analyser": "^1.8",
