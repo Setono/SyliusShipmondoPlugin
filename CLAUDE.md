@@ -15,11 +15,14 @@ This is a Sylius plugin that integrates Sylius e-commerce stores with Shipmondo 
 
 ### Testing
 ```bash
-# Run all tests
+# Run the unit tests (the default testsuite; no database needed)
 composer phpunit
 
 # Run PHPUnit directly
 vendor/bin/phpunit
+
+# Run the functional tests (boot the test app against MySQL; see "Functional tests" below)
+vendor/bin/phpunit --testsuite Functional
 
 # Run a single test file
 vendor/bin/phpunit tests/Unit/DataMapper/ShippingSalesOrderDataMapperTest.php
@@ -31,7 +34,19 @@ vendor/bin/phpunit --filter it_maps_shipping_with_tax_included_in_price
 vendor/bin/infection
 ```
 
-PHPUnit bootstraps the test app via `tests/Application/config/bootstrap.php` (see `phpunit.xml.dist`). Unit tests live under `tests/Unit/` (e.g. `tests/Unit/DataMapper`, `tests/Unit/Registrar`, `tests/Unit/DependencyInjection`, `tests/Unit/Workflow`, `tests/Unit/Model`), with namespace `Tests\Setono\SyliusShipmondoPlugin\Unit\...`; `tests/Application/` is the Sylius host app, not a test suite. Tests use PHPUnit 9 `@test` annotations, `Prophecy\PhpUnit\ProphecyTrait` for mocks, and `matthiasnoback/symfony-dependency-injection-test` for container/extension tests. Infection enforces `minCoveredMsi: 100`, so any test that covers a line must kill every mutant on it.
+PHPUnit bootstraps the test app via `tests/Application/config/bootstrap.php` (see `phpunit.xml.dist`). Unit tests live under `tests/Unit/` (e.g. `tests/Unit/DataMapper`, `tests/Unit/Registrar`, `tests/Unit/DependencyInjection`, `tests/Unit/Workflow`, `tests/Unit/Model`), with namespace `Tests\Setono\SyliusShipmondoPlugin\Unit\...`; `tests/Application/` is the Sylius host app, not a test suite. Tests use PHPUnit 9 `@test` annotations, `Prophecy\PhpUnit\ProphecyTrait` for mocks, and `matthiasnoback/symfony-dependency-injection-test` for container/extension tests. Infection enforces `minCoveredMsi: 100`, so any test that covers a line must kill every mutant on it. Infection and code coverage run the `Unit` suite only (`defaultTestSuite` in `phpunit.xml.dist`, `testFrameworkOptions` in `infection.json.dist`).
+
+#### Functional tests
+
+`tests/Functional/` (namespace `Tests\Setono\SyliusShipmondoPlugin\Functional\...`, testsuite `Functional`) boots the test app (`WebTestCase`) against the MySQL database in `DATABASE_URL`.
+- **The suite drops and recreates that database's schema once per run.** Locally, point it at a throwaway database in an untracked `tests/Application/.env.test.local`, e.g. `DATABASE_URL=mysql://root@127.0.0.1/setono_sylius_shipmondo_functional_test`. The database is created if it does not exist.
+- Isolation is `dama/doctrine-test-bundle` (registered for the `test` env; its PHPUnit extension is in `phpunit.xml.dist`). Every test runs in a transaction that is rolled back afterwards, on top of a baseline committed once per run (`Support\ShopFixtures::createBaseline()`: the shop and its admin, loaded per test via `$this->fixtures`). DAMA requires `use_savepoints: true` (set in `config/packages/test/dama_doctrine_test_bundle.yaml`), so in these tests nested transactions roll back to savepoints instead of marking the outer transaction rollback-only.
+- Tests that need real commits or the consumers' DBAL 3 semantics (no savepoints) override `commitsForReal()` to return `true`, as `OrderCancellationTest` does. They get a plain connection without savepoints, read through a second connection (only committed data), and the baseline is restored afterwards.
+- The Shipmondo API is never called. `FunctionalTestCase` replaces the `setono_sylius_shipmondo.client` service with a real SDK client whose PSR-18 transport is `Support\ShipmondoApiStub`. Register responses per method and path, e.g. `$this->shipmondo->respond('DELETE', 'sales_orders/123', 204, null)`, and assert on `$this->shipmondo->requests()`. A request without a registered response fails the test.
+- `Support\ShopFixtures` creates customers and real orders through Sylius's factories and checkout state machine.
+- Assert persisted state via `orderRow()` or `database()`. Run console commands with `executeCommand()` (an `Application` from the kernel plus a `CommandTester`, as in Symfony's "Testing Commands" docs), then `$tester->assertCommandIsSuccessful()`.
+- When the frontend is not built, empty Webpack Encore builds are written to `tests/Application/public/build/{admin,shop}` for the run and removed afterwards.
+- A test that demonstrates an open bug calls `self::skipUntilFixed(<issue number>)`.
 
 ### Code Quality
 ```bash
@@ -105,7 +120,8 @@ CI (`.github/workflows/build.yaml`) gates merges on the following — run them l
 - `composer analyse` (PHPStan; static-analysis job removes `sylius/sylius` first, so analysis runs against the split component packages)
 - `vendor/bin/composer-dependency-analyser` (dependency-analysis job unsets `require-dev`, re-adds shipmonk, then analyses)
 - `lint:yaml` / `lint:twig` and `bin/console lint:container`
-- `vendor/bin/phpunit` and `vendor/bin/infection` (mutation tests)
+- `vendor/bin/phpunit` (unit) and `vendor/bin/infection` (mutation tests); these jobs have no database
+- `vendor/bin/phpunit --testsuite Functional`, in the integration-tests job, which starts MySQL
 
 The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires `symfony/webhook` + `symfony/remote-event`, so Symfony 5.4 is not supported). Coding-standards runs on PHP 8.1 — write syntax compatible with 8.1, not just the locally linked PHP.
 
@@ -187,7 +203,7 @@ The plugin extends these Sylius entities via traits:
 
 ## Testing Strategy
 
-Unit tests live in `tests/Unit/` with a full Sylius test application in `tests/Application/`.
+Unit tests live in `tests/Unit/` and functional tests in `tests/Functional/`, with a full Sylius test application in `tests/Application/`.
 The test app includes custom entity implementations in `tests/Application/Model/`.
 
 ## Agent skills

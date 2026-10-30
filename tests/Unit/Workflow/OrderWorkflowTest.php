@@ -7,7 +7,9 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Workflow;
 use PHPUnit\Framework\TestCase;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
+use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\Workflow\Transition;
+use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
 
 final class OrderWorkflowTest extends TestCase
 {
@@ -74,6 +76,33 @@ final class OrderWorkflowTest extends TestCase
             [OrderInterface::SHIPMONDO_STATE_PENDING],
             $byName[OrderWorkflow::TRANSITION_RESET]->getTos(),
         );
+    }
+
+    /**
+     * @test
+     */
+    public function it_builds_a_workflow_that_stores_the_state_as_a_string_on_the_order(): void
+    {
+        /** @var list<string> $dispatched */
+        $dispatched = [];
+        $eventDispatcher = new EventDispatcher();
+        $eventDispatcher->addListener('workflow.setono_sylius_shipmondo__order.completed.start_upload', static function () use (&$dispatched): void {
+            $dispatched[] = 'completed.start_upload';
+        });
+
+        $workflow = OrderWorkflow::getWorkflow($eventDispatcher);
+
+        self::assertSame(OrderWorkflow::NAME, $workflow->getName());
+        self::assertSame(OrderWorkflow::getStates(), array_values($workflow->getDefinition()->getPlaces()));
+        self::assertCount(4, $workflow->getDefinition()->getTransitions());
+
+        $order = new Order();
+        self::assertTrue($workflow->can($order, OrderWorkflow::TRANSITION_START_UPLOAD));
+
+        $workflow->apply($order, OrderWorkflow::TRANSITION_START_UPLOAD);
+
+        self::assertSame(OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO, $order->getShipmondoState());
+        self::assertSame(['completed.start_upload'], $dispatched);
     }
 
     /**
