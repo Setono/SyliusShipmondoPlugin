@@ -273,6 +273,86 @@ jobs:
                 env:
                     STRYKER_DASHBOARD_API_KEY: "${{ secrets.STRYKER_DASHBOARD_API_KEY }}"
 
+    e2e-tests:
+        name: "E2E tests (Playwright | PHP${{ matrix.php-version }})"
+
+        runs-on: "ubuntu-latest"
+
+        strategy:
+            matrix:
+                php-version:
+                    - "8.1"
+
+        env:
+            # The e2e environment stubs the Shipmondo API, see tests/Playwright/README.md
+            APP_ENV: "e2e"
+            DATABASE_URL: "mysql://root:root@127.0.0.1/setono_sylius_shipmondo_e2e?serverVersion=8.0"
+            E2E_DATABASE_URL: "mysql://root:root@127.0.0.1:3306/setono_sylius_shipmondo_e2e"
+            E2E_BASE_URL: "http://127.0.0.1:8080"
+
+        steps:
+            -   name: "Start MySQL"
+                run: "sudo /etc/init.d/mysql start"
+
+            -   name: "Checkout"
+                uses: "actions/checkout@v6"
+
+            -   name: "Setup PHP, with composer and extensions"
+                uses: "shivammathur/setup-php@v2"
+                with:
+                    coverage: "none"
+                    extensions: "${{ env.PHP_EXTENSIONS }}, gd"
+                    php-version: "${{ matrix.php-version }}"
+
+            -   name: "Install composer dependencies"
+                uses: "ramsey/composer-install@v3"
+
+            -   name: "Setup Node"
+                uses: "actions/setup-node@v4"
+                with:
+                    node-version: "20" # @sylius-ui/frontend does not support newer versions
+
+            -   name: "Build the test application's assets"
+                run: |
+                    (cd tests/Application && yarn install --non-interactive && yarn build)
+                    (cd tests/Application && bin/console assets:install public)
+
+            -   name: "Install Playwright"
+                working-directory: "tests/Playwright"
+                run: |
+                    npm ci
+                    npx playwright install --with-deps chromium
+
+            -   name: "Create the database and load the fixtures"
+                working-directory: "tests/Playwright"
+                run: "npm run db:reset"
+
+            -   name: "Start the test application"
+                run: |
+                    (cd tests/Application && bin/console cache:warmup)
+                    PHP_CLI_SERVER_WORKERS=4 php -S 127.0.0.1:8080 -t tests/Application/public > /tmp/php-server.log 2>&1 &
+                    for attempt in $(seq 1 30); do
+                        curl --silent --fail --output /dev/null "$E2E_BASE_URL/en_US/" && exit 0
+                        sleep 2
+                    done
+                    cat /tmp/php-server.log
+                    exit 1
+
+            -   name: "Run Playwright"
+                working-directory: "tests/Playwright"
+                run: "npx playwright test"
+
+            -   name: "Upload the Playwright report"
+                if: "failure()"
+                uses: "actions/upload-artifact@v4"
+                with:
+                    name: "playwright-report"
+                    path: |
+                        tests/Playwright/playwright-report
+                        tests/Playwright/test-results
+                        tests/Application/var/log
+                    retention-days: 7
+
     code-coverage:
         name: "Code Coverage (PHP${{ matrix.php-version }} | Deps: ${{ matrix.dependencies }})"
 
