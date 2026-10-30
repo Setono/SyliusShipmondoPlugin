@@ -33,6 +33,17 @@ vendor/bin/infection
 
 PHPUnit bootstraps the test app via `tests/Application/config/bootstrap.php` (see `phpunit.xml.dist`). Unit tests live under `tests/Unit/` (e.g. `tests/Unit/DataMapper`, `tests/Unit/Registrar`, `tests/Unit/DependencyInjection`, `tests/Unit/Workflow`, `tests/Unit/Model`), with namespace `Tests\Setono\SyliusShipmondoPlugin\Unit\...`; `tests/Application/` is the Sylius host app, not a test suite. Tests use PHPUnit 9 `@test` annotations, `Prophecy\PhpUnit\ProphecyTrait` for mocks, and `matthiasnoback/symfony-dependency-injection-test` for container/extension tests. Infection enforces `minCoveredMsi: 100`, so any test that covers a line must kill every mutant on it.
 
+### Playwright tests
+
+Browser tests for the admin and shop UI live in `tests/Playwright/` (own `package.json`, TypeScript, Chromium); see its `README.md`. They run against the test app in the `e2e` environment (`APP_ENV=e2e`, database `setono_sylius_shipmondo_e2e`), where `config/services_e2e.yaml` replaces the Shipmondo SDK's HTTP transport with a stub (`tests/Application/E2E/`), so no credentials or network are needed.
+```bash
+(cd tests/Playwright && npm ci && npx playwright install chromium)
+(cd tests/Playwright && PHP_BINARY=php npm run db:reset)               # schema + Sylius fixtures, e2e database only
+(cd tests/Application && APP_ENV=e2e symfony serve -d --no-tls --port=8000)
+(cd tests/Playwright && E2E_BASE_URL=http://127.0.0.1:8000 npm test)
+```
+The test app's assets need Node 20 (`@sylius-ui/frontend` rejects newer versions). Specs showing a known bug are `test.fixme()` with the issue URL.
+
 ### Code Quality
 ```bash
 # Run static analysis
