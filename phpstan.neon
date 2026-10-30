@@ -7,6 +7,10 @@ parameters:
 
     excludePaths:
         - tests/Application/*
+        # TODO: the Playwright suite needs playwright-php/playwright-symfony, which requires PHP >= 8.2 while the plugin
+        # still supports 8.1, so it is only installed in the CI job that runs the suite. Analyse it again once the
+        # package is in require-dev (see that job in .github/workflows/build.yaml).
+        - tests/Playwright/*
         # JWT debug helper; uses dynamic/mixed payloads and was excluded from static analysis under Psalm too
         - src/Controller/DebugWebhookController.php
 

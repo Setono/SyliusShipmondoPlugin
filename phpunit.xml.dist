@@ -17,6 +17,10 @@
         <testsuite name="Functional">
             <directory>tests/Functional</directory>
         </testsuite>
+        <!-- Browser tests; they need playwright-php/playwright-symfony (PHP >= 8.2), see tests/Playwright/README.md -->
+        <testsuite name="Playwright">
+            <directory>tests/Playwright</directory>
+        </testsuite>
     </testsuites>
     <php>
         <env name="APP_ENV" value="test"/>

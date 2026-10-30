@@ -1,0 +1,72 @@
+[
+  {
+    "id": 31411785,
+    "name": "DK - Bring - Home Delivery Parcel - 0-1 kg",
+    "default": false,
+    "product_code": "BRI_HDP",
+    "own_agreement": false,
+    "customer_number": "0",
+    "service_codes": "SMS_NT,EMAIL_NT",
+    "sender": {
+      "country_code": "DK"
+    },
+    "receiver": {
+      "country_code": "DK"
+    },
+    "parcels": [
+      {
+        "quantity": 1,
+        "width": null,
+        "height": null,
+        "length": null,
+        "weight": 1000,
+        "weight_kg": 1.0,
+        "volume": null,
+        "running_metre": null,
+        "description": null,
+        "package_type": null,
+        "limited_quantity": false,
+        "dangerous_goods": [],
+        "declared_value": {
+          "amount": null,
+          "currency_code": null
+        }
+      }
+    ]
+  },
+  {
+    "id": 31411783,
+    "name": "DK - Bring - Pickup Parcel - 0-1 kg",
+    "default": false,
+    "product_code": "BRI_PP",
+    "own_agreement": false,
+    "customer_number": "0",
+    "service_codes": "SMS_NT,EMAIL_NT",
+    "sender": {
+      "country_code": "DK"
+    },
+    "receiver": {
+      "country_code": "DK"
+    },
+    "parcels": [
+      {
+        "quantity": 1,
+        "width": null,
+        "height": null,
+        "length": null,
+        "weight": 1000,
+        "weight_kg": 1.0,
+        "volume": null,
+        "running_metre": null,
+        "description": null,
+        "package_type": null,
+        "limited_quantity": false,
+        "dangerous_goods": [],
+        "declared_value": {
+          "amount": null,
+          "currency_code": null
+        }
+      }
+    ]
+  }
+]
