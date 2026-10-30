@@ -185,3 +185,17 @@ The plugin extends these Sylius entities via traits:
 
 Unit tests live in `tests/Unit/` with a full Sylius test application in `tests/Application/`.
 The test app includes custom entity implementations in `tests/Application/Model/`.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs live in GitHub Issues on `Setono/SyliusShipmondoPlugin`, managed with the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The five default triage labels are used as-is (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: one `GLOSSARY.md` and `docs/adr/` at the repo root, created only when a term or decision gets settled. See `docs/agents/domain.md`.
