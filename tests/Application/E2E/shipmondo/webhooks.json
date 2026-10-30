@@ -1,0 +1,22 @@
+[
+  {
+    "id": 8500472,
+    "endpoint": "https://postman-echo.com/post",
+    "active": true,
+    "created_at": "2026-06-18T11:19:05.150+02:00",
+    "updated_at": "2026-06-18T11:19:05.150+02:00",
+    "name": "sdk-test-6a33b808bf306",
+    "action": "create",
+    "resource_name": "Shipments"
+  },
+  {
+    "id": 8500473,
+    "endpoint": "https://shop.example.com/webhook/shipmondo",
+    "active": true,
+    "created_at": "2026-06-18T11:19:05.150+02:00",
+    "updated_at": "2026-06-18T11:19:05.150+02:00",
+    "name": "Setono Sylius Shipmondo Plugin - [orders:create]",
+    "action": "create",
+    "resource_name": "Orders"
+  }
+]

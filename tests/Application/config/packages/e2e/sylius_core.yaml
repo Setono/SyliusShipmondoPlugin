@@ -1,0 +1,4 @@
+# Keep the end-to-end tests offline and deterministic
+sylius_core:
+    telemetry:
+        enabled: false
