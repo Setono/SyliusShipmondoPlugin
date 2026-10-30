@@ -48,17 +48,6 @@ PHPUnit bootstraps the test app via `tests/Application/config/bootstrap.php` (se
 - When the frontend is not built, empty Webpack Encore builds are written to `tests/Application/public/build/{admin,shop}` for the run and removed afterwards.
 - A test that demonstrates an open bug calls `self::skipUntilFixed(<issue number>)`.
 
-### Playwright tests
-
-Browser tests for the admin and shop UI live in `tests/Playwright/` (own `package.json`, TypeScript, Chromium); see its `README.md`. They run against the test app in the `e2e` environment (`APP_ENV=e2e`, database `setono_sylius_shipmondo_e2e`), where `config/services_e2e.yaml` replaces the Shipmondo SDK's HTTP transport with a stub (`tests/Application/E2E/`), so no credentials or network are needed.
-```bash
-(cd tests/Playwright && npm ci && npx playwright install chromium)
-(cd tests/Playwright && PHP_BINARY=php npm run db:reset)               # schema + Sylius fixtures, e2e database only
-(cd tests/Application && APP_ENV=e2e symfony serve -d --no-tls --port=8000)
-(cd tests/Playwright && E2E_BASE_URL=http://127.0.0.1:8000 npm test)
-```
-The test app's assets need Node 20 (`@sylius-ui/frontend` rejects newer versions). Specs showing a known bug are `test.fixme()` with the issue URL.
-
 ### Code Quality
 ```bash
 # Run static analysis
