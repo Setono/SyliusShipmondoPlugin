@@ -97,6 +97,22 @@ final class ShippingSalesOrderDataMapperTest extends TestCase
     /**
      * @test
      */
+    public function it_skips_shipments_without_a_shipping_adjustment(): void
+    {
+        $order = self::getOrder();
+        // the first shipment has no shipping adjustment, which must not stop the following shipments from being mapped
+        self::addShipmentWith($order);
+        self::addShipmentWith($order, self::adjustment(AdjustmentInterface::SHIPPING_ADJUSTMENT, 100));
+
+        $salesOrder = $this->map($order);
+
+        self::assertCount(1, $salesOrder->orderLines);
+        self::assertSame('1', $salesOrder->orderLines[0]->unitPriceExcludingVat);
+    }
+
+    /**
+     * @test
+     */
     public function it_dispatches_an_event_for_the_shipping_line(): void
     {
         $order = self::getOrder();

@@ -71,6 +71,17 @@ final class WebhookParserTest extends TestCase
         self::parser()->parse($request, self::KEY);
     }
 
+    /**
+     * @test
+     */
+    public function it_responds_with_http_200_because_shipmondo_does_not_accept_http_202(): void
+    {
+        $response = self::parser()->createSuccessfulResponse();
+
+        self::assertSame(200, $response->getStatusCode());
+        self::assertSame('OK', $response->getContent());
+    }
+
     private static function parser(): WebhookParser
     {
         return new WebhookParser(new ShipmondoWebhookParser(), self::KEY);
