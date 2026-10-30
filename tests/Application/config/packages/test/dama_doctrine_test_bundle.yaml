@@ -1,0 +1,13 @@
+# The functional suite runs every test inside a transaction that is rolled back afterwards
+# (see tests/Functional/FunctionalTestCase.php for the tests that opt out and commit for real)
+dama_doctrine_test:
+    enable_static_connection: true
+    enable_static_meta_data_cache: true
+    enable_static_query_cache: true
+
+# DAMA nests the application's transactions inside its per-test transaction, which needs savepoints.
+# Consumers of the plugin run with DBAL 3's default (no savepoints); tests that depend on those
+# semantics opt out of DAMA and switch savepoints off again on their own connection.
+doctrine:
+    dbal:
+        use_savepoints: true

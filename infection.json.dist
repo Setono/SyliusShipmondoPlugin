@@ -11,6 +11,7 @@
             "badge": "master"
         }
     },
+    "testFrameworkOptions": "--testsuite=Unit",
     "minMsi": 18.58,
     "minCoveredMsi": 100.00
 }

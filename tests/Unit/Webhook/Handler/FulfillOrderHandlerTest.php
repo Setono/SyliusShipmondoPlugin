@@ -101,6 +101,18 @@ final class FulfillOrderHandlerTest extends TestCase
     /**
      * @test
      */
+    public function it_does_nothing_when_the_payload_has_no_shipped_percent(): void
+    {
+        $payload = WebhookPayloadFixtures::load('orders_create_shipment');
+        unset($payload['shipped_percent']);
+        $this->expectNoResolutionOrTransition();
+
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::CreateShipment);
+    }
+
+    /**
+     * @test
+     */
     public function it_does_nothing_on_create_fulfillment(): void
     {
         $payload = WebhookPayloadFixtures::load('orders_create_fulfillment');
