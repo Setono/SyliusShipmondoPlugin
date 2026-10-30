@@ -58,6 +58,7 @@ PHPUnit bootstraps the test app via `tests/Application/config/bootstrap.php` (se
   /opt/homebrew/opt/php@8.2/bin/php /usr/local/bin/composer update
   /opt/homebrew/opt/php@8.2/bin/php vendor/bin/playwright-install chromium
   (cd tests/Application && yarn install && yarn build && bin/console assets:install public)   # Node 20; copies, not --symlink
+  (cd tests/Application && APP_ENV=test bin/console doctrine:database:create --if-not-exists)  # DAMA needs it to exist
   /opt/homebrew/opt/php@8.2/bin/php vendor/bin/phpunit --testsuite Playwright
   git checkout composer.json && /opt/homebrew/opt/php@8.1/bin/php /usr/local/bin/composer update   # back to 8.1
   ```

@@ -61,6 +61,8 @@ where `php8.2` is your PHP 8.2 binary, e.g. `/opt/homebrew/opt/php@8.2/bin/php`.
 (`git checkout composer.json`) and reinstall on PHP 8.1 before running the other tools.
 
 The database is the functional suite's: `DATABASE_URL` of the `test` environment, e.g. in an untracked
-`tests/Application/.env.test.local`. Its schema is recreated once per run.
+`tests/Application/.env.test.local`. It must exist (`(cd tests/Application && APP_ENV=test bin/console
+doctrine:database:create)`), because DAMA opens its per-test transaction before the suite gets to create it; its
+schema is recreated once per run.
 
 `PLAYWRIGHT_HEADLESS=false` shows the browser.

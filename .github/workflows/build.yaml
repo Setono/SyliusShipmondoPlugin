@@ -300,6 +300,10 @@ jobs:
             -   name: "Install the Playwright server and Chromium"
                 run: "vendor/bin/playwright-install --with-deps chromium"
 
+            # DAMA opens its per-test transaction before the suite creates the schema, so the database must exist
+            -   name: "Create database"
+                run: "(cd tests/Application && bin/console doctrine:database:create)"
+
             -   name: "Run browser tests"
                 run: "vendor/bin/phpunit --testsuite Playwright"
 
