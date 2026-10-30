@@ -13,6 +13,7 @@ use Sylius\Component\Core\Model\AdjustmentInterface;
 use Sylius\Component\Core\Model\OrderItem;
 use Sylius\Component\Core\Model\OrderItemUnit;
 use Sylius\Component\Core\Model\Payment;
+use Sylius\Component\Core\Model\PaymentMethod as BasePaymentMethod;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\PaymentMethod;
 
@@ -34,6 +35,40 @@ final class PaymentDetailsSalesOrderDataMapperTest extends TestCase
         self::assertSame('USD', $salesOrder->paymentDetails->currencyCode);
         self::assertSame('Credit Card', $salesOrder->paymentDetails->paymentMethod);
         self::assertSame('123', $salesOrder->paymentDetails->paymentGatewayId);
+        // an empty order has no amount to derive a VAT percentage from
+        self::assertSame('0', $salesOrder->paymentDetails->vatPercent);
+    }
+
+    /**
+     * @test
+     */
+    public function it_maps_payment_details_of_an_order_without_payments(): void
+    {
+        $order = new Order();
+        $order->setCurrencyCode('USD');
+        $salesOrder = new SalesOrderRequest();
+
+        (new PaymentDetailsSalesOrderDataMapper())->map($order, $salesOrder);
+
+        self::assertNotNull($salesOrder->paymentDetails);
+        self::assertNull($salesOrder->paymentDetails->paymentMethod);
+        self::assertNull($salesOrder->paymentDetails->paymentGatewayId);
+    }
+
+    /**
+     * @test
+     */
+    public function it_rejects_a_payment_method_that_is_not_a_shipmondo_payment_method(): void
+    {
+        $payment = new Payment();
+        $payment->setMethod(new BasePaymentMethod());
+
+        $order = new Order();
+        $order->addPayment($payment);
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        (new PaymentDetailsSalesOrderDataMapper())->map($order, new SalesOrderRequest());
     }
 
     /**
@@ -87,7 +122,9 @@ final class PaymentDetailsSalesOrderDataMapperTest extends TestCase
 
         self::assertNotNull($salesOrder->paymentDetails);
         self::assertSame('1.25', $salesOrder->paymentDetails->amountIncludingVat);
+        self::assertSame('1', $salesOrder->paymentDetails->amountExcludingVat);
         self::assertSame('0.25', $salesOrder->paymentDetails->vatAmount);
+        self::assertSame('0.25', $salesOrder->paymentDetails->vatPercent);
     }
 
     private static function getOrder(): Order

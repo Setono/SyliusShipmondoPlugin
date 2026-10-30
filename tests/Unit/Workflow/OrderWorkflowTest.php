@@ -31,7 +31,7 @@ final class OrderWorkflowTest extends TestCase
     {
         $transitions = OrderWorkflow::getTransitions();
 
-        self::assertCount(3, $transitions);
+        self::assertCount(4, $transitions);
         self::assertContainsOnlyInstancesOf(Transition::class, $transitions);
 
         $byName = [];
@@ -64,6 +64,15 @@ final class OrderWorkflowTest extends TestCase
         self::assertSame(
             [OrderInterface::SHIPMONDO_STATE_FAILED],
             $byName[OrderWorkflow::TRANSITION_FAIL]->getTos(),
+        );
+
+        self::assertSame(
+            [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO],
+            $byName[OrderWorkflow::TRANSITION_RESET]->getFroms(),
+        );
+        self::assertSame(
+            [OrderInterface::SHIPMONDO_STATE_PENDING],
+            $byName[OrderWorkflow::TRANSITION_RESET]->getTos(),
         );
     }
 
@@ -101,6 +110,10 @@ final class OrderWorkflowTest extends TestCase
                     OrderWorkflow::TRANSITION_FAIL => [
                         'from' => [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO],
                         'to' => [OrderInterface::SHIPMONDO_STATE_FAILED],
+                    ],
+                    OrderWorkflow::TRANSITION_RESET => [
+                        'from' => [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO],
+                        'to' => [OrderInterface::SHIPMONDO_STATE_PENDING],
                     ],
                 ],
             ],

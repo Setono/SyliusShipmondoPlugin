@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\DependencyInjection;
 
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
+use Setono\SyliusShipmondoPlugin\Webhook\Handler\RemoteEventHandlerInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Bundle\ResourceBundle\DependencyInjection\Extension\AbstractResourceExtension;
 use Sylius\Bundle\ResourceBundle\SyliusResourceBundle;
@@ -26,6 +27,11 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
         $container
             ->registerForAutoconfiguration(SalesOrderDataMapperInterface::class)
             ->addTag('setono_sylius_shipmondo.sales_order_data_mapper')
+        ;
+
+        $container
+            ->registerForAutoconfiguration(RemoteEventHandlerInterface::class)
+            ->addTag('setono_sylius_shipmondo.remote_event_handler')
         ;
 
         $container->setParameter('setono_sylius_shipmondo.api.username', $config['api']['username']);
@@ -66,6 +72,25 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
             ],
             'workflows' => OrderWorkflow::getConfig(),
         ]);
+
+        // Hook order cancellation so the order's Shipmondo sales order is deleted. Sylius 1.14 runs
+        // `sylius_order` on winzou by default (this callback); the Symfony Workflow path is handled by
+        // the event listener tagged in event_listener.xml, for when `sylius_order` uses that adapter.
+        if ($container->hasExtension('winzou_state_machine')) {
+            $container->prependExtensionConfig('winzou_state_machine', [
+                'sylius_order' => [
+                    'callbacks' => [
+                        'after' => [
+                            'setono_sylius_shipmondo_delete_sales_order' => [
+                                'on' => ['cancel'],
+                                'do' => ['@setono_sylius_shipmondo.event_listener.order_cancellation', '__invoke'],
+                                'args' => ['object'],
+                            ],
+                        ],
+                    ],
+                ],
+            ]);
+        }
 
         $container->prependExtensionConfig('sylius_ui', [
             'events' => [

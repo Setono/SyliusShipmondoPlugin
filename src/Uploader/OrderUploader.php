@@ -6,7 +6,7 @@ namespace Setono\SyliusShipmondoPlugin\Uploader;
 
 use Doctrine\ORM\OptimisticLockException;
 use Doctrine\Persistence\ManagerRegistry;
-use Setono\DoctrineObjectManagerTrait\ORM\ORMManagerTrait;
+use Setono\Doctrine\ORMTrait;
 use Setono\SyliusShipmondoPlugin\Message\Command\UploadOrder;
 use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
@@ -16,7 +16,7 @@ use Symfony\Component\Workflow\WorkflowInterface;
 
 final class OrderUploader implements OrderUploaderInterface
 {
-    use ORMManagerTrait;
+    use ORMTrait;
 
     public function __construct(
         private readonly PreQualifiedUploadableOrdersProviderInterface $preQualifiedUploadableOrdersProvider,

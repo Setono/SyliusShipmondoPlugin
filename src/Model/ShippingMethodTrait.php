@@ -68,9 +68,7 @@ trait ShippingMethodTrait
 
     public function addAllowedShipmentTemplate(int|ShipmentTemplate $shipmentTemplate): void
     {
-        if (null === $this->allowedShipmentTemplates) {
-            $this->allowedShipmentTemplates = [];
-        }
+        $this->allowedShipmentTemplates ??= [];
 
         $id = $shipmentTemplate instanceof ShipmentTemplate ? $shipmentTemplate->id : $shipmentTemplate;
 

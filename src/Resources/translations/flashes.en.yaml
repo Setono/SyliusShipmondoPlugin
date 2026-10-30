@@ -1,0 +1,4 @@
+setono_sylius_shipmondo:
+    order_deleted_in_shipmondo: 'The order was deleted in Shipmondo because it was cancelled.'
+    order_will_be_deleted_in_shipmondo: 'The order will be deleted in Shipmondo because it was cancelled.'
+    order_not_deleted_in_shipmondo: 'The order was cancelled, but it could not be deleted in Shipmondo. Delete it in Shipmondo manually.'
