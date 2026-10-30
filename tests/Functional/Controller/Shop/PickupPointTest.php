@@ -138,7 +138,13 @@ final class PickupPointTest extends FunctionalTestCase
 
         $stored = $this->observer()->fetchOne('SELECT shipmondoPickupPoint FROM sylius_shipment WHERE order_id = ?', [self::id($cart)]);
         self::assertIsString($stored);
-        self::assertSame($pickupPoint, json_decode($stored, true, 512, \JSON_THROW_ON_ERROR));
+        $stored = json_decode($stored, true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($stored);
+
+        // MySQL's JSON type normalizes the key order, so compare the pickup points key by key
+        ksort($pickupPoint);
+        ksort($stored);
+        self::assertSame($pickupPoint, $stored);
     }
 
     /**
