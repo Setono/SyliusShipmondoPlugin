@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Registrar;
 
 use PHPUnit\Framework\TestCase;
-use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Setono\Shipmondo\Client\ClientInterface;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar;
@@ -22,7 +21,7 @@ final class WebhookRegistrarTest extends TestCase
     {
         $client = $this->prophesize(ClientInterface::class);
         $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
-        $urlGenerator->generate('_webhook_controller', Argument::type('array'), UrlGeneratorInterface::ABSOLUTE_URL)->willReturn('https://example.com/webhook');
+        $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn('https://example.com/webhook');
 
         $registrar = new WebhookRegistrar($client->reveal(), $urlGenerator->reveal(), 'key', 'prefix');
 

@@ -123,6 +123,28 @@ final class FulfillOrderHandlerTest extends TestCase
     /**
      * @test
      */
+    public function it_does_nothing_for_another_resource_even_with_a_create_shipment_action(): void
+    {
+        $payload = WebhookPayloadFixtures::load('orders_create_shipment');
+        $this->expectNoResolutionOrTransition();
+
+        $this->handle($payload, WebhookResourceName::Shipments, WebhookAction::CreateShipment);
+    }
+
+    /**
+     * @test
+     */
+    public function it_does_nothing_for_an_unrelated_order_action_even_when_fully_shipped(): void
+    {
+        $payload = WebhookPayloadFixtures::load('orders_create_shipment');
+        $this->expectNoResolutionOrTransition();
+
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::PaymentCaptured);
+    }
+
+    /**
+     * @test
+     */
     public function it_does_nothing_when_the_order_cannot_be_resolved(): void
     {
         $payload = WebhookPayloadFixtures::load('orders_create_shipment');

@@ -45,7 +45,7 @@ final class WebhookParser extends AbstractRequestParser
         }
 
         try {
-            $event = $this->shipmondoWebhookParser->parsePayload((string) $request->getContent(), $headers, $this->webhooksKey);
+            $event = $this->shipmondoWebhookParser->parsePayload($request->getContent(), $headers, $this->webhooksKey);
         } catch (\Throwable $e) {
             throw new RejectWebhookException(message: $e->getMessage(), previous: $e);
         }

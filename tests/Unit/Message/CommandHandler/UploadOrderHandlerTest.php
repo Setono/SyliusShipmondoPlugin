@@ -17,6 +17,7 @@ use Setono\SyliusShipmondoPlugin\Message\Command\UploadOrder;
 use Setono\SyliusShipmondoPlugin\Message\CommandHandler\UploadOrderHandler;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
+use Sylius\Component\Order\Model\OrderInterface as BaseOrderInterface;
 use Sylius\Component\Order\Repository\OrderRepositoryInterface;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 use Symfony\Component\Workflow\Marking;
@@ -80,6 +81,18 @@ final class UploadOrderHandlerTest extends TestCase
         $this->orderRepository->find(42)->willReturn(null);
 
         $this->expectException(UnrecoverableMessageHandlingException::class);
+
+        $this->handle(new UploadOrder(42));
+    }
+
+    /**
+     * @test
+     */
+    public function it_throws_when_the_order_is_not_a_shipmondo_order(): void
+    {
+        $this->orderRepository->find(42)->willReturn($this->prophesize(BaseOrderInterface::class)->reveal());
+
+        $this->expectException(\InvalidArgumentException::class);
 
         $this->handle(new UploadOrder(42));
     }

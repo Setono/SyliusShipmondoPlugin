@@ -10,7 +10,7 @@
             <argument type="service" id="sylius.repository.order"/>
         </service>
 
-        <service id="setono_sylius_shipmondo.webhook.handler.fulfill_order"
+        <service id="setono_sylius_shipmondo.webhook.remote_event_handler.fulfill_order"
                  class="Setono\SyliusShipmondoPlugin\Webhook\Handler\FulfillOrderHandler">
             <argument type="service" id="setono_sylius_shipmondo.webhook.order_resolver"/>
             <argument type="service" id="Sylius\Abstraction\StateMachine\StateMachineInterface"/>
@@ -20,7 +20,7 @@
             <tag name="setono_sylius_shipmondo.remote_event_handler" priority="10"/>
         </service>
 
-        <service id="setono_sylius_shipmondo.webhook.handler.reset_upload_state"
+        <service id="setono_sylius_shipmondo.webhook.remote_event_handler.reset_upload_state"
                  class="Setono\SyliusShipmondoPlugin\Webhook\Handler\ResetUploadStateHandler">
             <argument type="service" id="setono_sylius_shipmondo.webhook.order_resolver"/>
             <argument type="service" id="state_machine.setono_sylius_shipmondo__order"/>
@@ -29,7 +29,7 @@
             <tag name="setono_sylius_shipmondo.remote_event_handler" priority="20"/>
         </service>
 
-        <service id="setono_sylius_shipmondo.webhook.handler.payment_state"
+        <service id="setono_sylius_shipmondo.webhook.remote_event_handler.payment_state"
                  class="Setono\SyliusShipmondoPlugin\Webhook\Handler\PaymentStateHandler">
             <argument type="service" id="setono_sylius_shipmondo.webhook.order_resolver"/>
             <argument type="service" id="Sylius\Abstraction\StateMachine\StateMachineInterface"/>

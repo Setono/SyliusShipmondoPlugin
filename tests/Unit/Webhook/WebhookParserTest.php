@@ -35,6 +35,8 @@ final class WebhookParserTest extends TestCase
         $event = self::parser()->parse($request, self::KEY);
 
         self::assertInstanceOf(RemoteEvent::class, $event);
+        // Shipmondo sends no delivery id, so a random one (8 bytes, hex-encoded) is generated
+        self::assertMatchesRegularExpression('/^[0-9a-f]{16}$/', $event->getId());
         self::assertSame(WebhookResourceName::Orders, $event->getResource());
         self::assertSame(WebhookAction::Delete, $event->getAction());
 
@@ -57,6 +59,18 @@ final class WebhookParserTest extends TestCase
         self::parser()->parse($request, self::KEY);
     }
 
+    /**
+     * @test
+     */
+    public function it_rejects_a_webhook_that_is_not_posted(): void
+    {
+        $request = self::request('Orders', 'delete', ['data' => []], method: 'PUT');
+
+        $this->expectException(RejectWebhookException::class);
+
+        self::parser()->parse($request, self::KEY);
+    }
+
     private static function parser(): WebhookParser
     {
         return new WebhookParser(new ShipmondoWebhookParser(), self::KEY);
@@ -65,13 +79,13 @@ final class WebhookParserTest extends TestCase
     /**
      * @param array<string, mixed> $envelope
      */
-    private static function request(string $resourceType, string $action, array $envelope, string $signingKey = self::KEY): Request
+    private static function request(string $resourceType, string $action, array $envelope, string $signingKey = self::KEY, string $method = 'POST'): Request
     {
         $jwt = JWT::encode($envelope, $signingKey, 'HS256');
 
         return Request::create(
             '/webhook/shipmondo',
-            'POST',
+            $method,
             server: [
                 'HTTP_SMD_RESOURCE_TYPE' => $resourceType,
                 'HTTP_SMD_ACTION' => $action,

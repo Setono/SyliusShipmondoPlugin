@@ -10,6 +10,7 @@ use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\OrderResolver;
+use Sylius\Component\Order\Model\OrderInterface as BaseOrderInterface;
 use Sylius\Component\Order\Repository\OrderRepositoryInterface;
 
 final class OrderResolverTest extends TestCase
@@ -45,6 +46,18 @@ final class OrderResolverTest extends TestCase
         $this->orderRepository->findOneBy(['number' => '000000001'])->willReturn($order);
 
         self::assertSame($order, $this->resolver()->resolveFromPayload(['id' => 37, 'order_id' => '000000001']));
+    }
+
+    /**
+     * @test
+     */
+    public function it_ignores_an_order_found_by_number_that_is_not_a_shipmondo_order(): void
+    {
+        $this->orderRepository->findOneBy(['number' => '000000001'])->willReturn(
+            $this->prophesize(BaseOrderInterface::class)->reveal(),
+        );
+
+        self::assertNull($this->resolver()->resolveFromPayload(['order_id' => '000000001']));
     }
 
     /**
