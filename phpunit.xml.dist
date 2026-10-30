@@ -1,15 +1,21 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- The Unit suite runs by default (composer phpunit, Infection, code coverage) and needs no database.
+     The Functional suite boots the test application against MySQL; run it by selecting the Functional testsuite. -->
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd" colors="true"
-         bootstrap="tests/Application/config/bootstrap.php">
+         bootstrap="tests/Application/config/bootstrap.php"
+         defaultTestSuite="Unit">
     <coverage includeUncoveredFiles="true" processUncoveredFiles="true">
         <include>
             <directory suffix=".php">src/</directory>
         </include>
     </coverage>
     <testsuites>
-        <testsuite name="SetonoSyliusShipmondoPlugin Test Suite">
+        <testsuite name="Unit">
             <directory>tests/Unit</directory>
+        </testsuite>
+        <testsuite name="Functional">
+            <directory>tests/Functional</directory>
         </testsuite>
     </testsuites>
     <php>
