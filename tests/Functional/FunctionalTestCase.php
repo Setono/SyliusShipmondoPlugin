@@ -8,8 +8,10 @@ use DAMA\DoctrineTestBundle\Doctrine\DBAL\StaticDriver;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\ORM\EntityManagerInterface;
+use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\DomCrawler\Field\ChoiceFormField;
 use Symfony\Component\DomCrawler\Form;
 use Symfony\Component\Security\Core\User\UserInterface;
@@ -105,6 +107,23 @@ abstract class FunctionalTestCase extends WebTestCase
         }
 
         self::assertSame([], $unexpectedRequests, 'The test made Shipmondo requests it did not stub');
+    }
+
+    /**
+     * Runs a console command as Symfony's "Testing Commands" documentation does: an Application built from the
+     * booted kernel finds the command, and a CommandTester executes it. Exceptions the command throws propagate.
+     *
+     * @param array<string, mixed> $input
+     */
+    protected function executeCommand(string $name, array $input = []): CommandTester
+    {
+        $kernel = static::$kernel;
+        Assert::notNull($kernel);
+
+        $tester = new CommandTester((new Application($kernel))->find($name));
+        $tester->execute($input);
+
+        return $tester;
     }
 
     protected function entityManager(): EntityManagerInterface

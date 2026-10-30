@@ -5,14 +5,14 @@ declare(strict_types=1);
 namespace Tests\Setono\SyliusShipmondoPlugin\Functional\Command;
 
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
-use Symfony\Bundle\FrameworkBundle\Console\Application;
-use Symfony\Component\Console\Tester\CommandTester;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
 use Webmozart\Assert\Assert;
 
 final class RegisterWebhooksCommandTest extends FunctionalTestCase
 {
+    private const COMMAND = 'setono:sylius-shipmondo:register-webhooks';
+
     /**
      * @test
      */
@@ -27,7 +27,9 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
             ->respond('POST', 'webhooks', 201, self::webhook(3, 'Setono Sylius Shipmondo Plugin - [orders:create]'))
         ;
 
-        self::assertSame(0, $this->runCommand());
+        $tester = $this->executeCommand(self::COMMAND);
+        $tester->assertCommandIsSuccessful();
+        self::assertSame('', $tester->getDisplay());
 
         // only the plugin's own webhooks are removed
         self::assertCount(1, $this->shipmondo->requests('DELETE'));
@@ -73,8 +75,8 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
             ->respond('POST', 'webhooks', 201, self::webhook(3, 'Setono Sylius Shipmondo Plugin - [orders:create]'))
         ;
 
-        self::assertSame(0, $this->runCommand());
-        self::assertSame(0, $this->runCommand());
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
 
         self::assertCount(22, $this->shipmondo->requests('POST', 'webhooks'));
         self::assertSame([$this->registrar()->getVersion()], $this->registeredVersions());
@@ -120,13 +122,5 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
         Assert::string($key);
 
         return $key;
-    }
-
-    private function runCommand(): int
-    {
-        $kernel = static::$kernel;
-        Assert::notNull($kernel);
-
-        return (new CommandTester((new Application($kernel))->find('setono:sylius-shipmondo:register-webhooks')))->execute([]);
     }
 }

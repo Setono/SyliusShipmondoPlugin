@@ -5,15 +5,14 @@ declare(strict_types=1);
 namespace Tests\Setono\SyliusShipmondoPlugin\Functional\Command;
 
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
-use Symfony\Bundle\FrameworkBundle\Console\Application;
-use Symfony\Component\Console\Tester\CommandTester;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
-use Webmozart\Assert\Assert;
 
 final class UploadOrdersCommandTest extends FunctionalTestCase
 {
+    private const COMMAND = 'setono:sylius-shipmondo:upload-orders';
+
     private const PICKUP_POINT = [
         'id' => '96285',
         'name' => 'Pakkeshop Netto Vestergade',
@@ -45,7 +44,9 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
             ->respond('POST', 'sales_orders', 201, ['id' => 1002])
         ;
 
-        self::assertSame(0, $this->runCommand());
+        $tester = $this->executeCommand(self::COMMAND);
+        $tester->assertCommandIsSuccessful();
+        self::assertSame('', $tester->getDisplay());
 
         $requests = $this->shipmondo->requests('POST', 'sales_orders');
         self::assertCount(2, $requests);
@@ -85,7 +86,9 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         $this->respondWithShipmentTemplates();
         $this->shipmondo->respond('POST', 'sales_orders', 201, ['id' => 1001]);
 
-        self::assertSame(0, $this->runCommand());
+        $tester = $this->executeCommand(self::COMMAND);
+        $tester->assertCommandIsSuccessful();
+        self::assertSame('', $tester->getDisplay());
 
         $requests = $this->shipmondo->requests('POST', 'sales_orders');
         self::assertCount(1, $requests);
@@ -147,7 +150,9 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
     {
         $this->fixtures->createOrder($this->fixtures->createCustomer(), paid: false);
 
-        self::assertSame(0, $this->runCommand());
+        $tester = $this->executeCommand(self::COMMAND);
+        $tester->assertCommandIsSuccessful();
+        self::assertSame('', $tester->getDisplay());
         self::assertSame([], $this->shipmondo->requests());
     }
 
@@ -169,7 +174,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         ;
 
         try {
-            $this->runCommand();
+            $this->executeCommand(self::COMMAND);
         } catch (\Throwable) {
             // whether the command reports the failure is up to the fix; what it leaves behind is what matters
         }
@@ -200,15 +205,5 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
             $template(664115, 'GLS pickup point (SE)', 'SE'),
             $template(664114, 'PostNord (DK)', 'DK'),
         ], ['X-Total-Pages' => '1']);
-    }
-
-    private function runCommand(): int
-    {
-        $kernel = static::$kernel;
-        Assert::notNull($kernel);
-
-        $tester = new CommandTester((new Application($kernel))->find('setono:sylius-shipmondo:upload-orders'));
-
-        return $tester->execute([]);
     }
 }

@@ -44,7 +44,7 @@ PHPUnit bootstraps the test app via `tests/Application/config/bootstrap.php` (se
 - Tests that need real commits or the consumers' DBAL 3 semantics (no savepoints) override `commitsForReal()` to return `true`, as `OrderCancellationTest` does. They get a plain connection without savepoints, read through a second connection (only committed data), and the baseline is restored afterwards.
 - The Shipmondo API is never called. `FunctionalTestCase` replaces the `setono_sylius_shipmondo.client` service with a real SDK client whose PSR-18 transport is `Support\ShipmondoApiStub`. Register responses per method and path, e.g. `$this->shipmondo->respond('DELETE', 'sales_orders/123', 204, null)`, and assert on `$this->shipmondo->requests()`. A request without a registered response fails the test.
 - `Support\ShopFixtures` creates customers and real orders through Sylius's factories and checkout state machine.
-- Assert persisted state via `orderRow()` or `database()`.
+- Assert persisted state via `orderRow()` or `database()`. Run console commands with `executeCommand()` (an `Application` from the kernel plus a `CommandTester`, as in Symfony's "Testing Commands" docs), then `$tester->assertCommandIsSuccessful()`.
 - When the frontend is not built, empty Webpack Encore builds are written to `tests/Application/public/build/{admin,shop}` for the run and removed afterwards.
 - A test that demonstrates an open bug calls `self::skipUntilFixed(<issue number>)`.
 
