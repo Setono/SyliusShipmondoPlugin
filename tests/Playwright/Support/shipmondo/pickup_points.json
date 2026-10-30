@@ -1,0 +1,58 @@
+[
+  {
+    "number": "95115",
+    "id": "95115",
+    "company_name": "Spar Kornblomstvej",
+    "name": "Spar Kornblomstvej",
+    "address": "Kornblomstvej 50",
+    "address2": "Pakkeshop: 95115",
+    "zipcode": "9000",
+    "city": "Aalborg",
+    "country": "DK",
+    "distance": null,
+    "longitude": 9.902733802795,
+    "latitude": 57.027282714844,
+    "agent": "gls",
+    "carrier_code": "gls",
+    "routing_code": null,
+    "opening_hours": [
+      "Monday: 08:00-20:00",
+      "Tuesday: 08:00-20:00",
+      "Wednesday: 08:00-20:00",
+      "Thursday: 08:00-20:00",
+      "Friday: 08:00-20:00",
+      "Saturday: 08:00-20:00",
+      "Sunday: 08:00-20:00"
+    ],
+    "in_delivery": true,
+    "out_delivery": true
+  },
+  {
+    "number": "95379",
+    "id": "95379",
+    "company_name": "Spar Øster Sundby",
+    "name": "Spar Øster Sundby",
+    "address": "Årestrupsvej 2",
+    "address2": "Pakkeshop: 95379",
+    "zipcode": "9000",
+    "city": "Aalborg",
+    "country": "DK",
+    "distance": null,
+    "longitude": 9.966386795044,
+    "latitude": 57.043327331543,
+    "agent": "gls",
+    "carrier_code": "gls",
+    "routing_code": null,
+    "opening_hours": [
+      "Monday: 08:00-21:00",
+      "Tuesday: 08:00-21:00",
+      "Wednesday: 08:00-21:00",
+      "Thursday: 08:00-21:00",
+      "Friday: 08:00-21:00",
+      "Saturday: 08:00-21:00",
+      "Sunday: 08:00-21:00"
+    ],
+    "in_delivery": true,
+    "out_delivery": true
+  }
+]

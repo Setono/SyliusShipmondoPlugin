@@ -48,6 +48,20 @@ PHPUnit bootstraps the test app via `tests/Application/config/bootstrap.php` (se
 - When the frontend is not built, empty Webpack Encore builds are written to `tests/Application/public/build/{admin,shop}` for the run and removed afterwards.
 - A test that demonstrates an open bug calls `self::skipUntilFixed(<issue number>)`.
 
+#### Playwright tests
+
+`tests/Playwright/` (testsuite `Playwright`, see its `README.md`) drives the admin and shop UI in a real Chromium with `playwright-php/playwright-symfony`, which handles the browser's requests in-process with the test's kernel. It reuses the functional suite's setup (`ShopFixtures`, DAMA, `ShipmondoApiStub`); `BrowserTestCase` reboots the kernel between requests and re-installs the stub.
+- The package requires PHP >= 8.2, so it is **not** in `composer.json`: CI installs it in the `browser-tests` job only, and the bundle (`config/bundles.php`) and its config (`config/packages/test/playwright.php`) are only loaded when it is installed. PHPStan and Rector skip `tests/Playwright/`.
+- Run it locally on PHP 8.2, then revert `composer.json` before committing:
+  ```bash
+  /opt/homebrew/opt/php@8.2/bin/php /usr/local/bin/composer require --dev --no-update "playwright-php/playwright-symfony:^0.11"
+  /opt/homebrew/opt/php@8.2/bin/php /usr/local/bin/composer update
+  /opt/homebrew/opt/php@8.2/bin/php vendor/bin/playwright-install chromium
+  (cd tests/Application && yarn install && yarn build && bin/console assets:install public)   # Node 20; copies, not --symlink
+  /opt/homebrew/opt/php@8.2/bin/php vendor/bin/phpunit --testsuite Playwright
+  git checkout composer.json && /opt/homebrew/opt/php@8.1/bin/php /usr/local/bin/composer update   # back to 8.1
+  ```
+
 ### Code Quality
 ```bash
 # Run static analysis
@@ -122,6 +136,7 @@ CI (`.github/workflows/build.yaml`) gates merges on the following — run them l
 - `lint:yaml` / `lint:twig` and `bin/console lint:container`
 - `vendor/bin/phpunit` (unit) and `vendor/bin/infection` (mutation tests); these jobs have no database
 - `vendor/bin/phpunit --testsuite Functional`, in the integration-tests job, which starts MySQL
+- `vendor/bin/phpunit --testsuite Playwright`, in the browser-tests job (PHP 8.2 only, installs playwright-symfony itself)
 
 The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires `symfony/webhook` + `symfony/remote-event`, so Symfony 5.4 is not supported). Coding-standards runs on PHP 8.1 — write syntax compatible with 8.1, not just the locally linked PHP.
 
@@ -203,7 +218,7 @@ The plugin extends these Sylius entities via traits:
 
 ## Testing Strategy
 
-Unit tests live in `tests/Unit/` and functional tests in `tests/Functional/`, with a full Sylius test application in `tests/Application/`.
+Unit tests live in `tests/Unit/`, functional tests in `tests/Functional/` and browser tests in `tests/Playwright/`, with a full Sylius test application in `tests/Application/`.
 The test app includes custom entity implementations in `tests/Application/Model/`.
 
 ## Agent skills
