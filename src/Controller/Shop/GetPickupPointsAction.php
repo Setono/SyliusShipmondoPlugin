@@ -76,17 +76,11 @@ final class GetPickupPointsAction
         // so we need to check if the shipment has a chosen pickup point and put that pickup point at the top of the list
         $chosenPickupPoint = self::resolveChosenPickupPoint($order);
 
-        usort($pickupPoints, static function (PickupPoint $a, PickupPoint $b) use ($chosenPickupPoint) {
-            if ($a->id === $chosenPickupPoint) {
-                return -1;
-            }
-
-            if ($b->id === $chosenPickupPoint) {
-                return 1;
-            }
-
-            return 0;
-        });
+        // true sorts after false, so comparing "is b chosen" with "is a chosen" moves the chosen pickup point first
+        usort(
+            $pickupPoints,
+            static fn (PickupPoint $a, PickupPoint $b): int => ($b->id === $chosenPickupPoint) <=> ($a->id === $chosenPickupPoint),
+        );
 
         return new JsonResponse([
             'pickupPoints' => $pickupPoints,
