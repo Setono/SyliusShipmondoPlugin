@@ -10,11 +10,13 @@ use Symfony\Component\HttpFoundation\Exception\SessionNotFoundException;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Session\FlashBagAwareSessionInterface;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Workflow\Event\CompletedEvent;
 
 /**
  * When a Sylius order is cancelled, delete its sales order in Shipmondo (if it was uploaded there) and
- * flash a message so the user knows it happened.
+ * flash a message so the user knows whether it was deleted, will be deleted (async transport) or could
+ * not be deleted. A failed deletion never blocks the cancellation (see DeleteOrderHandler).
  *
  * Sylius 1.14 runs the `sylius_order` state machine on winzou by default, but it is migrating to
  * Symfony Workflow — so we hook both backends: a winzou `after` callback on the `cancel` transition
@@ -36,9 +38,17 @@ final class OrderCancellationListener
             return;
         }
 
-        $this->commandBus->dispatch(new DeleteOrder($order));
+        $envelope = $this->commandBus->dispatch(new DeleteOrder($order));
 
-        $this->addFlash();
+        $handled = $envelope->last(HandledStamp::class);
+        if (null === $handled) {
+            // the command was routed to an async transport, so the sales order is deleted later
+            $this->addFlash('info', 'setono_sylius_shipmondo.order_will_be_deleted_in_shipmondo');
+        } elseif (true === $handled->getResult()) {
+            $this->addFlash('info', 'setono_sylius_shipmondo.order_deleted_in_shipmondo');
+        } else {
+            $this->addFlash('error', 'setono_sylius_shipmondo.order_not_deleted_in_shipmondo');
+        }
     }
 
     public function onOrderCancelled(CompletedEvent $event): void
@@ -49,7 +59,7 @@ final class OrderCancellationListener
         }
     }
 
-    private function addFlash(): void
+    private function addFlash(string $type, string $message): void
     {
         try {
             $session = $this->requestStack->getSession();
@@ -59,7 +69,7 @@ final class OrderCancellationListener
         }
 
         if ($session instanceof FlashBagAwareSessionInterface) {
-            $session->getFlashBag()->add('info', 'setono_sylius_shipmondo.order_deleted_in_shipmondo');
+            $session->getFlashBag()->add($type, $message);
         }
     }
 }

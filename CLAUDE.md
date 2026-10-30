@@ -128,22 +128,26 @@ The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires
 **Order Workflow**
 - Defined in `src/Workflow/OrderWorkflow.php`
 - States: pending → uploading_to_shipmondo → uploaded_to_shipmondo (or failed)
-- Transitions: `start_upload`, `complete_upload`, `fail`
+- Transitions: `start_upload`, `complete_upload`, `fail`, `reset` (uploaded_to_shipmondo → pending, when the sales order is deleted in Shipmondo)
 - Workflow name: `setono_sylius_shipmondo__order`
 - State stored in Order entity's `shipmondoState` property
 
 **Message Bus Architecture**
-- Commands: `UploadOrder`, `RegisterWebhooks` in `src/Message/Command/`
+- Commands: `UploadOrder`, `DeleteOrder`, `RegisterWebhooks` in `src/Message/Command/`
 - Handlers: Located in `src/Message/CommandHandler/`
 - Uses dedicated command bus: `setono_sylius_shipmondo.command_bus`
 - Bus middleware: doctrine_transaction, router_context
 
 **Webhook Handling**
 - Symfony webhook component integration
-- Remote events stored in database via `RemoteEvent` entity
 - Webhook routing identifier: `shipmondo`
-- Custom parser: `setono_sylius_shipmondo.webhook.webhook_parser`
-- Events processed through Symfony's RemoteEvent system
+- Custom parser: `setono_sylius_shipmondo.webhook.webhook_parser`, a thin adapter over the SDK's `WebhookParser` (verifies the HS256 signature, reads the `SMD-*` headers, unwraps the `data` envelope) that yields a `Webhook\RemoteEvent`
+- `WebhookConsumer` passes each event to `CompositeRemoteEventHandler`, which runs every `RemoteEventHandlerInterface` (auto-tagged `setono_sylius_shipmondo.remote_event_handler`): `FulfillOrderHandler`, `PaymentStateHandler`, `ResetUploadStateHandler` in `src/Webhook/Handler/`
+- `OrderResolver` links a payload to its Sylius order via `shipmondoId`, falling back to the order number
+
+**Order Cancellation**
+- `OrderCancellationListener` dispatches `DeleteOrder` when a Sylius order is cancelled, hooked on both state-machine backends (a winzou callback prepended by the extension, and a Symfony Workflow listener)
+- `DeleteOrderHandler` must not throw on Shipmondo failures: handled synchronously it runs inside Sylius's cancel transaction, and the bus's `doctrine_transaction` rollback would make the cancel fail
 
 ### Entity Extensions
 

@@ -13,8 +13,7 @@ composer require setono/sylius-shipmondo-plugin symfony/webhook
 
 ### Add plugin class to your `bundles.php`
 
-Make sure you add it before `SyliusGridBundle`, otherwise you'll get
-`You have requested a non-existent parameter "setono_sylius_shipmondo.model.remote_event.class".` exception.
+Make sure you add it before `SyliusGridBundle`.
 
 ```php
 <?php
@@ -51,8 +50,12 @@ Add the following variables to your `.env` file:
 SHIPMONDO_USERNAME=
 SHIPMONDO_KEY=
 SHIPMONDO_WEBHOOKS_KEY=
+SHIPMONDO_SANDBOX=false
 ###< setono/sylius-shipmondo-plugin ###
 ```
+
+`SHIPMONDO_WEBHOOKS_KEY` signs the webhooks Shipmondo sends you and must be at least 32 bytes long.
+Set `SHIPMONDO_SANDBOX=true` to use the Shipmondo sandbox instead of the production API.
 
 ### Override template
 

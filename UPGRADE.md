@@ -4,9 +4,17 @@
 
 2.x migrates the plugin from **`setono/shipmondo-php-sdk` v1 to v2**. The SDK reorganised its
 request/response classes (singularised namespaces, enums instead of class constants) and the
-`Client` gained a `sandbox` flag. For most installations the only required change is the new
-`SHIPMONDO_SANDBOX` environment variable — the renamed SDK classes only matter if you extend the
-plugin's data-mapping layer.
+`Client` gained a `sandbox` flag. It also makes the plugin react to incoming webhooks and delete the
+Shipmondo sales order when a Sylius order is cancelled.
+
+For most installations the required changes are:
+
+- define the new `SHIPMONDO_SANDBOX` environment variable (section 2)
+- make `SHIPMONDO_WEBHOOKS_KEY` at least 32 bytes long and re-run
+  `setono:sylius-shipmondo:register-webhooks` (section 4)
+- optionally drop the no longer used `setono_sylius_shipmondo__remote_event` table (section 4)
+
+The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
 > The plugin still targets **PHP 8.1+**, **Symfony 6.4** and **Sylius ~1.14** — those requirements
 > are unchanged.
@@ -96,7 +104,9 @@ nothing acted on them. In 2.x the plugin **reacts to webhooks immediately**:
   order once payment is complete. `orders / status_update` is also honoured for robustness, gated on the
   same `shipped_percent` reaching 100.
 - `orders / delete` (a sales order was deleted in Shipmondo) resets the order's Shipmondo upload state
-  (back to `pending`, clearing its `shipmondoId`), so the next `upload-orders` run re-uploads it. It is
+  (back to `pending` via the new `reset` transition, clearing its `shipmondoId`), so the next
+  `upload-orders` run re-uploads it. This only happens when the deleted sales order is the one the order
+  is linked to (its `shipmondoId`); deleting a duplicate with the same order number is ignored. It is
   deliberately *not* treated as a cancellation — cancelling an order is a Sylius-side decision.
 - `orders / payment_captured` completes the Sylius payment(s) → the order's payment state becomes `paid`
   (orders are uploaded while either `paid` or `authorized`, so an authorized payment can be captured
@@ -119,11 +129,27 @@ registering and when verifying).
 
 Because of this, the **write-only `RemoteEvent` Sylius resource/entity was removed**: the
 `setono_sylius_shipmondo__remote_event` table is no longer used and **can be dropped** (generate a
-migration in your app). If you referenced `Setono\SyliusShipmondoPlugin\Model\RemoteEvent(Interface)`
-or `RemoteEventFactory`, those are gone. (The unrelated `Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent`
-value object used by the webhook parser/handlers remains.)
+migration in your app).
 
-### Cancelling a Sylius order deletes its Shipmondo sales order
+Class, service and configuration changes, which only matter if you extend or reference them:
+
+| 1.x | 2.x |
+|---|---|
+| `Setono\SyliusShipmondoPlugin\RemoteEvent\RemoteEvent` (`getResource()` / `getAction()` return strings) | `Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent` (they return the `WebhookResourceName` / `WebhookAction` enums) |
+| `Setono\SyliusShipmondoPlugin\Model\RemoteEvent` / `RemoteEventInterface` | removed |
+| `Setono\SyliusShipmondoPlugin\Factory\RemoteEventFactory` / `RemoteEventFactoryInterface` | removed |
+| the `setono_sylius_shipmondo.resources.remote_event` config node and its `setono_sylius_shipmondo.model.remote_event.*` parameters | removed |
+| `Setono\SyliusShipmondoPlugin\RequestMatcher\HasQueryParameterRequestMatcher` | removed (webhooks are matched on their `SMD-*` headers) |
+| `Webhook\WebhookParser::__construct(string $webhooksKey)` | `__construct(Setono\Shipmondo\Webhook\WebhookParserInterface $shipmondoWebhookParser, string $webhooksKey)` |
+| `Webhook\WebhookConsumer::__construct(RemoteEventFactoryInterface, ManagerRegistry)` | `__construct(Webhook\Handler\RemoteEventHandlerInterface $remoteEventHandler)` |
+| `Registrar\Webhook::$action` / `$resource` are strings | they are the SDK's `WebhookAction` / `WebhookResourceName` enums |
+
+New: `Webhook\Handler\RemoteEventHandlerInterface` (see above), `Webhook\OrderResolverInterface`
+(service `setono_sylius_shipmondo.webhook.order_resolver`, links a webhook payload to its Sylius order),
+the `reset` transition (`OrderWorkflow::TRANSITION_RESET`, `uploaded_to_shipmondo` → `pending`) on the
+`setono_sylius_shipmondo__order` workflow, and the `Message\Command\DeleteOrder` command (section 5).
+
+### 5. Cancelling a Sylius order deletes its Shipmondo sales order
 
 When an order is cancelled in Sylius, the plugin deletes the corresponding sales order in Shipmondo (if it
 was uploaded) and flashes a message in the admin so the user knows it happened. The cancellation is caught
@@ -138,8 +164,14 @@ you don't want the Shipmondo API call inside the cancellation request. (Converse
 *in Shipmondo* resets the Sylius order's upload state so it is re-uploaded — see above — it is not treated
 as a cancellation.)
 
+A failing Shipmondo call never blocks the cancellation. A sales order that is already gone in Shipmondo
+(404) counts as deleted. Any other failure is logged, the order keeps its `shipmondoId`, and, when the
+command is handled synchronously, the admin sees an error telling them to delete the order in Shipmondo
+manually. **When `DeleteOrder` is routed to an async transport, a failure is only logged and is not
+retried** (see [#16](https://github.com/Setono/SyliusShipmondoPlugin/issues/16)), so watch the logs.
+
 ### Unchanged
 
-Shipping-method / payment-method mapping, webhook registration and order upload behave exactly as in
-1.x — only the underlying SDK types, the new `sandbox` switch, the new webhook reactions, and the new
-cancel-deletes-in-Shipmondo behaviour changed.
+Shipping-method / payment-method mapping and order upload behave exactly as in 1.x. Everything else that
+changed is described above: the SDK types, the `sandbox` switch, webhook verification and registration,
+the webhook reactions, and the cancel-deletes-in-Shipmondo behaviour.

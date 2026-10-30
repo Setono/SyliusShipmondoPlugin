@@ -53,6 +53,7 @@ final class ResetUploadStateHandlerTest extends TestCase
         // real captured payload of a deleted/archived Shipmondo sales order
         $payload = WebhookPayloadFixtures::load('orders_delete');
         $order = $this->prophesize(OrderInterface::class);
+        $order->getShipmondoId()->willReturn(37707018);
         $order->setShipmondoId(null)->shouldBeCalled();
         $orderRevealed = $order->reveal();
         $this->orderResolver->resolveFromPayload($payload)->willReturn($orderRevealed);
@@ -102,15 +103,61 @@ final class ResetUploadStateHandlerTest extends TestCase
     /**
      * @test
      */
+    public function it_does_nothing_when_the_payload_has_no_sales_order_id(): void
+    {
+        $payload = WebhookPayloadFixtures::load('orders_delete');
+        unset($payload['id']);
+        $this->expectNoInteraction();
+
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::Delete);
+    }
+
+    /**
+     * @test
+     */
+    public function it_does_nothing_when_the_order_is_linked_to_another_sales_order(): void
+    {
+        // e.g. a deleted duplicate of the order (same order_id, another sales order id)
+        $this->expectNoResetFor(11111111);
+    }
+
+    /**
+     * @test
+     */
+    public function it_does_nothing_when_the_order_is_no_longer_linked_to_a_sales_order(): void
+    {
+        // e.g. the delete echoed back after our own DeleteOrder, which already cleared the id
+        $this->expectNoResetFor(null);
+    }
+
+    /**
+     * @test
+     */
     public function it_does_nothing_when_the_upload_state_cannot_be_reset(): void
     {
         $payload = WebhookPayloadFixtures::load('orders_delete');
         $order = $this->prophesize(OrderInterface::class);
+        $order->getShipmondoId()->willReturn(37707018);
         $order->setShipmondoId(Argument::any())->shouldNotBeCalled();
         $orderRevealed = $order->reveal();
         $this->orderResolver->resolveFromPayload($payload)->willReturn($orderRevealed);
 
         $this->orderWorkflow->can($orderRevealed, OrderWorkflow::TRANSITION_RESET)->willReturn(false);
+        $this->orderWorkflow->apply(Argument::cetera())->shouldNotBeCalled();
+        $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
+
+        $this->handle($payload, WebhookResourceName::Orders, WebhookAction::Delete);
+    }
+
+    private function expectNoResetFor(?int $linkedShipmondoId): void
+    {
+        $payload = WebhookPayloadFixtures::load('orders_delete');
+        $order = $this->prophesize(OrderInterface::class);
+        $order->getShipmondoId()->willReturn($linkedShipmondoId);
+        $order->setShipmondoId(Argument::any())->shouldNotBeCalled();
+        $this->orderResolver->resolveFromPayload($payload)->willReturn($order->reveal());
+
+        $this->orderWorkflow->can(Argument::cetera())->shouldNotBeCalled();
         $this->orderWorkflow->apply(Argument::cetera())->shouldNotBeCalled();
         $this->managerRegistry->getManagerForClass(Argument::any())->shouldNotBeCalled();
 

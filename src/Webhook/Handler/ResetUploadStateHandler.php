@@ -39,8 +39,17 @@ final class ResetUploadStateHandler implements RemoteEventHandlerInterface
             return;
         }
 
-        $order = $this->orderResolver->resolveFromPayload($remoteEvent->getPayload());
-        if (null === $order) {
+        $payload = $remoteEvent->getPayload();
+        $shipmondoId = $payload['id'] ?? null;
+        if (!is_int($shipmondoId)) {
+            return;
+        }
+
+        // Only react when the deleted sales order is the one this order is linked to. The resolver falls back
+        // to the order number, so a deleted duplicate (same order_id, another id) must not unlink the order,
+        // and neither must the delete echoed back after our own DeleteOrder, which has already cleared the id.
+        $order = $this->orderResolver->resolveFromPayload($payload);
+        if (null === $order || $order->getShipmondoId() !== $shipmondoId) {
             return;
         }
 
