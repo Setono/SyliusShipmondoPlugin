@@ -39,10 +39,12 @@ PHPUnit bootstraps the test app via `tests/Application/config/bootstrap.php` (se
 #### Functional tests
 
 `tests/Functional/` (namespace `Tests\Setono\SyliusShipmondoPlugin\Functional\...`, testsuite `Functional`) boots the test app (`WebTestCase`) against the MySQL database in `DATABASE_URL`.
-- **The suite drops and recreates that database's schema once per run, and truncates every table before each test.** Locally, point it at a throwaway database in an untracked `tests/Application/.env.test.local`, e.g. `DATABASE_URL=mysql://root@127.0.0.1/setono_sylius_shipmondo_functional_test`. The database is created if it does not exist.
+- **The suite drops and recreates that database's schema once per run.** Locally, point it at a throwaway database in an untracked `tests/Application/.env.test.local`, e.g. `DATABASE_URL=mysql://root@127.0.0.1/setono_sylius_shipmondo_functional_test`. The database is created if it does not exist.
+- Isolation is `dama/doctrine-test-bundle` (registered for the `test` env; its PHPUnit extension is in `phpunit.xml.dist`). Every test runs in a transaction that is rolled back afterwards, on top of a baseline committed once per run (`Support\ShopFixtures::createBaseline()`: the shop and its admin, loaded per test via `$this->fixtures`). DAMA requires `use_savepoints: true` (set in `config/packages/test/dama_doctrine_test_bundle.yaml`), so in these tests nested transactions roll back to savepoints instead of marking the outer transaction rollback-only.
+- Tests that need real commits or the consumers' DBAL 3 semantics (no savepoints) override `commitsForReal()` to return `true`, as `OrderCancellationTest` does. They get a plain connection without savepoints, read through a second connection (only committed data), and the baseline is restored afterwards.
 - The Shipmondo API is never called. `FunctionalTestCase` replaces the `setono_sylius_shipmondo.client` service with a real SDK client whose PSR-18 transport is `Support\ShipmondoApiStub`. Register responses per method and path, e.g. `$this->shipmondo->respond('DELETE', 'sales_orders/123', 204, null)`, and assert on `$this->shipmondo->requests()`. A request without a registered response fails the test.
-- `Support\ShopFixtures` builds the shop and real orders through Sylius's factories and checkout state machine.
-- Assert persisted state via `orderRow()` or `observer()`, which read through a second connection, so they only see committed data.
+- `Support\ShopFixtures` creates customers and real orders through Sylius's factories and checkout state machine.
+- Assert persisted state via `orderRow()` or `database()`.
 - When the frontend is not built, empty Webpack Encore builds are written to `tests/Application/public/build/{admin,shop}` for the run and removed afterwards.
 - A test that demonstrates an open bug calls `self::skipUntilFixed(<issue number>)`.
 

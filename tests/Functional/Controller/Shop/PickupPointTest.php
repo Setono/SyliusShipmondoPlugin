@@ -92,8 +92,6 @@ final class PickupPointTest extends FunctionalTestCase
      */
     public function it_rejects_a_visitor_without_a_shipping_address(): void
     {
-        $this->fixtures->createShop();
-
         $this->browser->request('GET', self::ENDPOINT, ['shippingMethod' => ShopFixtures::SHIPPING_METHOD_CODE]);
 
         self::assertResponseStatusCodeSame(400);
@@ -136,7 +134,7 @@ final class PickupPointTest extends FunctionalTestCase
 
         self::assertResponseRedirects('/en_US/checkout/select-payment');
 
-        $stored = $this->observer()->fetchOne('SELECT shipmondoPickupPoint FROM sylius_shipment WHERE order_id = ?', [self::id($cart)]);
+        $stored = $this->database()->fetchOne('SELECT shipmondoPickupPoint FROM sylius_shipment WHERE order_id = ?', [self::id($cart)]);
         self::assertIsString($stored);
         $stored = json_decode($stored, true, 512, \JSON_THROW_ON_ERROR);
         self::assertIsArray($stored);
@@ -174,7 +172,6 @@ final class PickupPointTest extends FunctionalTestCase
 
     private function cartOfLoggedInCustomer(): OrderInterface
     {
-        $this->fixtures->createShop();
         $customer = $this->fixtures->createCustomer();
         $this->loginAs($this->fixtures->createShopUser($customer), 'shop');
 

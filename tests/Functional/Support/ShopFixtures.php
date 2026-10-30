@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Setono\SyliusShipmondoPlugin\Functional\Support;
 
 use Doctrine\ORM\EntityManagerInterface;
+use Doctrine\Persistence\ObjectRepository;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\PaymentMethodInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShipmentInterface;
@@ -38,6 +39,9 @@ use Webmozart\Assert\Assert;
  * Builds a minimal but real Sylius shop (one channel, one product, one shipping and one payment method) and
  * real orders for it, using Sylius's own factories and its checkout state machine — the same steps Sylius's
  * order fixtures take — so the orders look exactly like orders placed through the shop.
+ *
+ * The shop and its administrator are the baseline every test starts from: {@see self::createBaseline()} commits
+ * them once per run, and {@see self::load()} loads them into the entity manager of the test's kernel.
  */
 final class ShopFixtures
 {
@@ -59,6 +63,8 @@ final class ShopFixtures
 
     public const SHIPPING_FEE = 500;
 
+    public const ADMIN_EMAIL = 'admin@example.com';
+
     public ChannelInterface $channel;
 
     public ShippingMethodInterface $shippingMethod;
@@ -71,7 +77,37 @@ final class ShopFixtures
     {
     }
 
-    public function createShop(): self
+    /**
+     * Loads the baseline shop into the current entity manager
+     */
+    public function load(): self
+    {
+        $this->channel = $this->findOneBy('sylius.repository.channel', ChannelInterface::class, ['code' => self::CHANNEL_CODE]);
+        $this->shippingMethod = $this->findOneBy('sylius.repository.shipping_method', ShippingMethodInterface::class, ['code' => self::SHIPPING_METHOD_CODE]);
+        $this->paymentMethod = $this->findOneBy('sylius.repository.payment_method', PaymentMethodInterface::class, ['code' => self::PAYMENT_METHOD_CODE]);
+        $this->variant = $this->findOneBy('sylius.repository.product_variant', ProductVariantInterface::class, ['code' => 'T_SHIRT_BLUE']);
+
+        return $this;
+    }
+
+    /**
+     * The baseline administrator
+     */
+    public function admin(): AdminUserInterface
+    {
+        return $this->findOneBy('sylius.repository.admin_user', AdminUserInterface::class, ['email' => self::ADMIN_EMAIL]);
+    }
+
+    /**
+     * Creates the shop and its administrator
+     */
+    public function createBaseline(): void
+    {
+        $this->createShop();
+        $this->createAdmin();
+    }
+
+    private function createShop(): void
     {
         $locale = $this->create('sylius.factory.locale', LocaleInterface::class);
         $locale->setCode(self::LOCALE_CODE);
@@ -156,22 +192,18 @@ final class ShopFixtures
         $this->variant = $variant;
 
         $this->persist($locale, $currency, $country, $zone, $channel, $shippingMethod, $paymentMethod, $product);
-
-        return $this;
     }
 
-    public function createAdmin(): AdminUserInterface
+    private function createAdmin(): void
     {
         $admin = $this->create('sylius.factory.admin_user', AdminUserInterface::class);
-        $admin->setEmail('admin@example.com');
+        $admin->setEmail(self::ADMIN_EMAIL);
         $admin->setUsername('admin');
         $admin->setPlainPassword('admin');
         $admin->setEnabled(true);
         $admin->setLocaleCode(self::LOCALE_CODE);
 
         $this->persist($admin);
-
-        return $admin;
     }
 
     public function createCustomer(string $email = 'customer@example.com'): CustomerInterface
@@ -329,6 +361,24 @@ final class ShopFixtures
         }
 
         return $object;
+    }
+
+    /**
+     * @template T of object
+     *
+     * @param class-string<T> $class
+     * @param array<string, mixed> $criteria
+     *
+     * @return T
+     */
+    private function findOneBy(string $repositoryId, string $class, array $criteria): object
+    {
+        $entity = $this->service($repositoryId, ObjectRepository::class)->findOneBy($criteria);
+        if (!$entity instanceof $class) {
+            throw new \UnexpectedValueException(sprintf('The baseline %s matching %s does not exist', $class, (string) json_encode($criteria)));
+        }
+
+        return $entity;
     }
 
     /**

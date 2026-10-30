@@ -17,10 +17,33 @@ use Webmozart\Assert\Assert;
  * route: ResourceController::applyStateMachineTransitionAction → Sylius's ResourceUpdateHandler, which opens a
  * database transaction around the `cancel` transition, inside which the plugin dispatches DeleteOrder on its
  * command bus (whose doctrine_transaction middleware nests another transaction).
+ *
+ * These tests are about whether that cancellation is really committed, under the nested-transaction semantics
+ * applications using the plugin have (DBAL 3 without savepoints, where a rolled-back inner transaction marks the
+ * outer one rollback-only). So they run outside DAMA's rolled-back transaction, without savepoints, and read the
+ * result through a separate connection.
  */
 final class OrderCancellationTest extends FunctionalTestCase
 {
     private const SHIPMONDO_ID = 123456;
+
+    protected static function commitsForReal(): bool
+    {
+        return true;
+    }
+
+    /**
+     * @test
+     */
+    public function it_runs_with_committing_transactions_nested_without_savepoints(): void
+    {
+        $connection = $this->connection();
+        self::assertFalse($connection->getNestTransactionsWithSavepoints());
+
+        // a write committed on the application's connection is visible to a separate connection
+        $connection->executeStatement('UPDATE sylius_channel SET name = ? WHERE code = ?', ['Committed', 'WEB']);
+        self::assertSame('Committed', $this->database()->fetchOne('SELECT name FROM sylius_channel WHERE code = ?', ['WEB']));
+    }
 
     /**
      * @test
@@ -86,7 +109,6 @@ final class OrderCancellationTest extends FunctionalTestCase
      */
     public function it_does_not_call_shipmondo_when_an_order_that_was_never_uploaded_is_cancelled(): void
     {
-        $this->fixtures->createShop();
         $order = $this->fixtures->createOrder($this->fixtures->createCustomer());
 
         $this->cancelInAdmin($order);
@@ -119,7 +141,6 @@ final class OrderCancellationTest extends FunctionalTestCase
 
     private function uploadedOrder(): OrderInterface
     {
-        $this->fixtures->createShop();
         $order = $this->fixtures->createOrder($this->fixtures->createCustomer());
         $this->fixtures->markAsUploaded($order, self::SHIPMONDO_ID);
 
@@ -131,7 +152,7 @@ final class OrderCancellationTest extends FunctionalTestCase
      */
     private function cancelInAdmin(OrderInterface $order): void
     {
-        $this->loginAs($this->fixtures->createAdmin(), 'admin');
+        $this->loginAs($this->fixtures->admin(), 'admin');
 
         $crawler = $this->browser->request('GET', sprintf('/admin/orders/%d', self::id($order)));
         self::assertResponseIsSuccessful();

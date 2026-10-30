@@ -43,7 +43,6 @@ final class ShipmondoWebhookTest extends FunctionalTestCase
      */
     public function it_finds_the_order_by_its_number_when_the_sales_order_id_is_not_linked(): void
     {
-        $this->fixtures->createShop();
         $order = $this->fixtures->createOrder($this->fixtures->createCustomer());
 
         // e.g. a sales order created in Shipmondo by another integration: only order_id (the order number) matches
@@ -188,7 +187,6 @@ final class ShipmondoWebhookTest extends FunctionalTestCase
 
     private function uploadedOrder(bool $authorized = false): OrderInterface
     {
-        $this->fixtures->createShop();
         $order = $this->fixtures->createOrder($this->fixtures->createCustomer(), paid: !$authorized, authorized: $authorized);
         $this->fixtures->markAsUploaded($order, self::SHIPMONDO_ID);
 
@@ -256,7 +254,7 @@ final class ShipmondoWebhookTest extends FunctionalTestCase
     private function shipmentStates(OrderInterface $order): array
     {
         /** @var list<string> $states */
-        $states = $this->observer()->fetchFirstColumn('SELECT state FROM sylius_shipment WHERE order_id = ?', [self::id($order)]);
+        $states = $this->database()->fetchFirstColumn('SELECT state FROM sylius_shipment WHERE order_id = ?', [self::id($order)]);
 
         return $states;
     }
@@ -267,7 +265,7 @@ final class ShipmondoWebhookTest extends FunctionalTestCase
     private function paymentStates(OrderInterface $order): array
     {
         /** @var list<string> $states */
-        $states = $this->observer()->fetchFirstColumn('SELECT state FROM sylius_payment WHERE order_id = ? ORDER BY id', [self::id($order)]);
+        $states = $this->database()->fetchFirstColumn('SELECT state FROM sylius_payment WHERE order_id = ? ORDER BY id', [self::id($order)]);
 
         return $states;
     }

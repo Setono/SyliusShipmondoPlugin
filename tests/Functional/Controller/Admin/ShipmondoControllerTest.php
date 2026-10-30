@@ -173,7 +173,7 @@ final class ShipmondoControllerTest extends FunctionalTestCase
 
         self::assertResponseRedirects('/admin/shipmondo');
         self::assertCount(11, $this->shipmondo->requests('POST', 'webhooks'));
-        self::assertSame(1, self::nullableInt($this->observer()->fetchOne('SELECT COUNT(*) FROM setono_sylius_shipmondo__registered_webhooks')));
+        self::assertSame(1, self::nullableInt($this->database()->fetchOne('SELECT COUNT(*) FROM setono_sylius_shipmondo__registered_webhooks')));
 
         $this->respondWithGatewaysAndTemplates();
         $this->browser->followRedirect();
@@ -197,8 +197,7 @@ final class ShipmondoControllerTest extends FunctionalTestCase
 
     private function logIn(): void
     {
-        $this->fixtures->createShop();
-        $this->loginAs($this->fixtures->createAdmin(), 'admin');
+        $this->loginAs($this->fixtures->admin(), 'admin');
     }
 
     private function respondWithGatewaysAndTemplates(): void
@@ -229,7 +228,7 @@ final class ShipmondoControllerTest extends FunctionalTestCase
 
     private function paymentMethodShipmondoId(): ?int
     {
-        $id = $this->observer()->fetchOne('SELECT shipmondoId FROM sylius_payment_method WHERE code = ?', [ShopFixtures::PAYMENT_METHOD_CODE]);
+        $id = $this->database()->fetchOne('SELECT shipmondoId FROM sylius_payment_method WHERE code = ?', [ShopFixtures::PAYMENT_METHOD_CODE]);
 
         return self::nullableInt($id);
     }
@@ -239,7 +238,7 @@ final class ShipmondoControllerTest extends FunctionalTestCase
      */
     private function allowedShipmentTemplates(): array
     {
-        $json = $this->observer()->fetchOne('SELECT allowedShipmentTemplates FROM sylius_shipping_method WHERE code = ?', [ShopFixtures::SHIPPING_METHOD_CODE]);
+        $json = $this->database()->fetchOne('SELECT allowedShipmentTemplates FROM sylius_shipping_method WHERE code = ?', [ShopFixtures::SHIPPING_METHOD_CODE]);
         self::assertIsString($json);
 
         /** @var list<int> $templates */

@@ -101,7 +101,7 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
     private function registeredVersions(): array
     {
         /** @var list<string> $versions */
-        $versions = $this->observer()->fetchFirstColumn('SELECT version FROM setono_sylius_shipmondo__registered_webhooks WHERE registeredAt IS NOT NULL');
+        $versions = $this->database()->fetchFirstColumn('SELECT version FROM setono_sylius_shipmondo__registered_webhooks WHERE registeredAt IS NOT NULL');
 
         return $versions;
     }

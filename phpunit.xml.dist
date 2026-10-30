@@ -22,4 +22,8 @@
         <env name="APP_ENV" value="test"/>
         <env name="SHELL_VERBOSITY" value="-1"/>
     </php>
+    <!-- Rolls back the Functional suite's database changes after every test; the Unit suite does not touch a database -->
+    <extensions>
+        <extension class="DAMA\DoctrineTestBundle\PHPUnit\PHPUnitExtension"/>
+    </extensions>
 </phpunit>

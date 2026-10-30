@@ -96,8 +96,7 @@ final class AdminIntegrationTest extends FunctionalTestCase
 
     private function logIn(): void
     {
-        $this->fixtures->createShop();
-        $this->loginAs($this->fixtures->createAdmin(), 'admin');
+        $this->loginAs($this->fixtures->admin(), 'admin');
     }
 
     private function shippingMethodForm(): Form
@@ -115,7 +114,7 @@ final class AdminIntegrationTest extends FunctionalTestCase
      */
     private function pickupPointColumns(): array
     {
-        $row = $this->observer()->fetchAssociative(
+        $row = $this->database()->fetchAssociative(
             'SELECT pickupPointDelivery, carrierCode FROM sylius_shipping_method WHERE code = ?',
             [ShopFixtures::SHIPPING_METHOD_CODE],
         );

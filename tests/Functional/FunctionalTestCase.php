@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Setono\SyliusShipmondoPlugin\Functional;
 
+use DAMA\DoctrineTestBundle\Doctrine\DBAL\StaticDriver;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\ORM\EntityManagerInterface;
@@ -18,13 +19,19 @@ use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\TestApplication;
 use Webmozart\Assert\Assert;
 
 /**
- * Boots the real test application against MySQL (DATABASE_URL), with an empty database and the Shipmondo API
- * stubbed at the HTTP boundary: the plugin's `setono_sylius_shipmondo.client` service is replaced with a real
- * SDK client whose PSR-18 transport is {@see ShipmondoApiStub}.
+ * Boots the real test application against MySQL (DATABASE_URL), starting from the baseline shop
+ * ({@see ShopFixtures}), with the Shipmondo API stubbed at the HTTP boundary: the plugin's
+ * `setono_sylius_shipmondo.client` service is replaced with a real SDK client whose PSR-18 transport is
+ * {@see ShipmondoApiStub}.
+ *
+ * Every test runs inside a transaction that dama/doctrine-test-bundle rolls back afterwards. DAMA needs DBAL
+ * savepoints for that, so in these tests the application's nested transactions use savepoints. Tests that depend
+ * on real commits, or on the nested-transaction semantics consumers have (DBAL 3 without savepoints), override
+ * {@see self::commitsForReal()}.
  *
  * The browser does not reboot the kernel between requests, so the stub stays in place for the whole test.
  * Entities loaded before a request are detached afterwards (the entity manager is cleared between requests),
- * so tests assert on persisted state by reading it back from the database.
+ * so tests assert on persisted state by reading it back through {@see self::database()}.
  */
 abstract class FunctionalTestCase extends WebTestCase
 {
@@ -35,6 +42,16 @@ abstract class FunctionalTestCase extends WebTestCase
     protected ShopFixtures $fixtures;
 
     private ?Connection $observer = null;
+
+    /**
+     * Return true to run the test outside DAMA's rolled-back transaction: the application gets a plain connection
+     * whose transactions really commit and nest without savepoints, as in an application using the plugin with
+     * DBAL 3's defaults. Such a test empties the database and restores the baseline afterwards.
+     */
+    protected static function commitsForReal(): bool
+    {
+        return false;
+    }
 
     protected function setUp(): void
     {
@@ -47,12 +64,18 @@ abstract class FunctionalTestCase extends WebTestCase
         $this->shipmondo = new ShipmondoApiStub();
         static::getContainer()->set('setono_sylius_shipmondo.client', $this->shipmondo->client());
 
+        if (static::commitsForReal()) {
+            // DAMA only takes over connections opened while static connections are kept
+            StaticDriver::setKeepStaticConnections(false);
+            $this->connection()->close();
+            $this->connection()->setNestTransactionsWithSavepoints(false);
+        }
+
         $kernel = static::$kernel;
         Assert::notNull($kernel);
-        TestApplication::prepare($kernel);
-        TestApplication::purgeDatabase($this->connection());
+        TestApplication::prepare($kernel, static::getContainer());
 
-        $this->fixtures = new ShopFixtures(static::getContainer());
+        $this->fixtures = (new ShopFixtures(static::getContainer()))->load();
     }
 
     protected function tearDown(): void
@@ -62,7 +85,24 @@ abstract class FunctionalTestCase extends WebTestCase
         $this->observer?->close();
         $this->observer = null;
 
+        $restoreFailure = null;
+        if (static::commitsForReal()) {
+            try {
+                TestApplication::restoreBaseline(static::getContainer());
+                $this->connection()->close();
+            } catch (\Throwable $e) {
+                $restoreFailure = $e;
+            } finally {
+                StaticDriver::setKeepStaticConnections(true);
+            }
+        }
+
+        // shut the kernel down even when restoring failed, so a failing test cannot break the ones after it
         parent::tearDown();
+
+        if (null !== $restoreFailure) {
+            throw $restoreFailure;
+        }
 
         self::assertSame([], $unexpectedRequests, 'The test made Shipmondo requests it did not stub');
     }
@@ -84,22 +124,29 @@ abstract class FunctionalTestCase extends WebTestCase
     }
 
     /**
-     * A second database connection, separate from the application's. Reading through it only ever sees
-     * committed data, so an assertion cannot be fooled by a transaction the application left open.
+     * The connection assertions read the database through.
+     *
+     * Normally that is the application's own connection, which sees the test's (uncommitted) transaction. A test
+     * that commits for real reads through a second connection instead, which only ever sees committed data, so
+     * an assertion cannot be fooled by a transaction the application left open.
      */
-    protected function observer(): Connection
+    protected function database(): Connection
     {
+        if (!static::commitsForReal()) {
+            return $this->connection();
+        }
+
         return $this->observer ??= DriverManager::getConnection($this->connection()->getParams());
     }
 
     /**
-     * Reads an order's committed row straight from the database
+     * Reads an order's row straight from the database
      *
      * @return array{state: string, checkout_state: string, payment_state: string, shipping_state: string, shipmondo_state: string, shipmondo_id: int|null}
      */
     protected function orderRow(int $orderId): array
     {
-        $row = $this->observer()->fetchAssociative(
+        $row = $this->database()->fetchAssociative(
             'SELECT state, checkout_state, payment_state, shipping_state, shipmondoState AS shipmondo_state, shipmondoId AS shipmondo_id FROM sylius_order WHERE id = ?',
             [$orderId],
         );

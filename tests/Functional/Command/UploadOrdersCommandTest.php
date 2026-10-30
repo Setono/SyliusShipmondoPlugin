@@ -29,7 +29,6 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
      */
     public function it_uploads_the_paid_and_authorized_orders_and_links_them_to_their_sales_orders(): void
     {
-        $this->fixtures->createShop();
         $this->fixtures->shippingMethod->setAllowedShipmentTemplates([664116, 664115]);
         $customer = $this->fixtures->createCustomer();
 
@@ -80,7 +79,6 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
      */
     public function it_maps_the_order_to_a_shipmondo_sales_order(): void
     {
-        $this->fixtures->createShop();
         $this->fixtures->shippingMethod->setAllowedShipmentTemplates([664116, 664115]);
         $order = $this->fixtures->createOrder($this->fixtures->createCustomer(), pickupPoint: self::PICKUP_POINT);
 
@@ -147,7 +145,6 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
      */
     public function it_does_nothing_when_no_order_is_ready_for_upload(): void
     {
-        $this->fixtures->createShop();
         $this->fixtures->createOrder($this->fixtures->createCustomer(), paid: false);
 
         self::assertSame(0, $this->runCommand());
@@ -161,7 +158,6 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
     {
         self::skipUntilFixed(17);
 
-        $this->fixtures->createShop();
         $customer = $this->fixtures->createCustomer();
         $rejected = $this->fixtures->createOrder($customer);
         $accepted = $this->fixtures->createOrder($customer);
