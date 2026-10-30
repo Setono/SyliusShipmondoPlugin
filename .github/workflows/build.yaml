@@ -330,9 +330,10 @@ jobs:
             -   name: "Start the test application"
                 run: |
                     (cd tests/Application && bin/console cache:warmup)
-                    PHP_CLI_SERVER_WORKERS=4 php -S 127.0.0.1:8080 -t tests/Application/public > /tmp/php-server.log 2>&1 &
+                    # variables_order=EGPCS exposes APP_ENV and DATABASE_URL to the app; the built-in server does not put them in $_SERVER
+                    PHP_CLI_SERVER_WORKERS=4 php -d variables_order=EGPCS -S 127.0.0.1:8080 -t tests/Application/public > /tmp/php-server.log 2>&1 &
                     for attempt in $(seq 1 30); do
-                        curl --silent --fail --output /dev/null "$E2E_BASE_URL/en_US/" && exit 0
+                        curl --silent --fail --output /dev/null --dump-header - "$E2E_BASE_URL/en_US/" | grep --quiet --ignore-case '^x-shipmondo-stub: active' && exit 0
                         sleep 2
                     done
                     cat /tmp/php-server.log
