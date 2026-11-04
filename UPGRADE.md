@@ -13,7 +13,8 @@ For most installations the required changes are:
 - make `SHIPMONDO_WEBHOOKS_KEY` at least 32 bytes long and re-run
   `setono:sylius-shipmondo:register-webhooks` (section 4)
 - optionally drop the no longer used `setono_sylius_shipmondo__remote_event` table (section 4)
-- put orders that 1.x left stuck in `uploading_to_shipmondo` back to pending (section 6)
+- check the orders that 1.x left stuck in `uploading_to_shipmondo` against Shipmondo, then link or reset them
+  (section 6)
 - if you monitor the `setono:sylius-shipmondo:upload-orders` cron job, note that it now fails only when the upload
   run stops early (section 6)
 
@@ -208,12 +209,30 @@ for good. In 2.x, `Uploader\OrderUploader` settles every failure on the order:
   [#34](https://github.com/Setono/SyliusShipmondoPlugin/issues/34)). Likewise, an order that changes while Shipmondo
   is called is still linked to its new sales order.
 
-Orders that 1.x left stuck in `uploading_to_shipmondo` without a sales order are never uploaded. Put them back to
-pending once (use your order entity's class):
+Orders that 1.x left stuck in `uploading_to_shipmondo` without a Shipmondo id are never uploaded. Most of them got
+stuck because Shipmondo refused the upload, but **some may have a sales order in Shipmondo after all**: the upload can
+fail after Shipmondo created it, e.g. when its answer was lost or timed out, or when the order changed during the upload.
+Putting such an order back to pending uploads it a second time, and it could be packed and shipped twice. So, once
+(use your order entity's class):
 
-```bash
-bin/console doctrine:query:dql "UPDATE App\Entity\Order\Order o SET o.shipmondoState = 'pending' WHERE o.shipmondoState = 'uploading_to_shipmondo' AND o.shipmondoId IS NULL"
-```
+1. List the stuck orders:
+
+   ```bash
+   bin/console doctrine:query:dql "SELECT o.id, o.number FROM App\Entity\Order\Order o WHERE o.shipmondoState = 'uploading_to_shipmondo' AND o.shipmondoId IS NULL"
+   ```
+
+2. Search Shipmondo's sales orders for each order number. Link an order Shipmondo has a sales order for, using that
+   sales order's id (`123456`) and the order's number (`000001234`):
+
+   ```bash
+   bin/console doctrine:query:dql "UPDATE App\Entity\Order\Order o SET o.shipmondoState = 'uploaded_to_shipmondo', o.shipmondoId = 123456 WHERE o.number = '000001234' AND o.shipmondoState = 'uploading_to_shipmondo' AND o.shipmondoId IS NULL"
+   ```
+
+3. Put the rest back to pending, so the next upload run uploads them:
+
+   ```bash
+   bin/console doctrine:query:dql "UPDATE App\Entity\Order\Order o SET o.shipmondoState = 'pending' WHERE o.shipmondoState = 'uploading_to_shipmondo' AND o.shipmondoId IS NULL"
+   ```
 
 Only if you extend or call the upload code:
 
