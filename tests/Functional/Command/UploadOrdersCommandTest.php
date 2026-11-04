@@ -332,6 +332,80 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         self::assertSame(1002, $this->orderRow(self::id($other))['shipmondo_id']);
     }
 
+    /**
+     * The upload command carries the order's version from when the upload run put the order in uploading, and the
+     * handler gets that same order back, so the version check can't notice a cancellation while Shipmondo is called
+     *
+     * @test
+     */
+    public function it_deletes_the_sales_order_of_an_order_that_was_cancelled_while_shipmondo_was_called(): void
+    {
+        $customer = $this->fixtures->createCustomer();
+        $cancelled = $this->fixtures->createOrder($customer);
+        $other = $this->fixtures->createOrder($customer);
+
+        // an admin cancels the order while its sales order is created, so the cancellation finds no sales order to delete
+        $this->cancelWhenMapped($cancelled);
+
+        $this->shipmondo
+            ->respond('GET', 'shipment_templates', 200, [])
+            ->respond('POST', 'sales_orders', 201, ['id' => 1001])
+            ->respond('DELETE', 'sales_orders/1001', 204, null)
+            ->respond('POST', 'sales_orders', 201, ['id' => 1002])
+        ;
+
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+
+        self::assertCount(1, $this->shipmondo->requests('DELETE', 'sales_orders/1001'));
+        $cancelledRow = $this->orderRow(self::id($cancelled));
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_CANCELLED, null], [$cancelledRow['shipmondo_state'], $cancelledRow['shipmondo_id']]);
+        self::assertSame(1002, $this->orderRow(self::id($other))['shipmondo_id']);
+    }
+
+    /**
+     * @test
+     *
+     * @dataProvider failedStatusCodes
+     */
+    public function it_cancels_an_order_that_was_cancelled_while_its_upload_failed(int $statusCode): void
+    {
+        $order = $this->fixtures->createOrder($this->fixtures->createCustomer());
+        $this->cancelWhenMapped($order);
+
+        $this->shipmondo
+            ->respond('GET', 'shipment_templates', 200, [])
+            ->respond('POST', 'sales_orders', $statusCode, ['error' => 'No'])
+        ;
+
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+
+        $row = $this->orderRow(self::id($order));
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_CANCELLED, null], [$row['shipmondo_state'], $row['shipmondo_id']]);
+    }
+
+    /**
+     * @return iterable<string, array{int}>
+     */
+    public static function failedStatusCodes(): iterable
+    {
+        yield 'rejected upload (failed)' => [422];
+        yield 'temporary failure (back to pending)' => [500];
+    }
+
+    /**
+     * Cancels the order behind the upload run's back while its sales order is created, as an admin in another request
+     * would: the cancellation leaves an order in uploading to its upload
+     */
+    private function cancelWhenMapped(OrderInterface $order): void
+    {
+        $this->onceWhen(SalesOrderMappedEvent::class, function () use ($order): void {
+            $this->connection()->executeStatement(
+                'UPDATE sylius_order SET state = ?, version = version + 1 WHERE id = ?',
+                [OrderInterface::STATE_CANCELLED, self::id($order)],
+            );
+        });
+    }
+
     private function respondWithShipmentTemplates(): void
     {
         $template = static fn (int $id, string $name, string $receiverCountry): array => [

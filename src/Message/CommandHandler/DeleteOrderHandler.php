@@ -9,17 +9,20 @@ use Setono\Shipmondo\Client\ClientInterface;
 use Setono\Shipmondo\Exception\NotFoundException;
 use Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
+use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Component\Order\Repository\OrderRepositoryInterface;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
+use Symfony\Component\Workflow\WorkflowInterface;
 use Webmozart\Assert\Assert;
 
 /**
- * Deletes an order's sales order in Shipmondo.
+ * Deletes an order's sales order in Shipmondo. Once it is gone, the order is no longer uploaded: a cancelled order
+ * becomes cancelled, any other order goes back to pending to be uploaded again.
  *
  * Handled synchronously (the default), this runs inside the Sylius order cancellation, so a failing
  * Shipmondo call must not throw: the command bus's doctrine_transaction middleware would roll back its
  * nested transaction, which marks the cancellation's own transaction rollback-only and makes the cancel
- * fail. A failure is logged instead, and the order keeps its Shipmondo id.
+ * fail. A failure is logged instead, and the order stays uploaded and linked to the sales order.
  *
  * Returns whether the sales order is gone from Shipmondo, so the dispatcher can tell the user.
  */
@@ -28,6 +31,7 @@ final class DeleteOrderHandler
     public function __construct(
         private readonly OrderRepositoryInterface $orderRepository,
         private readonly ClientInterface $shipmondoClient,
+        private readonly WorkflowInterface $orderWorkflow,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -60,7 +64,10 @@ final class DeleteOrderHandler
             return false;
         }
 
-        $order->setShipmondoId(null);
+        $transition = $this->orderWorkflow->can($order, OrderWorkflow::TRANSITION_CANCEL) ? OrderWorkflow::TRANSITION_CANCEL : OrderWorkflow::TRANSITION_RESET;
+        if ($this->orderWorkflow->can($order, $transition)) {
+            $this->orderWorkflow->apply($order, $transition);
+        }
 
         return true;
     }

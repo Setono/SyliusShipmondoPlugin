@@ -23,6 +23,7 @@ final class OrderWorkflowTest extends TestCase
             OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO,
             OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO,
             OrderInterface::SHIPMONDO_STATE_FAILED,
+            OrderInterface::SHIPMONDO_STATE_CANCELLED,
         ], OrderWorkflow::getStates());
     }
 
@@ -33,7 +34,7 @@ final class OrderWorkflowTest extends TestCase
     {
         $transitions = OrderWorkflow::getTransitions();
 
-        self::assertCount(5, $transitions);
+        self::assertCount(6, $transitions);
         self::assertContainsOnlyInstancesOf(Transition::class, $transitions);
 
         $byName = [];
@@ -85,6 +86,33 @@ final class OrderWorkflowTest extends TestCase
             [OrderInterface::SHIPMONDO_STATE_PENDING],
             $byName[OrderWorkflow::TRANSITION_RETRY]->getTos(),
         );
+
+        self::assertSame(
+            [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_FAILED, OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO],
+            $byName[OrderWorkflow::TRANSITION_CANCEL]->getFroms(),
+        );
+        self::assertSame(
+            [OrderInterface::SHIPMONDO_STATE_CANCELLED],
+            $byName[OrderWorkflow::TRANSITION_CANCEL]->getTos(),
+        );
+    }
+
+    /**
+     * @test
+     */
+    public function it_builds_a_workflow_that_links_an_order_to_the_sales_order_it_was_uploaded_as(): void
+    {
+        $workflow = OrderWorkflow::getWorkflow(new EventDispatcher());
+        $order = new Order();
+        $workflow->apply($order, OrderWorkflow::TRANSITION_START_UPLOAD);
+
+        $workflow->apply($order, OrderWorkflow::TRANSITION_COMPLETE_UPLOAD, [OrderWorkflow::CONTEXT_SALES_ORDER_ID => 1001]);
+
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, 1001], [$order->getShipmondoState(), $order->getShipmondoId()]);
+
+        $workflow->apply($order, OrderWorkflow::TRANSITION_RESET);
+
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_PENDING, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
     }
 
     /**
@@ -133,6 +161,9 @@ final class OrderWorkflowTest extends TestCase
             [OrderWorkflow::TRANSITION_FAIL, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], [OrderInterface::SHIPMONDO_STATE_FAILED]],
             [OrderWorkflow::TRANSITION_RESET, [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO], [OrderInterface::SHIPMONDO_STATE_PENDING]],
             [OrderWorkflow::TRANSITION_RETRY, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], [OrderInterface::SHIPMONDO_STATE_PENDING]],
+            [OrderWorkflow::TRANSITION_CANCEL, [OrderInterface::SHIPMONDO_STATE_PENDING], [OrderInterface::SHIPMONDO_STATE_CANCELLED]],
+            [OrderWorkflow::TRANSITION_CANCEL, [OrderInterface::SHIPMONDO_STATE_FAILED], [OrderInterface::SHIPMONDO_STATE_CANCELLED]],
+            [OrderWorkflow::TRANSITION_CANCEL, [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO], [OrderInterface::SHIPMONDO_STATE_CANCELLED]],
         ], $transitions);
 
         foreach ([OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO] as $state) {
@@ -164,6 +195,7 @@ final class OrderWorkflowTest extends TestCase
                     OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO,
                     OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO,
                     OrderInterface::SHIPMONDO_STATE_FAILED,
+                    OrderInterface::SHIPMONDO_STATE_CANCELLED,
                 ],
                 'transitions' => [
                     OrderWorkflow::TRANSITION_START_UPLOAD => [
@@ -185,6 +217,10 @@ final class OrderWorkflowTest extends TestCase
                     OrderWorkflow::TRANSITION_RETRY => [
                         'from' => [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO],
                         'to' => [OrderInterface::SHIPMONDO_STATE_PENDING],
+                    ],
+                    OrderWorkflow::TRANSITION_CANCEL => [
+                        'from' => [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_FAILED, OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO],
+                        'to' => [OrderInterface::SHIPMONDO_STATE_CANCELLED],
                     ],
                 ],
             ],

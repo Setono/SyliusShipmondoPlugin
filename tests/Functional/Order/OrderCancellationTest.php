@@ -5,10 +5,7 @@ declare(strict_types=1);
 namespace Tests\Setono\SyliusShipmondoPlugin\Functional\Order;
 
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
-use Sylius\Abstraction\StateMachine\StateMachineInterface;
-use Sylius\Component\Order\OrderTransitions;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
-use Webmozart\Assert\Assert;
 
 /**
  * Cancelling an order that was uploaded to Shipmondo deletes its Shipmondo sales order.
@@ -58,7 +55,7 @@ final class OrderCancellationTest extends FunctionalTestCase
         self::assertResponseRedirects(sprintf('/admin/orders/%d', self::id($order)));
         $row = $this->orderRow(self::id($order));
         self::assertSame(OrderInterface::STATE_CANCELLED, $row['state']);
-        self::assertNull($row['shipmondo_id']);
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_CANCELLED, null], [$row['shipmondo_state'], $row['shipmondo_id']]);
         self::assertCount(1, $this->shipmondo->requests('DELETE', 'sales_orders/' . self::SHIPMONDO_ID));
 
         $this->browser->followRedirect();
@@ -81,8 +78,8 @@ final class OrderCancellationTest extends FunctionalTestCase
         self::assertResponseRedirects(sprintf('/admin/orders/%d', self::id($order)));
         $row = $this->orderRow(self::id($order));
         self::assertSame(OrderInterface::STATE_CANCELLED, $row['state']);
-        // the sales order still exists in Shipmondo, so the order stays linked to it
-        self::assertSame(self::SHIPMONDO_ID, $row['shipmondo_id']);
+        // the sales order still exists in Shipmondo, so the order stays uploaded and linked to it
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, self::SHIPMONDO_ID], [$row['shipmondo_state'], $row['shipmondo_id']]);
         self::assertCount(1, $this->shipmondo->requests('DELETE', 'sales_orders/' . self::SHIPMONDO_ID));
 
         $this->browser->followRedirect();
@@ -101,19 +98,21 @@ final class OrderCancellationTest extends FunctionalTestCase
 
         $row = $this->orderRow(self::id($order));
         self::assertSame(OrderInterface::STATE_CANCELLED, $row['state']);
-        self::assertNull($row['shipmondo_id']);
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_CANCELLED, null], [$row['shipmondo_state'], $row['shipmondo_id']]);
     }
 
     /**
      * @test
      */
-    public function it_does_not_call_shipmondo_when_an_order_that_was_never_uploaded_is_cancelled(): void
+    public function it_cancels_an_order_that_was_never_uploaded_without_calling_shipmondo(): void
     {
         $order = $this->fixtures->createOrder($this->fixtures->createCustomer());
 
         $this->cancelInAdmin($order);
 
-        self::assertSame(OrderInterface::STATE_CANCELLED, $this->orderRow(self::id($order))['state']);
+        $row = $this->orderRow(self::id($order));
+        self::assertSame(OrderInterface::STATE_CANCELLED, $row['state']);
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_CANCELLED, null], [$row['shipmondo_state'], $row['shipmondo_id']]);
         self::assertSame([], $this->shipmondo->requests());
     }
 
@@ -128,14 +127,11 @@ final class OrderCancellationTest extends FunctionalTestCase
         $order = $this->uploadedOrder();
         $this->shipmondo->respond('DELETE', 'sales_orders/' . self::SHIPMONDO_ID, 204, null);
 
-        $stateMachine = static::getContainer()->get('sylius_abstraction.state_machine');
-        Assert::isInstanceOf($stateMachine, StateMachineInterface::class);
-        $stateMachine->apply($order, OrderTransitions::GRAPH, OrderTransitions::TRANSITION_CANCEL);
-        $this->entityManager()->flush();
+        $this->cancel($order);
 
         $row = $this->orderRow(self::id($order));
         self::assertSame(OrderInterface::STATE_CANCELLED, $row['state']);
-        self::assertNull($row['shipmondo_id']);
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_CANCELLED, null], [$row['shipmondo_state'], $row['shipmondo_id']]);
         self::assertCount(1, $this->shipmondo->requests('DELETE', 'sales_orders/' . self::SHIPMONDO_ID));
     }
 

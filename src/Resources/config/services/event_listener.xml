@@ -6,7 +6,7 @@
         <service id="setono_sylius_shipmondo.event_listener.order_cancellation"
                  class="Setono\SyliusShipmondoPlugin\EventListener\OrderCancellationListener"
                  public="true">
-            <argument type="service" id="setono_sylius_shipmondo.command_bus"/>
+            <argument type="service" id="setono_sylius_shipmondo.canceller.order"/>
             <argument type="service" id="request_stack"/>
 
             <!-- fires when the sylius_order state machine runs on the Symfony Workflow adapter -->

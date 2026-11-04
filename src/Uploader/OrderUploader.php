@@ -13,6 +13,7 @@ use Setono\Doctrine\ORMTrait;
 use Setono\Shipmondo\Client\ClientInterface;
 use Setono\Shipmondo\Exception\ResponseAwareException;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
+use Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface;
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
 use Setono\SyliusShipmondoPlugin\Message\Command\UploadOrder;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
@@ -38,6 +39,7 @@ final class OrderUploader implements OrderUploaderInterface
         private readonly WorkflowInterface $orderWorkflow,
         private readonly ClientInterface $shipmondoClient,
         private readonly SalesOrderDataMapperInterface $salesOrderDataMapper,
+        private readonly OrderCancellerInterface $orderCanceller,
         private readonly LoggerInterface $logger,
         ManagerRegistry $managerRegistry,
     ) {
@@ -146,11 +148,15 @@ final class OrderUploader implements OrderUploaderInterface
     }
 
     /**
-     * Records how the upload went on the order: links it to its sales order (or to none) and moves its Shipmondo state.
+     * Records how the upload went on the order: moves its Shipmondo state, which links it to its sales order (or to none).
      *
      * Something may have changed the order while Shipmondo was called, e.g. its payment was captured. Flushing the stale
      * order would then fail and close the entity manager, leaving the order in uploading and the sales order Shipmondo
      * just created unlinked. So the order's row is locked and read again first.
+     *
+     * The order may even have been cancelled. Its cancellation left it to its upload, because the order was in uploading,
+     * so the cancellation is carried over to Shipmondo here: once the order is pending, failed or uploaded (and the sales
+     * order Shipmondo just created is deleted)
      */
     private function settle(
         OrderInterface $order,
@@ -163,15 +169,23 @@ final class OrderUploader implements OrderUploaderInterface
         $manager->wrapInTransaction(function () use ($manager, $order, $outcome, $salesOrderId): void {
             $manager->refresh($order, LockMode::PESSIMISTIC_WRITE);
 
-            $order->setShipmondoId($salesOrderId);
             $this->orderWorkflow->apply($order, match ($outcome) {
                 UploadOutcome::Uploaded => OrderWorkflow::TRANSITION_COMPLETE_UPLOAD,
                 UploadOutcome::Rejected, UploadOutcome::UnexpectedFailure => OrderWorkflow::TRANSITION_FAIL,
                 default => OrderWorkflow::TRANSITION_RETRY,
-            });
+            }, [OrderWorkflow::CONTEXT_SALES_ORDER_ID => $salesOrderId]);
         });
 
         $this->log($order, $outcome, $failure);
+
+        if (OrderInterface::STATE_CANCELLED === $order->getState()) {
+            $this->logger->info('The order {order} was cancelled while it was uploading, so its cancellation is carried over to Shipmondo', [
+                'order' => $order->getNumber(),
+                'salesOrder' => $order->getShipmondoId(),
+            ]);
+
+            $manager->wrapInTransaction(fn (): ?bool => $this->orderCanceller->cancel($order));
+        }
 
         return $outcome;
     }

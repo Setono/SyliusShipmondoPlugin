@@ -103,6 +103,31 @@ final class UploadOrderTest extends FunctionalTestCase
     /**
      * @test
      */
+    public function it_cancels_an_order_that_was_cancelled_before_a_worker_uploaded_it_without_uploading_it(): void
+    {
+        $order = $this->uploadingOrder();
+        // the command carries the order's version from when its upload started
+        $message = new UploadOrder($order);
+
+        // an admin cancels the order before a worker handles the command. The cancellation leaves an order in uploading
+        // to its upload
+        $this->connection()->executeStatement(
+            'UPDATE sylius_order SET state = ?, version = version + 1 WHERE id = ?',
+            [OrderInterface::STATE_CANCELLED, self::id($order)],
+        );
+        // a worker loads the order afresh
+        $this->entityManager()->clear();
+
+        self::assertSame(UploadOutcome::ChangedWhileUploading, $this->dispatch($message));
+
+        $row = $this->orderRow(self::id($order));
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_CANCELLED, null], [$row['shipmondo_state'], $row['shipmondo_id']]);
+        self::assertSame([], $this->shipmondo->requests());
+    }
+
+    /**
+     * @test
+     */
     public function it_leaves_an_order_alone_that_is_already_uploaded(): void
     {
         $order = $this->fixtures->createOrder($this->fixtures->createCustomer());

@@ -10,6 +10,7 @@ use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\PaymentMethodInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShipmentInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
+use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Abstraction\StateMachine\StateMachineInterface;
 use Sylius\Component\Addressing\Model\CountryInterface;
 use Sylius\Component\Addressing\Model\ZoneInterface;
@@ -307,12 +308,11 @@ final class ShopFixtures
     }
 
     /**
-     * Marks the order as uploaded to Shipmondo, as UploadOrderHandler does after a successful upload
+     * Marks the order as uploaded to Shipmondo and links it to the sales order, as a successful upload does
      */
     public function markAsUploaded(OrderInterface $order, int $shipmondoId): void
     {
-        $order->setShipmondoState(OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO);
-        $order->setShipmondoId($shipmondoId);
+        $order->setShipmondoState(OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, [OrderWorkflow::CONTEXT_SALES_ORDER_ID => $shipmondoId]);
 
         $this->persist($order);
     }
