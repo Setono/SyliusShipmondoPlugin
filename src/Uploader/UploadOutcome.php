@@ -42,9 +42,9 @@ enum UploadOutcome: string
     case TemporaryFailure = 'temporary_failure';
 
     /**
-     * The order changed after it was queued for upload, so it wasn't uploaded. It goes back to pending
+     * The order changed while it was uploading, before its upload command was handled, so it wasn't uploaded. It goes back to pending
      */
-    case ChangedSinceQueued = 'changed_since_queued';
+    case ChangedWhileUploading = 'changed_while_uploading';
 
     /**
      * The order wasn't waiting for an upload (its Shipmondo state isn't uploading), so nothing happened

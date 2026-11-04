@@ -182,11 +182,11 @@ for good. In 2.x, `Uploader\OrderUploader` settles every failure on the order:
 | Failure | Order ends in | Synchronous upload run |
 |---|---|---|
 | Shipmondo rejects the upload: a 4xx other than 401, 403 and 429 (e.g. 422) | `failed` | continues |
-| The order can't be turned into a sales order (a data mapper throws), or another unexpected error | `failed` | continues |
+| The order can't be turned into a sales order (a data mapper throws), or another unexpected error, such as a non-error status (e.g. an unfollowed redirect) or an answer the SDK can't read | `failed` | continues |
 | Shipmondo doesn't accept the API credentials: 401 or 403 | `pending` | stops |
 | Shipmondo rate limits the upload: 429 | `pending` | stops |
 | A temporary failure: 5xx, a network error or a timeout | `pending` | continues |
-| The order changed after it was queued for upload | `pending` | continues |
+| The order changed while it was uploading, before its `UploadOrder` command was handled | `pending` | continues |
 
 - A synchronous upload run also stops after three rejected uploads with no successful upload between them, because
   Shipmondo answers 422 for shop-wide problems too, such as a mapped payment gateway that was deleted in Shipmondo.
@@ -199,11 +199,14 @@ for good. In 2.x, `Uploader\OrderUploader` settles every failure on the order:
 - Retrying after a temporary failure can create a duplicate sales order, when Shipmondo created the sales order but
   its answer was lost (see [#29](https://github.com/Setono/SyliusShipmondoPlugin/issues/29)).
 - **If you route `UploadOrder` to an async transport:** its handler no longer throws for a failed upload, so Messenger
-  no longer retries it; the next upload run is the retry. An async worker can't stop the uploads already queued, so
-  after a credentials failure each of them goes back to pending.
-- An order that something else changed after the upload run loaded it (another run, an admin, a payment update) is
-  now locked and read again before it is put in uploading. In 1.x the run aborted with a closed entity manager instead
-  (see [#34](https://github.com/Setono/SyliusShipmondoPlugin/issues/34)).
+  no longer retries it; the next upload run is the retry. The upload run can't see how async uploads go, so it never
+  stops early and **the command always succeeds: watch the logs instead**. An async worker can't stop the `UploadOrder`
+  commands already sent to the transport, so after a credentials failure each of them goes back to pending.
+- An order that something else changed after the upload run loaded it (another run, an admin cancelling it, a payment
+  update) is skipped and stays `pending`, so the next upload run checks again whether it qualifies for upload. In 1.x
+  the run aborted with a closed entity manager instead (see
+  [#34](https://github.com/Setono/SyliusShipmondoPlugin/issues/34)). Likewise, an order that changes while Shipmondo
+  is called is still linked to its new sales order.
 
 Orders that 1.x left stuck in `uploading_to_shipmondo` without a sales order are never uploaded. Put them back to
 pending once (use your order entity's class):

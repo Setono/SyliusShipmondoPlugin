@@ -36,8 +36,9 @@ use Symfony\Component\Messenger\MessageBus;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Middleware\HandleMessageMiddleware;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
+use Symfony\Component\Workflow\Event\GuardEvent;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
-use Tests\Setono\SyliusShipmondoPlugin\Unit\NetworkException;
+use Tests\Setono\SyliusShipmondoPlugin\Support\NetworkException;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\RecordingLogger;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ScriptedHttpClient;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ShipmondoApi;
@@ -67,11 +68,16 @@ final class OrderUploaderTest extends TestCase
 
     private const TEMPORARY_FAILURE_MESSAGE = 'The upload of the order {order} failed temporarily, so the order goes back to pending';
 
-    private const ERROR_MESSAGE = 'The upload of the order {order} failed unexpectedly, so the order is failed';
+    private const UNEXPECTED_FAILURE_MESSAGE = 'The upload of the order {order} failed unexpectedly, so the order is failed';
 
     private ScriptedHttpClient $shipmondo;
 
     private RecordingLogger $logger;
+
+    /**
+     * The order state machine's event dispatcher, for guards a store adds
+     */
+    private EventDispatcher $eventDispatcher;
 
     /** @var ObjectProphecy<SalesOrderDataMapperInterface> */
     private ObjectProphecy $salesOrderDataMapper;
@@ -95,6 +101,7 @@ final class OrderUploaderTest extends TestCase
     {
         $this->shipmondo = new ScriptedHttpClient();
         $this->logger = new RecordingLogger();
+        $this->eventDispatcher = new EventDispatcher();
 
         // the mapper puts the order number on the sales order, so a test can tell which order a request uploads
         $this->salesOrderDataMapper = $this->prophesize(SalesOrderDataMapperInterface::class);
@@ -114,8 +121,6 @@ final class OrderUploaderTest extends TestCase
         });
         $this->entityManager->refresh(Argument::cetera())->will(static function (): void {
         });
-        $this->entityManager->flush()->will(static function (): void {
-        });
     }
 
     /**
@@ -125,7 +130,12 @@ final class OrderUploaderTest extends TestCase
     {
         $order = $this->order(1, self::UPLOADING);
         $this->shipmondo->respond(201, ['id' => 1001]);
-        $this->entityManager->flush()->shouldBeCalledOnce();
+
+        // the outcome is recorded on the order as the database has it, locked, so nothing changes it in between
+        $this->entityManager->wrapInTransaction(Argument::type('callable'))->shouldBeCalledOnce();
+        $this->entityManager->refresh($order, LockMode::PESSIMISTIC_WRITE)->will(static function () use ($order): void {
+            $order->setShipmondoId(null);
+        })->shouldBeCalledOnce();
 
         self::assertSame(UploadOutcome::Uploaded, $this->uploader()->uploadOrder($order));
 
@@ -154,7 +164,8 @@ final class OrderUploaderTest extends TestCase
     ): void {
         $order = $this->order(1, self::UPLOADING);
         $this->shipmondo->respond($statusCode, ['error' => 'The payment gateway does not exist']);
-        $this->entityManager->flush()->shouldBeCalledOnce();
+        $this->entityManager->wrapInTransaction(Argument::type('callable'))->shouldBeCalledOnce();
+        $this->entityManager->refresh($order, LockMode::PESSIMISTIC_WRITE)->shouldBeCalledOnce();
 
         self::assertSame($outcome, $this->uploader()->uploadOrder($order));
 
@@ -184,6 +195,8 @@ final class OrderUploaderTest extends TestCase
             $statusCode, $exception, UploadOutcome::Rejected, self::FAILED, LogLevel::ERROR, self::REJECTED_MESSAGE,
         ];
 
+        yield '302 Found' => [302, UnexpectedStatusCodeException::class, UploadOutcome::UnexpectedFailure, self::FAILED, LogLevel::ERROR, self::UNEXPECTED_FAILURE_MESSAGE];
+        yield '399' => [399, UnexpectedStatusCodeException::class, UploadOutcome::UnexpectedFailure, self::FAILED, LogLevel::ERROR, self::UNEXPECTED_FAILURE_MESSAGE];
         yield '400 Bad Request' => $rejected(400, UnexpectedStatusCodeException::class);
         yield '401 Unauthorized' => [401, UnauthorizedException::class, UploadOutcome::CredentialsFailure, self::PENDING, LogLevel::ERROR, self::CREDENTIALS_FAILURE_MESSAGE];
         yield '402 Payment Required' => $rejected(402, UnexpectedStatusCodeException::class);
@@ -230,7 +243,7 @@ final class OrderUploaderTest extends TestCase
         $order = $this->order(1, self::UPLOADING);
         $error = new \DivisionByZeroError('Division by zero');
         $this->salesOrderDataMapper->map($order, Argument::any())->willThrow($error);
-        $this->entityManager->flush()->shouldBeCalledOnce();
+        $this->entityManager->wrapInTransaction(Argument::type('callable'))->shouldBeCalledOnce();
 
         self::assertSame(UploadOutcome::UnexpectedFailure, $this->uploader()->uploadOrder($order));
 
@@ -238,7 +251,7 @@ final class OrderUploaderTest extends TestCase
         self::assertSame([], $this->shipmondo->requests());
         self::assertSame([[
             'level' => LogLevel::ERROR,
-            'message' => self::ERROR_MESSAGE,
+            'message' => self::UNEXPECTED_FAILURE_MESSAGE,
             'context' => ['order' => '#001', 'outcome' => 'unexpected_failure', 'state' => self::FAILED, 'salesOrder' => null, 'exception' => $error],
         ]], $this->logger->records);
     }
@@ -256,7 +269,7 @@ final class OrderUploaderTest extends TestCase
         self::assertSame(self::FAILED, $order->getShipmondoState());
         self::assertSame([[
             'level' => LogLevel::ERROR,
-            'message' => self::ERROR_MESSAGE,
+            'message' => self::UNEXPECTED_FAILURE_MESSAGE,
             'context' => [
                 'order' => '#001',
                 'outcome' => 'unexpected_failure',
@@ -272,27 +285,27 @@ final class OrderUploaderTest extends TestCase
     /**
      * @test
      */
-    public function it_sends_the_order_back_to_pending_when_it_changed_after_it_was_queued_for_upload(): void
+    public function it_sends_the_order_back_to_pending_when_it_changed_while_it_was_uploading(): void
     {
         $order = $this->order(1, self::UPLOADING);
         $order->setVersion(5);
-        $this->entityManager->flush()->shouldBeCalledOnce();
+        $this->entityManager->wrapInTransaction(Argument::type('callable'))->shouldBeCalledOnce();
 
-        self::assertSame(UploadOutcome::ChangedSinceQueued, $this->uploader()->uploadOrder($order, 4));
+        self::assertSame(UploadOutcome::ChangedWhileUploading, $this->uploader()->uploadOrder($order, 4));
 
         self::assertSame(self::PENDING, $order->getShipmondoState());
         self::assertSame([], $this->shipmondo->requests());
         self::assertSame([[
             'level' => LogLevel::INFO,
-            'message' => 'The order {order} changed after it was queued for upload, so it goes back to pending',
-            'context' => ['order' => '#001', 'outcome' => 'changed_since_queued', 'state' => self::PENDING, 'salesOrder' => null],
+            'message' => 'The order {order} changed while it was uploading, so it goes back to pending without being uploaded',
+            'context' => ['order' => '#001', 'outcome' => 'changed_while_uploading', 'state' => self::PENDING, 'salesOrder' => null],
         ]], $this->logger->records);
     }
 
     /**
      * @test
      */
-    public function it_uploads_an_order_that_is_unchanged_since_it_was_queued_for_upload(): void
+    public function it_uploads_an_order_that_did_not_change_while_it_was_uploading(): void
     {
         $order = $this->order(1, self::UPLOADING);
         $order->setVersion(5);
@@ -311,7 +324,7 @@ final class OrderUploaderTest extends TestCase
     public function it_leaves_an_order_alone_that_is_not_waiting_for_an_upload(string $state): void
     {
         $order = $this->order(1, $state);
-        $this->entityManager->flush()->shouldNotBeCalled();
+        $this->entityManager->wrapInTransaction(Argument::cetera())->shouldNotBeCalled();
 
         self::assertSame(UploadOutcome::Skipped, $this->uploader()->uploadOrder($order));
 
@@ -343,10 +356,10 @@ final class OrderUploaderTest extends TestCase
         $second = $this->order(2);
         $this->shipmondo->respond(201, ['id' => 1001])->respond(201, ['id' => 1002]);
 
-        // each order's row is locked and read again before it is claimed
-        $this->entityManager->wrapInTransaction(Argument::type('callable'))->shouldBeCalledTimes(2);
-        $this->entityManager->refresh($first, LockMode::PESSIMISTIC_WRITE)->shouldBeCalledOnce();
-        $this->entityManager->refresh($second, LockMode::PESSIMISTIC_WRITE)->shouldBeCalledOnce();
+        // each order's row is locked and read again before it is claimed, and again before its outcome is recorded
+        $this->entityManager->wrapInTransaction(Argument::type('callable'))->shouldBeCalledTimes(4);
+        $this->entityManager->refresh($first, LockMode::PESSIMISTIC_WRITE)->shouldBeCalledTimes(2);
+        $this->entityManager->refresh($second, LockMode::PESSIMISTIC_WRITE)->shouldBeCalledTimes(2);
 
         self::assertNull($this->uploader()->upload());
 
@@ -358,22 +371,48 @@ final class OrderUploaderTest extends TestCase
     /**
      * @test
      */
-    public function it_skips_an_order_that_is_no_longer_pending_when_it_is_claimed(): void
+    public function it_skips_an_order_that_changed_after_the_upload_run_loaded_it_so_the_next_run_checks_it_again(): void
     {
-        $claimedElsewhere = $this->order(1);
-        $pending = $this->order(2);
+        $changed = $this->order(1);
+        $unchanged = $this->order(2);
         $this->shipmondo->respond(201, ['id' => 1002]);
 
-        // reading the order again reveals that another upload run claimed it after this run loaded it
-        $this->entityManager->refresh($claimedElsewhere, LockMode::PESSIMISTIC_WRITE)->will(static function () use ($claimedElsewhere): void {
-            $claimedElsewhere->setShipmondoState(self::UPLOADING);
+        // reading the order again reveals that something changed it after the run loaded it, e.g. an admin cancelled it
+        $this->entityManager->refresh($changed, LockMode::PESSIMISTIC_WRITE)->will(static function () use ($changed): void {
+            $changed->setVersion(2);
         });
 
         self::assertNull($this->uploader()->upload());
 
         self::assertSame(['#002'], $this->uploadedOrderNumbers());
-        self::assertSame(self::UPLOADING, $claimedElsewhere->getShipmondoState());
-        self::assertSame(self::UPLOADED, $pending->getShipmondoState());
+        // nothing at all was attempted for the skipped order, so only the other upload was logged
+        self::assertSame([['#002', 'uploaded']], $this->loggedOutcomes());
+        self::assertSame(self::PENDING, $changed->getShipmondoState());
+        self::assertSame(self::UPLOADED, $unchanged->getShipmondoState());
+    }
+
+    /**
+     * @test
+     */
+    public function it_skips_an_order_a_guard_on_the_order_workflow_holds_back(): void
+    {
+        $heldBack = $this->order(1);
+        $other = $this->order(2);
+        $this->shipmondo->respond(201, ['id' => 1002]);
+
+        $this->eventDispatcher->addListener(
+            'workflow.setono_sylius_shipmondo__order.guard.start_upload',
+            static function (GuardEvent $event) use ($heldBack): void {
+                $event->setBlocked($heldBack === $event->getSubject());
+            },
+        );
+
+        self::assertNull($this->uploader()->upload());
+
+        self::assertSame(['#002'], $this->uploadedOrderNumbers());
+        self::assertSame([['#002', 'uploaded']], $this->loggedOutcomes());
+        self::assertSame(self::PENDING, $heldBack->getShipmondoState());
+        self::assertSame(self::UPLOADED, $other->getShipmondoState());
     }
 
     /**
@@ -578,7 +617,7 @@ final class OrderUploaderTest extends TestCase
         $uploader = new OrderUploader(
             $provider->reveal(),
             $commandBus,
-            OrderWorkflow::getWorkflow(new EventDispatcher()),
+            OrderWorkflow::getWorkflow($this->eventDispatcher),
             ShipmondoApi::client($this->shipmondo),
             $this->salesOrderDataMapper->reveal(),
             $this->logger,
@@ -604,6 +643,19 @@ final class OrderUploaderTest extends TestCase
 
             return $body['order_id'] ?? null;
         }, $this->shipmondo->requests());
+    }
+
+    /**
+     * The order and outcome of each log record about an upload, in order
+     *
+     * @return list<array{mixed, mixed}>
+     */
+    private function loggedOutcomes(): array
+    {
+        return array_map(
+            static fn (array $record): array => [$record['context']['order'] ?? null, $record['context']['outcome'] ?? null],
+            $this->logger->records,
+        );
     }
 
     /**

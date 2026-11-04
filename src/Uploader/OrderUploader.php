@@ -11,7 +11,6 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
 use Setono\Doctrine\ORMTrait;
 use Setono\Shipmondo\Client\ClientInterface;
-use Setono\Shipmondo\Exception\MalformedResponseException;
 use Setono\Shipmondo\Exception\ResponseAwareException;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
@@ -54,7 +53,7 @@ final class OrderUploader implements OrderUploaderInterface
                 continue;
             }
 
-            $outcome = $this->dispatchUpload($order);
+            $outcome = $this->requestUpload($order);
 
             if (UploadOutcome::CredentialsFailure === $outcome || UploadOutcome::RateLimited === $outcome) {
                 $this->logger->error('The upload run stopped, because Shipmondo answered the upload of the order {order} with a {outcome}. The remaining orders stay pending for the next run', [
@@ -92,7 +91,7 @@ final class OrderUploader implements OrderUploaderInterface
         }
 
         if (null !== $version && $order->getVersion() !== $version) {
-            return $this->settle($order, UploadOutcome::ChangedSinceQueued);
+            return $this->settle($order, UploadOutcome::ChangedWhileUploading);
         }
 
         try {
@@ -101,29 +100,29 @@ final class OrderUploader implements OrderUploaderInterface
 
             $response = $this->shipmondoClient->salesOrders()->create($salesOrder);
         } catch (\Throwable $e) {
-            return $this->settle($order, self::classify($e), $e);
+            return $this->settle($order, self::classify($e), failure: $e);
         }
 
-        $order->setShipmondoId($response->id);
-
-        return $this->settle($order, UploadOutcome::Uploaded);
+        return $this->settle($order, UploadOutcome::Uploaded, salesOrderId: $response->id);
     }
 
     /**
      * Puts a pending order in uploading, so no other upload run uploads it too.
      *
-     * The upload run loaded the order a while ago, and something may have changed it since. Flushing the stale order
-     * would then fail and close the entity manager, so the order's row is locked and read again first.
+     * The upload run loaded the order a while ago. If something changed the order since (another run claimed it, an
+     * admin cancelled it, its payment was refunded), it may no longer qualify for upload, so it is left pending for the
+     * next upload run to check again. The order's row is locked while this is decided, so nothing changes it in between.
      */
     private function claim(OrderInterface $order): bool
     {
+        $loadedVersion = $order->getVersion();
         $manager = $this->getManager($order);
 
         /** @var bool $claimed */
-        $claimed = $manager->wrapInTransaction(function () use ($manager, $order): bool {
+        $claimed = $manager->wrapInTransaction(function () use ($manager, $order, $loadedVersion): bool {
             $manager->refresh($order, LockMode::PESSIMISTIC_WRITE);
 
-            if (!$this->orderWorkflow->can($order, OrderWorkflow::TRANSITION_START_UPLOAD)) {
+            if ($order->getVersion() !== $loadedVersion || !$this->orderWorkflow->can($order, OrderWorkflow::TRANSITION_START_UPLOAD)) {
                 return false;
             }
 
@@ -136,25 +135,41 @@ final class OrderUploader implements OrderUploaderInterface
     }
 
     /**
-     * Returns the upload's outcome when UploadOrder is handled synchronously, and null when it is sent to an
-     * asynchronous transport
+     * Requests the upload of a claimed order through the UploadOrder command. Returns the upload's outcome when the
+     * command is handled synchronously, and null when it is sent to an asynchronous transport
      */
-    private function dispatchUpload(OrderInterface $order): ?UploadOutcome
+    private function requestUpload(OrderInterface $order): ?UploadOutcome
     {
         $result = $this->commandBus->dispatch(new UploadOrder($order))->last(HandledStamp::class)?->getResult();
 
         return $result instanceof UploadOutcome ? $result : null;
     }
 
-    private function settle(OrderInterface $order, UploadOutcome $outcome, ?\Throwable $failure = null): UploadOutcome
-    {
-        $this->orderWorkflow->apply($order, match ($outcome) {
-            UploadOutcome::Uploaded => OrderWorkflow::TRANSITION_COMPLETE_UPLOAD,
-            UploadOutcome::Rejected, UploadOutcome::UnexpectedFailure => OrderWorkflow::TRANSITION_FAIL,
-            default => OrderWorkflow::TRANSITION_RETRY,
-        });
+    /**
+     * Records how the upload went on the order: links it to its sales order (or to none) and moves its Shipmondo state.
+     *
+     * Something may have changed the order while Shipmondo was called, e.g. its payment was captured. Flushing the stale
+     * order would then fail and close the entity manager, leaving the order in uploading and the sales order Shipmondo
+     * just created unlinked. So the order's row is locked and read again first.
+     */
+    private function settle(
+        OrderInterface $order,
+        UploadOutcome $outcome,
+        ?int $salesOrderId = null,
+        ?\Throwable $failure = null,
+    ): UploadOutcome {
+        $manager = $this->getManager($order);
 
-        $this->getManager($order)->flush();
+        $manager->wrapInTransaction(function () use ($manager, $order, $outcome, $salesOrderId): void {
+            $manager->refresh($order, LockMode::PESSIMISTIC_WRITE);
+
+            $order->setShipmondoId($salesOrderId);
+            $this->orderWorkflow->apply($order, match ($outcome) {
+                UploadOutcome::Uploaded => OrderWorkflow::TRANSITION_COMPLETE_UPLOAD,
+                UploadOutcome::Rejected, UploadOutcome::UnexpectedFailure => OrderWorkflow::TRANSITION_FAIL,
+                default => OrderWorkflow::TRANSITION_RETRY,
+            });
+        });
 
         $this->log($order, $outcome, $failure);
 
@@ -168,8 +183,8 @@ final class OrderUploader implements OrderUploaderInterface
             return UploadOutcome::TemporaryFailure;
         }
 
-        // Not Shipmondo's answer, or a successful answer the SDK couldn't read, in which case the sales order may exist
-        if (!$failure instanceof ResponseAwareException || $failure instanceof MalformedResponseException) {
+        // not Shipmondo's answer
+        if (!$failure instanceof ResponseAwareException) {
             return UploadOutcome::UnexpectedFailure;
         }
 
@@ -179,7 +194,10 @@ final class OrderUploader implements OrderUploaderInterface
             401 === $statusCode, 403 === $statusCode => UploadOutcome::CredentialsFailure,
             429 === $statusCode => UploadOutcome::RateLimited,
             $statusCode >= 500 => UploadOutcome::TemporaryFailure,
-            default => UploadOutcome::Rejected,
+            $statusCode >= 400 => UploadOutcome::Rejected,
+            // not an error status: a successful answer the SDK couldn't read, so the sales order may exist, or a redirect
+            // the HTTP client didn't follow
+            default => UploadOutcome::UnexpectedFailure,
         };
     }
 
@@ -192,7 +210,7 @@ final class OrderUploader implements OrderUploaderInterface
             UploadOutcome::CredentialsFailure => [LogLevel::ERROR, 'Shipmondo did not accept the API credentials when uploading the order {order}, so the order goes back to pending'],
             UploadOutcome::RateLimited => [LogLevel::WARNING, 'Shipmondo rate limited the upload of the order {order}, so the order goes back to pending'],
             UploadOutcome::TemporaryFailure => [LogLevel::WARNING, 'The upload of the order {order} failed temporarily, so the order goes back to pending'],
-            UploadOutcome::ChangedSinceQueued => [LogLevel::INFO, 'The order {order} changed after it was queued for upload, so it goes back to pending'],
+            UploadOutcome::ChangedWhileUploading => [LogLevel::INFO, 'The order {order} changed while it was uploading, so it goes back to pending without being uploaded'],
             UploadOutcome::Skipped => [LogLevel::INFO, 'The order {order} was not uploaded, because its Shipmondo state is {state}, not uploading'],
         };
 

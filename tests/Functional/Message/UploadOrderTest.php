@@ -22,7 +22,7 @@ final class UploadOrderTest extends FunctionalTestCase
      */
     public function it_uploads_the_order_and_returns_the_outcome(): void
     {
-        $order = $this->queuedOrder();
+        $order = $this->uploadingOrder();
         $this->shipmondo
             ->respond('GET', 'shipment_templates', 200, [])
             ->respond('POST', 'sales_orders', 201, ['id' => 1001])
@@ -36,31 +36,65 @@ final class UploadOrderTest extends FunctionalTestCase
 
     /**
      * @test
+     *
+     * @dataProvider failedUploads
+     *
+     * @param \Closure(self, OrderInterface): mixed $fail
      */
-    public function it_settles_the_order_when_the_upload_fails_instead_of_throwing_for_messenger_to_retry(): void
+    public function it_settles_the_order_when_the_upload_fails_instead_of_throwing_for_messenger_to_retry(
+        \Closure $fail,
+        UploadOutcome $outcome,
+        string $state,
+    ): void {
+        $order = $this->uploadingOrder();
+        $this->shipmondo->respond('GET', 'shipment_templates', 200, []);
+        $fail($this, $order);
+
+        self::assertSame($outcome, $this->dispatch(new UploadOrder($order)));
+
+        $row = $this->orderRow(self::id($order));
+        self::assertSame([$state, null], [$row['shipmondo_state'], $row['shipmondo_id']]);
+    }
+
+    /**
+     * @return iterable<string, array{\Closure(self, OrderInterface): mixed, UploadOutcome, string}>
+     */
+    public static function failedUploads(): iterable
     {
-        $order = $this->queuedOrder();
-        $this->shipmondo
-            ->respond('GET', 'shipment_templates', 200, [])
-            ->respond('POST', 'sales_orders', 422, ['error' => 'The payment gateway does not exist'])
-        ;
+        $answer = static fn (int $statusCode): \Closure => static fn (self $test): mixed => $test->shipmondo->respond('POST', 'sales_orders', $statusCode, ['error' => 'No']);
 
-        self::assertSame(UploadOutcome::Rejected, $this->dispatch(new UploadOrder($order)));
-
-        self::assertSame(OrderInterface::SHIPMONDO_STATE_FAILED, $this->orderRow(self::id($order))['shipmondo_state']);
+        yield 'rejected upload (422)' => [$answer(422), UploadOutcome::Rejected, OrderInterface::SHIPMONDO_STATE_FAILED];
+        yield 'unexpected failure (a data mapper throws)' => [
+            static function (self $test, OrderInterface $order): void {
+                $test->failToMap($order);
+            },
+            UploadOutcome::UnexpectedFailure,
+            OrderInterface::SHIPMONDO_STATE_FAILED,
+        ];
+        yield 'credentials failure (401)' => [$answer(401), UploadOutcome::CredentialsFailure, OrderInterface::SHIPMONDO_STATE_PENDING];
+        yield 'credentials failure (403)' => [$answer(403), UploadOutcome::CredentialsFailure, OrderInterface::SHIPMONDO_STATE_PENDING];
+        yield 'rate-limited upload (429)' => [$answer(429), UploadOutcome::RateLimited, OrderInterface::SHIPMONDO_STATE_PENDING];
+        yield 'temporary failure (500)' => [$answer(500), UploadOutcome::TemporaryFailure, OrderInterface::SHIPMONDO_STATE_PENDING];
+        yield 'temporary failure (network)' => [
+            static fn (self $test): mixed => $test->shipmondo->failToConnect('POST', 'sales_orders'),
+            UploadOutcome::TemporaryFailure,
+            OrderInterface::SHIPMONDO_STATE_PENDING,
+        ];
     }
 
     /**
      * @test
      */
-    public function it_sends_an_order_that_changed_after_it_was_queued_back_to_pending_without_uploading_it(): void
+    public function it_sends_an_order_that_changed_while_it_was_uploading_back_to_pending_without_uploading_it(): void
     {
-        $order = $this->queuedOrder();
+        $order = $this->uploadingOrder();
         $version = $order->getVersion();
         self::assertIsInt($version);
-        $queuedVersion = $version - 1;
 
-        self::assertSame(UploadOutcome::ChangedSinceQueued, $this->dispatch(new UploadOrder(self::id($order), $queuedVersion)));
+        // the command carries the order's version from when its upload started; the order has changed since
+        $message = new UploadOrder(self::id($order), $version - 1);
+
+        self::assertSame(UploadOutcome::ChangedWhileUploading, $this->dispatch($message));
 
         self::assertSame(OrderInterface::SHIPMONDO_STATE_PENDING, $this->orderRow(self::id($order))['shipmondo_state']);
         self::assertSame([], $this->shipmondo->requests());
@@ -82,9 +116,9 @@ final class UploadOrderTest extends FunctionalTestCase
     }
 
     /**
-     * An order an upload run put in uploading and queued for upload
+     * An order an upload run put in uploading, whose UploadOrder command a worker hasn't handled yet
      */
-    private function queuedOrder(): OrderInterface
+    private function uploadingOrder(): OrderInterface
     {
         $order = $this->fixtures->createOrder($this->fixtures->createCustomer());
         $order->setShipmondoState(OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO);

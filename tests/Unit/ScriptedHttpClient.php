@@ -8,6 +8,7 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use Psr\Http\Client\ClientInterface as HttpClientInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
+use Tests\Setono\SyliusShipmondoPlugin\Support\NetworkException;
 
 /**
  * A PSR-18 client that answers Shipmondo requests from a script, in order, and records them. Give it to

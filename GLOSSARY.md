@@ -56,4 +56,4 @@ An upload that failed for a reason expected to pass, such as a Shipmondo server 
 An upload that failed before Shipmondo answered, or in a way nothing expects, such as order data a data mapper can't turn into a sales order. The order becomes failed.
 
 **Upload outcome**:
-How one upload went: uploaded, one of the failures above, the order changed after it was queued for upload (back to pending), or skipped because the order wasn't uploading. It decides the order's Shipmondo state.
+How one upload went: uploaded, one of the failures above, the order changed while it was uploading (back to pending), or skipped because the order wasn't uploading. It decides the order's Shipmondo state.

@@ -9,7 +9,7 @@ use Psr\Http\Client\ClientInterface as HttpClientInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Setono\Shipmondo\Client\Client;
-use Tests\Setono\SyliusShipmondoPlugin\Unit\NetworkException;
+use Tests\Setono\SyliusShipmondoPlugin\Support\NetworkException;
 
 /**
  * Stands in for the Shipmondo API at the HTTP boundary: the real SDK client builds the requests and maps

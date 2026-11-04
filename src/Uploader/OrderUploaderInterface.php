@@ -33,7 +33,7 @@ interface OrderUploaderInterface
      *
      * An order in any other Shipmondo state is left alone ({@see UploadOutcome::Skipped}).
      *
-     * @param int|null $version the order's version when it was queued for upload. When the order has another version
+     * @param int|null $version the order's version when its upload started. When the order has another version
      *                          now, it changed since, so it goes back to pending without being uploaded
      */
     public function uploadOrder(OrderInterface $order, ?int $version = null): UploadOutcome;

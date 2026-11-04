@@ -8,12 +8,15 @@ use DAMA\DoctrineTestBundle\Doctrine\DBAL\StaticDriver;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\ORM\EntityManagerInterface;
+use Setono\SyliusShipmondoPlugin\Event\SalesOrderMappedEvent;
+use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\DomCrawler\Field\ChoiceFormField;
 use Symfony\Component\DomCrawler\Form;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
@@ -124,6 +127,44 @@ abstract class FunctionalTestCase extends WebTestCase
         $tester->execute($input);
 
         return $tester;
+    }
+
+    protected function eventDispatcher(): EventDispatcherInterface
+    {
+        $eventDispatcher = static::getContainer()->get('event_dispatcher');
+        Assert::isInstanceOf($eventDispatcher, EventDispatcherInterface::class);
+
+        return $eventDispatcher;
+    }
+
+    /**
+     * Runs $listener the first time the application dispatches the event, e.g. to change data behind the application's back
+     */
+    protected function onceWhen(string $eventName, callable $listener): void
+    {
+        $done = false;
+        $this->eventDispatcher()->addListener($eventName, static function () use (&$done, $listener): void {
+            if ($done) {
+                return;
+            }
+            $done = true;
+
+            $listener();
+        });
+    }
+
+    /**
+     * Makes turning the order into a sales order fail, as a data mapper that throws on inconsistent order data does
+     */
+    protected function failToMap(OrderInterface $order): void
+    {
+        $orderId = self::id($order);
+
+        $this->eventDispatcher()->addListener(SalesOrderMappedEvent::class, static function (SalesOrderMappedEvent $event) use ($orderId): void {
+            if ($orderId === $event->order->getId()) {
+                throw new \RuntimeException('The order has no shipping address');
+            }
+        });
     }
 
     protected function entityManager(): EntityManagerInterface
