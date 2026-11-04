@@ -61,15 +61,23 @@ final class OrderGridTest extends BrowserTestCase
      */
     public function orders_being_uploaded_and_uploaded_orders_are_shown_with_coloured_labels_like_pending_and_failed_orders(): void
     {
-        // the coloured label templates are still named after the old states (dispatching/dispatched), so these
-        // states fall back to the plain grey label
-        self::skipUntilFixed(25);
-
         $uploading = $this->createOrder(OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO);
         $uploaded = $this->createOrder(OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, 1001);
 
         expect($this->shipmondoStateLabel($uploading))->toHaveClass('ui olive label');
         expect($this->shipmondoStateLabel($uploaded))->toHaveClass('ui green label');
+    }
+
+    /**
+     * @test
+     */
+    public function a_cancelled_order_is_shown_as_a_yellow_label_like_sylius_shows_a_cancelled_order(): void
+    {
+        $order = $this->createOrder(OrderInterface::SHIPMONDO_STATE_CANCELLED);
+
+        $label = $this->shipmondoStateLabel($order);
+        expect($label)->toContainText('Cancelled');
+        expect($label)->toHaveClass('ui yellow label');
     }
 
     /**

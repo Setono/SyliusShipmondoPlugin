@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\Model;
 
 use Doctrine\ORM\Mapping as ORM;
+use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 
 trait OrderTrait
 {
@@ -44,18 +45,27 @@ trait OrderTrait
         return $this->shipmondoState;
     }
 
-    public function setShipmondoState(string $shipmondoState): void
+    public function setShipmondoState(string $shipmondoState, array $context = []): void
     {
+        $shipmondoId = null;
+
+        if (OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO === $shipmondoState) {
+            $shipmondoId = $context[OrderWorkflow::CONTEXT_SALES_ORDER_ID] ?? null;
+
+            if (!is_int($shipmondoId)) {
+                throw new \InvalidArgumentException(sprintf(
+                    'An uploaded order is linked to a sales order, so the order workflow\'s context must hold the sales order id under "%s"',
+                    OrderWorkflow::CONTEXT_SALES_ORDER_ID,
+                ));
+            }
+        }
+
         $this->shipmondoState = $shipmondoState;
+        $this->shipmondoId = $shipmondoId;
     }
 
     public function getShipmondoId(): ?int
     {
         return $this->shipmondoId;
-    }
-
-    public function setShipmondoId(?int $shipmondoId): void
-    {
-        $this->shipmondoId = $shipmondoId;
     }
 }

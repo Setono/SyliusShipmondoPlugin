@@ -7,19 +7,23 @@ namespace Setono\SyliusShipmondoPlugin\Message\CommandHandler;
 use Psr\Log\LoggerInterface;
 use Setono\Shipmondo\Client\ClientInterface;
 use Setono\Shipmondo\Exception\NotFoundException;
+use Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface;
 use Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
+use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Component\Order\Repository\OrderRepositoryInterface;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
+use Symfony\Component\Workflow\WorkflowInterface;
 use Webmozart\Assert\Assert;
 
 /**
- * Deletes an order's sales order in Shipmondo.
+ * Deletes an order's sales order in Shipmondo. Once it is gone, the order is no longer uploaded, so it is reset to
+ * pending, and then becomes cancelled if it is cancelled in Sylius ({@see OrderCancellerInterface}).
  *
  * Handled synchronously (the default), this runs inside the Sylius order cancellation, so a failing
  * Shipmondo call must not throw: the command bus's doctrine_transaction middleware would roll back its
  * nested transaction, which marks the cancellation's own transaction rollback-only and makes the cancel
- * fail. A failure is logged instead, and the order keeps its Shipmondo id.
+ * fail. A failure is logged instead, and the order stays uploaded and linked to the sales order.
  *
  * Returns whether the sales order is gone from Shipmondo, so the dispatcher can tell the user.
  */
@@ -28,6 +32,8 @@ final class DeleteOrderHandler
     public function __construct(
         private readonly OrderRepositoryInterface $orderRepository,
         private readonly ClientInterface $shipmondoClient,
+        private readonly WorkflowInterface $orderWorkflow,
+        private readonly OrderCancellerInterface $orderCanceller,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -51,7 +57,7 @@ final class DeleteOrderHandler
         } catch (NotFoundException) {
             // the sales order was already deleted in Shipmondo, which is what we wanted
         } catch (\Throwable $e) {
-            $this->logger->error('Could not delete the Shipmondo sales order {shipmondoId} of the cancelled order {order}', [
+            $this->logger->error('Could not delete the Shipmondo sales order {shipmondoId} of the order {order}', [
                 'shipmondoId' => $shipmondoId,
                 'order' => $order->getNumber(),
                 'exception' => $e,
@@ -60,7 +66,10 @@ final class DeleteOrderHandler
             return false;
         }
 
-        $order->setShipmondoId(null);
+        if ($this->orderWorkflow->can($order, OrderWorkflow::TRANSITION_RESET)) {
+            $this->orderWorkflow->apply($order, OrderWorkflow::TRANSITION_RESET);
+            $this->orderCanceller->cancel($order);
+        }
 
         return true;
     }

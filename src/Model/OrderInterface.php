@@ -17,14 +17,24 @@ interface OrderInterface extends BaseOrderInterface, VersionedInterface
 
     public const SHIPMONDO_STATE_FAILED = 'failed';
 
+    public const SHIPMONDO_STATE_CANCELLED = 'cancelled';
+
     public function getShipmondoState(): string;
 
-    public function setShipmondoState(string $shipmondoState): void;
+    /**
+     * Called by the order workflow's marking store, with the context of the transition being applied. The Shipmondo
+     * state owns the link to the sales order: entering uploaded links the order to the sales order whose id the
+     * context holds under {@see \Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow::CONTEXT_SALES_ORDER_ID}, and
+     * entering any other state unlinks it
+     *
+     * @param array<array-key, mixed> $context
+     *
+     * @throws \InvalidArgumentException if the order enters uploaded without a sales order id in the context
+     */
+    public function setShipmondoState(string $shipmondoState, array $context = []): void;
 
     /**
-     * Returns the Shipmondo id (if the order has been uploaded to Shipmondo)
+     * Returns the id of the sales order the order is linked to. Only an uploaded order is linked to a sales order
      */
     public function getShipmondoId(): ?int;
-
-    public function setShipmondoId(?int $shipmondoId): void;
 }

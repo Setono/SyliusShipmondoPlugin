@@ -8,124 +8,99 @@ use PHPUnit\Framework\TestCase;
 use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
+use Setono\SyliusShipmondoPlugin\Canceller\Cancellation;
+use Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface;
 use Setono\SyliusShipmondoPlugin\EventListener\OrderCancellationListener;
-use Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpFoundation\Session\SessionInterface;
 use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
-use Symfony\Component\Messenger\Envelope;
-use Symfony\Component\Messenger\MessageBusInterface;
-use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Workflow\Event\CompletedEvent;
 use Symfony\Component\Workflow\Marking;
 use Symfony\Component\Workflow\Transition;
 use Symfony\Component\Workflow\WorkflowInterface;
+use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\Orders;
 
 final class OrderCancellationListenerTest extends TestCase
 {
     use ProphecyTrait;
 
-    /** @var ObjectProphecy<MessageBusInterface> */
-    private ObjectProphecy $commandBus;
+    /** @var ObjectProphecy<OrderCancellerInterface> */
+    private ObjectProphecy $orderCanceller;
+
+    private Session $session;
 
     protected function setUp(): void
     {
-        $this->commandBus = $this->prophesize(MessageBusInterface::class);
+        $this->orderCanceller = $this->prophesize(OrderCancellerInterface::class);
+        $this->session = new Session(new MockArraySessionStorage());
+    }
+
+    /**
+     * @test
+     *
+     * @dataProvider deletions
+     *
+     * @param array<string, list<string>> $flashes
+     */
+    public function it_tells_the_user_whether_the_sales_order_was_deleted(Cancellation $cancellation, array $flashes): void
+    {
+        $order = self::cancelledOrder();
+        $this->orderCanceller->cancel($order)->willReturn($cancellation)->shouldBeCalledOnce();
+
+        $this->listener($this->requestStackWithSession())($order);
+
+        self::assertSame($flashes, $this->session->getFlashBag()->all());
+    }
+
+    /**
+     * @return iterable<string, array{Cancellation, array<string, list<string>>}>
+     */
+    public static function deletions(): iterable
+    {
+        yield 'deleted' => [Cancellation::SalesOrderDeleted, ['info' => ['setono_sylius_shipmondo.order_deleted_in_shipmondo']]];
+        yield 'deleted later' => [Cancellation::SalesOrderDeletedLater, ['info' => ['setono_sylius_shipmondo.order_will_be_deleted_in_shipmondo']]];
+        yield 'not deleted' => [Cancellation::SalesOrderNotDeleted, ['error' => ['setono_sylius_shipmondo.order_not_deleted_in_shipmondo']]];
+    }
+
+    /**
+     * @test
+     *
+     * @dataProvider cancellationsWithoutASalesOrderToDelete
+     */
+    public function it_does_not_tell_the_user_anything_when_there_was_no_sales_order_to_delete(Cancellation $cancellation): void
+    {
+        $order = self::cancelledOrder();
+        $this->orderCanceller->cancel($order)->willReturn($cancellation)->shouldBeCalledOnce();
+
+        $this->listener($this->requestStackWithSession())($order);
+
+        self::assertSame([], $this->session->getFlashBag()->all());
+    }
+
+    /**
+     * @return iterable<string, array{Cancellation}>
+     */
+    public static function cancellationsWithoutASalesOrderToDelete(): iterable
+    {
+        yield 'cancelled right away' => [Cancellation::Cancelled];
+        yield 'left to its upload' => [Cancellation::LeftToUpload];
+        yield 'not cancelled' => [Cancellation::NotCancelled];
     }
 
     /**
      * @test
      */
-    public function it_dispatches_a_delete_command_and_flashes_when_a_cancelled_order_was_deleted(): void
+    public function it_cancels_the_order_without_telling_anyone_when_there_is_no_request(): void
     {
-        $order = $this->prophesize(OrderInterface::class);
-        $order->getShipmondoId()->willReturn(12345);
-        $order->getId()->willReturn(42);
-
-        $this->commandBus->dispatch(Argument::that(
-            static fn (object $message): bool => $message instanceof DeleteOrder && 42 === $message->order,
-        ))->willReturn(self::handledEnvelope(true))->shouldBeCalled();
-
-        $session = new Session(new MockArraySessionStorage());
-
-        $listener = $this->listener($this->requestStackWith($session));
-        $listener($order->reveal());
-
-        self::assertSame(['setono_sylius_shipmondo.order_deleted_in_shipmondo'], $session->getFlashBag()->peek('info'));
-        self::assertSame([], $session->getFlashBag()->peek('error'));
-    }
-
-    /**
-     * @test
-     */
-    public function it_flashes_an_error_when_the_sales_order_could_not_be_deleted(): void
-    {
-        $order = $this->prophesize(OrderInterface::class);
-        $order->getShipmondoId()->willReturn(12345);
-        $order->getId()->willReturn(42);
-
-        $this->commandBus->dispatch(Argument::type(DeleteOrder::class))->willReturn(self::handledEnvelope(false));
-
-        $session = new Session(new MockArraySessionStorage());
-
-        $listener = $this->listener($this->requestStackWith($session));
-        $listener($order->reveal());
-
-        self::assertSame(['setono_sylius_shipmondo.order_not_deleted_in_shipmondo'], $session->getFlashBag()->peek('error'));
-        self::assertSame([], $session->getFlashBag()->peek('info'));
-    }
-
-    /**
-     * @test
-     */
-    public function it_flashes_that_the_sales_order_will_be_deleted_when_the_command_is_handled_async(): void
-    {
-        $order = $this->prophesize(OrderInterface::class);
-        $order->getShipmondoId()->willReturn(12345);
-        $order->getId()->willReturn(42);
-
-        // no HandledStamp: the command was sent to a transport instead of being handled
-        $this->commandBus->dispatch(Argument::type(DeleteOrder::class))->willReturn(new Envelope(new \stdClass()));
-
-        $session = new Session(new MockArraySessionStorage());
-
-        $listener = $this->listener($this->requestStackWith($session));
-        $listener($order->reveal());
-
-        self::assertSame(['setono_sylius_shipmondo.order_will_be_deleted_in_shipmondo'], $session->getFlashBag()->peek('info'));
-    }
-
-    /**
-     * @test
-     */
-    public function it_does_nothing_when_the_cancelled_order_was_not_uploaded(): void
-    {
-        $order = $this->prophesize(OrderInterface::class);
-        $order->getShipmondoId()->willReturn(null);
-
-        $this->commandBus->dispatch(Argument::any())->shouldNotBeCalled();
-
-        $listener = $this->listener(new RequestStack());
-        $listener($order->reveal());
-    }
-
-    /**
-     * @test
-     */
-    public function it_dispatches_without_flashing_when_there_is_no_request(): void
-    {
-        $order = $this->prophesize(OrderInterface::class);
-        $order->getShipmondoId()->willReturn(12345);
-        $order->getId()->willReturn(42);
-
-        $this->commandBus->dispatch(Argument::any())->willReturn(new Envelope(new \stdClass()))->shouldBeCalled();
+        $order = self::cancelledOrder();
+        $this->orderCanceller->cancel($order)->willReturn(Cancellation::SalesOrderDeleted)->shouldBeCalledOnce();
 
         // an empty request stack has no session, so no flash is added and no error is thrown
-        $listener = $this->listener(new RequestStack());
-        $listener($order->reveal());
+        $this->listener(new RequestStack())($order);
     }
 
     /**
@@ -133,18 +108,15 @@ final class OrderCancellationListenerTest extends TestCase
      */
     public function it_does_not_flash_when_the_session_has_no_flash_bag(): void
     {
-        $order = $this->prophesize(OrderInterface::class);
-        $order->getShipmondoId()->willReturn(12345);
-        $order->getId()->willReturn(42);
-
-        $this->commandBus->dispatch(Argument::type(DeleteOrder::class))->willReturn(self::handledEnvelope(true))->shouldBeCalled();
+        $order = self::cancelledOrder();
+        $this->orderCanceller->cancel($order)->willReturn(Cancellation::SalesOrderDeleted)->shouldBeCalledOnce();
 
         $request = new Request();
         $request->setSession($this->prophesize(SessionInterface::class)->reveal());
         $requestStack = new RequestStack();
         $requestStack->push($request);
 
-        $this->listener($requestStack)($order->reveal());
+        $this->listener($requestStack)($order);
     }
 
     /**
@@ -152,16 +124,10 @@ final class OrderCancellationListenerTest extends TestCase
      */
     public function it_reacts_to_the_symfony_workflow_completed_event(): void
     {
-        $order = $this->prophesize(OrderInterface::class);
-        $order->getShipmondoId()->willReturn(12345);
-        $order->getId()->willReturn(42);
+        $order = self::cancelledOrder();
+        $this->orderCanceller->cancel($order)->willReturn(Cancellation::SalesOrderDeletedLater)->shouldBeCalledOnce();
 
-        $this->commandBus->dispatch(Argument::type(DeleteOrder::class))
-            ->willReturn(new Envelope(new \stdClass()))
-            ->shouldBeCalled()
-        ;
-
-        $this->listener(new RequestStack())->onOrderCancelled($this->cancelEvent($order->reveal()));
+        $this->listener(new RequestStack())->onOrderCancelled($this->cancelEvent($order));
     }
 
     /**
@@ -169,25 +135,25 @@ final class OrderCancellationListenerTest extends TestCase
      */
     public function it_ignores_a_workflow_event_whose_subject_is_not_an_order(): void
     {
-        $this->commandBus->dispatch(Argument::any())->shouldNotBeCalled();
+        $this->orderCanceller->cancel(Argument::any())->shouldNotBeCalled();
 
         $this->listener(new RequestStack())->onOrderCancelled($this->cancelEvent(new \stdClass()));
     }
 
     private function listener(RequestStack $requestStack): OrderCancellationListener
     {
-        return new OrderCancellationListener($this->commandBus->reveal(), $requestStack);
+        return new OrderCancellationListener($this->orderCanceller->reveal(), $requestStack);
     }
 
-    private static function handledEnvelope(bool $deleted): Envelope
+    private static function cancelledOrder(): Order
     {
-        return new Envelope(new \stdClass(), [new HandledStamp($deleted, 'DeleteOrderHandler::__invoke')]);
+        return Orders::create(OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, 12345, OrderInterface::STATE_CANCELLED);
     }
 
-    private function requestStackWith(Session $session): RequestStack
+    private function requestStackWithSession(): RequestStack
     {
         $request = new Request();
-        $request->setSession($session);
+        $request->setSession($this->session);
 
         $stack = new RequestStack();
         $stack->push($request);

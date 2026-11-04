@@ -73,4 +73,17 @@ final class ScriptedHttpClient implements HttpClientInterface
     {
         return $this->requests;
     }
+
+    /**
+     * Each request's method and path relative to the API root, e.g. 'DELETE sales_orders/1001', in order
+     *
+     * @return list<string>
+     */
+    public function requestLines(): array
+    {
+        return array_map(
+            static fn (RequestInterface $request): string => $request->getMethod() . ' ' . str_replace('/api/public/v3/', '', $request->getUri()->getPath()),
+            $this->requests,
+        );
+    }
 }

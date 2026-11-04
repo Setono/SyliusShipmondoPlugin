@@ -12,6 +12,7 @@ use Playwright\Symfony\Test\PlaywrightTestCase;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\PaymentMethodInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
+use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Component\Core\Factory\PaymentMethodFactoryInterface;
 use Sylius\Component\Core\Model\CustomerInterface;
 use Sylius\Component\Resource\Factory\FactoryInterface;
@@ -300,13 +301,12 @@ abstract class BrowserTestCase extends PlaywrightTestCase
     }
 
     /**
-     * A placed order in the given Shipmondo state, optionally with a Shipmondo id (i.e. uploaded to Shipmondo)
+     * A placed order in the given Shipmondo state. An uploaded order is linked to the sales order with the given id
      */
     protected function createOrder(string $shipmondoState = OrderInterface::SHIPMONDO_STATE_PENDING, ?int $shipmondoId = null): OrderInterface
     {
         $order = $this->fixtures->createOrder($this->createCustomer());
-        $order->setShipmondoState($shipmondoState);
-        $order->setShipmondoId($shipmondoId);
+        $order->setShipmondoState($shipmondoState, [OrderWorkflow::CONTEXT_SALES_ORDER_ID => $shipmondoId]);
         $this->entityManager()->flush();
 
         return $order;

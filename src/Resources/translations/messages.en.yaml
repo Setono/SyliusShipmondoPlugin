@@ -5,6 +5,7 @@ setono_sylius_shipmondo:
             pickup_point_delivery: Pickup point delivery
     
     ui:
+        cancelled: Cancelled
         failed: Failed
         map_payment_methods: Map payment methods
         map_payment_methods_empty_information: 'There are no configured payment gateways inside Shipmondo. Go to <a href="https://app.shipmondo.com/main/app/#/setting/integration/payment-gateway" target="_blank">Shipmondo</a> and create your first payment gateway.'

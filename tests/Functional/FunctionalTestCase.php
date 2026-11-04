@@ -10,6 +10,8 @@ use Doctrine\DBAL\DriverManager;
 use Doctrine\ORM\EntityManagerInterface;
 use Setono\SyliusShipmondoPlugin\Event\SalesOrderMappedEvent;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
+use Sylius\Abstraction\StateMachine\StateMachineInterface;
+use Sylius\Component\Order\OrderTransitions;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
@@ -165,6 +167,30 @@ abstract class FunctionalTestCase extends WebTestCase
                 throw new \RuntimeException('The order has no shipping address');
             }
         });
+    }
+
+    /**
+     * Cancels the order in Sylius outside an HTTP request, as a console command or a message handler would
+     */
+    protected function cancel(OrderInterface $order): void
+    {
+        $stateMachine = static::getContainer()->get('sylius_abstraction.state_machine');
+        Assert::isInstanceOf($stateMachine, StateMachineInterface::class);
+
+        $stateMachine->apply($order, OrderTransitions::GRAPH, OrderTransitions::TRANSITION_CANCEL);
+        $this->entityManager()->flush();
+    }
+
+    /**
+     * Cancels the order behind the application's back, as an admin does in another request while the application is
+     * busy with the order: the database has the cancelled order, the application's entity manager doesn't
+     */
+    protected function cancelBehindTheApplicationsBack(OrderInterface $order): void
+    {
+        $this->connection()->executeStatement(
+            'UPDATE sylius_order SET state = ?, version = version + 1 WHERE id = ?',
+            [OrderInterface::STATE_CANCELLED, self::id($order)],
+        );
     }
 
     protected function entityManager(): EntityManagerInterface

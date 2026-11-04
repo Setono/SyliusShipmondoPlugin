@@ -23,13 +23,27 @@ final class AdminIntegrationTest extends FunctionalTestCase
         $customer = $this->fixtures->createCustomer();
         $this->fixtures->createOrder($customer);
         $this->fixtures->markAsUploaded($this->fixtures->createOrder($customer), 1001);
+        $this->cancel($this->fixtures->createOrder($customer));
 
         $crawler = $this->browser->request('GET', '/admin/orders/');
 
         self::assertResponseIsSuccessful();
-        self::assertContains('Shipmondo state', $crawler->filter('table thead th')->each(static fn (Crawler $th): string => trim($th->text())));
-        self::assertSelectorTextContains('table tbody', 'Pending');
-        self::assertSelectorTextContains('table tbody', 'Uploaded to Shipmondo');
+        $headers = $crawler->filter('table thead th')->each(static fn (Crawler $th): string => trim($th->text()));
+        $column = array_search('Shipmondo state', $headers, true);
+        self::assertIsInt($column);
+
+        $labels = $crawler->filter('table tbody tr')->each(static function (Crawler $row) use ($column): array {
+            $label = $row->filter('td')->eq($column)->filter('.ui.label');
+
+            return [trim($label->text()), implode(' ', array_filter(explode(' ', (string) $label->attr('class')), static fn (string $class): bool => '' !== $class))];
+        });
+        sort($labels);
+
+        self::assertSame([
+            ['Cancelled', 'ui yellow label'],
+            ['Pending', 'ui label'],
+            ['Uploaded to Shipmondo', 'ui green label'],
+        ], $labels);
     }
 
     /**

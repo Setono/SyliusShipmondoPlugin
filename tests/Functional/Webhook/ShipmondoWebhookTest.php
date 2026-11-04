@@ -138,6 +138,26 @@ final class ShipmondoWebhookTest extends FunctionalTestCase
     }
 
     /**
+     * Shipmondo couldn't delete the sales order when the order was cancelled, so an admin deletes it in Shipmondo later
+     *
+     * @test
+     */
+    public function it_cancels_a_cancelled_order_when_its_sales_order_is_deleted_in_shipmondo(): void
+    {
+        $order = $this->uploadedOrder();
+        $this->shipmondo->respond('DELETE', 'sales_orders/' . self::SHIPMONDO_ID, 500, ['error' => 'Internal Server Error']);
+        $this->cancel($order);
+        self::assertSame(OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, $this->orderRow(self::id($order))['shipmondo_state']);
+
+        $this->postWebhook('Orders', 'delete', $this->payload('orders_delete', $order));
+
+        self::assertResponseStatusCodeSame(200);
+
+        $row = $this->orderRow(self::id($order));
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_CANCELLED, null], [$row['shipmondo_state'], $row['shipmondo_id']]);
+    }
+
+    /**
      * @test
      */
     public function it_acknowledges_a_webhook_for_an_order_it_does_not_know(): void

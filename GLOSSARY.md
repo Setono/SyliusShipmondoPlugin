@@ -19,7 +19,7 @@ One pass of the order upload, which uploads every pending order that qualifies f
 _Avoid_: Sync, batch
 
 **Shipmondo state**:
-Where a Sylius order is in its upload: pending, uploading, uploaded or failed.
+Where a Sylius order is in its upload: pending, uploading, uploaded, failed or cancelled.
 _Avoid_: Upload status, sync state
 
 **Pending**:
@@ -31,12 +31,15 @@ An upload of the order has started or is waiting to be handled, and hasn't finis
 _Avoid_: Dispatching
 
 **Uploaded**:
-Shipmondo has a sales order for the order.
+Shipmondo has a sales order for the order, and the order is linked to it. Only an uploaded order is linked to a sales order.
 _Avoid_: Dispatched, synced
 
 **Failed**:
 The order's upload can't succeed as it is: Shipmondo rejected it, or the order's data couldn't be turned into a sales order. It stays failed until an admin steps in.
 _Avoid_: Error, broken
+
+**Cancelled**:
+The Sylius order was cancelled, and Shipmondo has no sales order for it: it was never uploaded, or its sales order was deleted. Nothing more happens to it. An order that is cancelled in Sylius becomes cancelled right away when it is pending or failed, once its sales order is deleted when it is uploaded, and once its upload is settled when it is uploading.
 
 ### Upload failures
 

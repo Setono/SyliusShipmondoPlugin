@@ -8,15 +8,17 @@ use Doctrine\Persistence\ManagerRegistry;
 use Setono\Doctrine\ORMTrait;
 use Setono\Shipmondo\Enum\WebhookAction;
 use Setono\Shipmondo\Enum\WebhookResourceName;
+use Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Symfony\Component\Workflow\WorkflowInterface;
 
 /**
- * Reacts to a sales order being deleted in Shipmondo: the order no longer exists there, so its
- * Shipmondo upload state is reset to pending and its Shipmondo id is cleared, which makes the next
- * `upload-orders` run re-upload it.
+ * Reacts to a sales order being deleted in Shipmondo: the order is no longer uploaded, so it is reset to pending, which
+ * makes the next upload run upload it again. An order that is cancelled in Sylius becomes cancelled right after
+ * ({@see OrderCancellerInterface}), e.g. when its sales order couldn't be deleted as the order was cancelled, so an
+ * admin deleted it in Shipmondo.
  *
  * Deleting a sales order in Shipmondo is intentionally *not* treated as a cancellation — cancelling an
  * order is a Sylius-side decision.
@@ -28,6 +30,7 @@ final class ResetUploadStateHandler implements RemoteEventHandlerInterface
     public function __construct(
         private readonly OrderResolverInterface $orderResolver,
         private readonly WorkflowInterface $orderWorkflow,
+        private readonly OrderCancellerInterface $orderCanceller,
         ManagerRegistry $managerRegistry,
     ) {
         $this->managerRegistry = $managerRegistry;
@@ -58,7 +61,7 @@ final class ResetUploadStateHandler implements RemoteEventHandlerInterface
         }
 
         $this->orderWorkflow->apply($order, OrderWorkflow::TRANSITION_RESET);
-        $order->setShipmondoId(null);
+        $this->orderCanceller->cancel($order);
 
         $this->getManager($order)->flush();
     }

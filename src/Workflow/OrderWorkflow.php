@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\Workflow;
 
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\Workflow\DefinitionBuilder;
 use Symfony\Component\Workflow\MarkingStore\MethodMarkingStore;
 use Symfony\Component\Workflow\StateMachine;
 use Symfony\Component\Workflow\Transition;
-use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 final class OrderWorkflow
 {
@@ -27,6 +27,13 @@ final class OrderWorkflow
 
     final public const TRANSITION_RETRY = 'retry';
 
+    final public const TRANSITION_CANCEL = 'cancel';
+
+    /**
+     * The key of the sales order id in the context of a transition into uploaded, i.e. complete_upload
+     */
+    final public const CONTEXT_SALES_ORDER_ID = 'sales_order_id';
+
     private function __construct()
     {
     }
@@ -41,6 +48,7 @@ final class OrderWorkflow
             OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO,
             OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO,
             OrderInterface::SHIPMONDO_STATE_FAILED,
+            OrderInterface::SHIPMONDO_STATE_CANCELLED,
         ];
     }
 
@@ -75,10 +83,13 @@ final class OrderWorkflow
     /**
      * Builds the state machine the container registers from {@see self::getConfig()}, without a container: like
      * FrameworkBundle does for a state machine, a transition with several "from" places becomes one transition per
-     * place, so it is enabled from any of them
+     * place, so it is enabled from any of them. The {@see OrderCancellationGuard} the container registers is added to
+     * the event dispatcher
      */
     public static function getWorkflow(EventDispatcherInterface $eventDispatcher): StateMachine
     {
+        $eventDispatcher->addSubscriber(new OrderCancellationGuard());
+
         // the first place, pending, is the initial place
         $definitionBuilder = new DefinitionBuilder(self::getStates());
 
@@ -105,10 +116,14 @@ final class OrderWorkflow
             new Transition(self::TRANSITION_START_UPLOAD, [OrderInterface::SHIPMONDO_STATE_PENDING], OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO),
             new Transition(self::TRANSITION_COMPLETE_UPLOAD, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO),
             new Transition(self::TRANSITION_FAIL, [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_FAILED),
-            // when an order is deleted in Shipmondo it is no longer uploaded, so reset it to pending
+            // when an order's sales order is deleted, the order is no longer uploaded: it goes back to pending to be uploaded
+            // again, unless it is cancelled in Sylius, in which case it becomes cancelled right after
             new Transition(self::TRANSITION_RESET, [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_PENDING),
             // when an upload fails for a reason that says nothing about the order, the next upload run tries again
             new Transition(self::TRANSITION_RETRY, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_PENDING),
+            // when the order is cancelled in Sylius. It leaves only the states without a sales order: an uploaded order is
+            // reset once its sales order is deleted, and an uploading order is settled by its upload first
+            new Transition(self::TRANSITION_CANCEL, [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_FAILED], OrderInterface::SHIPMONDO_STATE_CANCELLED),
         ];
     }
 }

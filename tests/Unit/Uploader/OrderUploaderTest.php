@@ -20,8 +20,11 @@ use Setono\Shipmondo\Exception\UnauthorizedException;
 use Setono\Shipmondo\Exception\UnexpectedStatusCodeException;
 use Setono\Shipmondo\Exception\ValidationException;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
+use Setono\SyliusShipmondoPlugin\Canceller\OrderCanceller;
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
+use Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder;
 use Setono\SyliusShipmondoPlugin\Message\Command\UploadOrder;
+use Setono\SyliusShipmondoPlugin\Message\CommandHandler\DeleteOrderHandler;
 use Setono\SyliusShipmondoPlugin\Message\CommandHandler\UploadOrderHandler;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface;
@@ -31,14 +34,18 @@ use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Component\Order\Repository\OrderRepositoryInterface;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\DelayedMessageHandlingException;
+use Symfony\Component\Messenger\Exception\TransportException;
 use Symfony\Component\Messenger\Handler\HandlersLocator;
 use Symfony\Component\Messenger\MessageBus;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Messenger\Middleware\DispatchAfterCurrentBusMiddleware;
 use Symfony\Component\Messenger\Middleware\HandleMessageMiddleware;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Workflow\Event\GuardEvent;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
 use Tests\Setono\SyliusShipmondoPlugin\Support\NetworkException;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\Orders;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\RecordingLogger;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ScriptedHttpClient;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ShipmondoApi;
@@ -46,7 +53,8 @@ use Webmozart\Assert\Assert;
 
 /**
  * Exercises the uploader through its interface with the real order state machine, the real Shipmondo SDK over a
- * scripted HTTP transport, and a real command bus that handles UploadOrder synchronously with the real handler.
+ * scripted HTTP transport, and a real command bus that handles UploadOrder and DeleteOrder synchronously with the real
+ * handlers.
  */
 final class OrderUploaderTest extends TestCase
 {
@@ -59,6 +67,10 @@ final class OrderUploaderTest extends TestCase
     private const UPLOADED = OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO;
 
     private const FAILED = OrderInterface::SHIPMONDO_STATE_FAILED;
+
+    private const CANCELLED = OrderInterface::SHIPMONDO_STATE_CANCELLED;
+
+    private const CANCELLED_WHILE_UPLOADING_MESSAGE = 'The order {order} was cancelled while it was uploading, so it becomes cancelled once Shipmondo has no sales order for it';
 
     private const REJECTED_MESSAGE = 'Shipmondo rejected the upload of the order {order}, so the order is failed';
 
@@ -97,6 +109,11 @@ final class OrderUploaderTest extends TestCase
      */
     private ?MessageBusInterface $commandBus = null;
 
+    /**
+     * Whether the default command bus fails to handle DeleteOrder, as when its asynchronous transport is down
+     */
+    private bool $deleteOrderFails = false;
+
     protected function setUp(): void
     {
         $this->shipmondo = new ScriptedHttpClient();
@@ -134,7 +151,8 @@ final class OrderUploaderTest extends TestCase
         // the outcome is recorded on the order as the database has it, locked, so nothing changes it in between
         $this->entityManager->wrapInTransaction(Argument::type('callable'))->shouldBeCalledOnce();
         $this->entityManager->refresh($order, LockMode::PESSIMISTIC_WRITE)->will(static function () use ($order): void {
-            $order->setShipmondoId(null);
+            // what the database has: uploading, not linked to a sales order
+            $order->setShipmondoState(self::UPLOADING);
         })->shouldBeCalledOnce();
 
         self::assertSame(UploadOutcome::Uploaded, $this->uploader()->uploadOrder($order));
@@ -321,7 +339,7 @@ final class OrderUploaderTest extends TestCase
      *
      * @dataProvider statesNotWaitingForAnUpload
      */
-    public function it_leaves_an_order_alone_that_is_not_waiting_for_an_upload(string $state): void
+    public function it_leaves_an_order_alone_that_is_not_waiting_for_an_upload(string $state, ?int $salesOrderId): void
     {
         $order = $this->order(1, $state);
         $this->entityManager->wrapInTransaction(Argument::cetera())->shouldNotBeCalled();
@@ -333,18 +351,157 @@ final class OrderUploaderTest extends TestCase
         self::assertSame([[
             'level' => LogLevel::INFO,
             'message' => 'The order {order} was not uploaded, because its Shipmondo state is {state}, not uploading',
-            'context' => ['order' => '#001', 'outcome' => 'skipped', 'state' => $state, 'salesOrder' => null],
+            'context' => ['order' => '#001', 'outcome' => 'skipped', 'state' => $state, 'salesOrder' => $salesOrderId],
         ]], $this->logger->records);
     }
 
     /**
-     * @return iterable<string, array{string}>
+     * @return iterable<string, array{string, int|null}>
      */
     public static function statesNotWaitingForAnUpload(): iterable
     {
-        yield 'pending' => [self::PENDING];
-        yield 'uploaded' => [self::UPLOADED];
-        yield 'failed' => [self::FAILED];
+        yield 'pending' => [self::PENDING, null];
+        yield 'uploaded' => [self::UPLOADED, 999];
+        yield 'failed' => [self::FAILED, null];
+        yield 'cancelled' => [self::CANCELLED, null];
+    }
+
+    /**
+     * The order was cancelled while Shipmondo was creating its sales order. The cancellation couldn't delete a sales
+     * order the order wasn't linked to yet, so the upload deletes it
+     *
+     * @test
+     */
+    public function it_deletes_the_sales_order_it_just_created_when_the_order_was_cancelled_while_it_was_uploading(): void
+    {
+        $order = $this->order(1, self::UPLOADING);
+        $this->cancelWhenReadAgain($order);
+        $this->shipmondo->respond(201, ['id' => 1001])->respond(204);
+        // the order is locked and read again to settle its upload, and again to make it cancelled
+        $this->entityManager->wrapInTransaction(Argument::type('callable'))->shouldBeCalledTimes(2);
+        $this->entityManager->refresh($order, LockMode::PESSIMISTIC_WRITE)->shouldBeCalledTimes(2);
+
+        // the upload still reports how it went
+        self::assertSame(UploadOutcome::Uploaded, $this->uploader()->uploadOrder($order));
+
+        self::assertSame([self::CANCELLED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame(['POST sales_orders', 'DELETE sales_orders/1001'], $this->shipmondo->requestLines());
+        self::assertSame([[
+            'level' => LogLevel::INFO,
+            'message' => 'The order {order} was uploaded to Shipmondo as the sales order {salesOrder}',
+            'context' => ['order' => '#001', 'outcome' => 'uploaded', 'state' => self::UPLOADED, 'salesOrder' => 1001],
+        ], [
+            'level' => LogLevel::INFO,
+            'message' => self::CANCELLED_WHILE_UPLOADING_MESSAGE,
+            'context' => ['order' => '#001', 'salesOrder' => 1001],
+        ]], $this->logRecords());
+    }
+
+    /**
+     * @test
+     */
+    public function it_leaves_the_order_uploaded_when_the_sales_order_of_an_order_cancelled_while_it_was_uploading_cannot_be_deleted(): void
+    {
+        $order = $this->order(1, self::UPLOADING);
+        $this->cancelWhenReadAgain($order);
+        $this->shipmondo->respond(201, ['id' => 1001])->respond(500, ['error' => 'Internal Server Error']);
+
+        self::assertSame(UploadOutcome::Uploaded, $this->uploader()->uploadOrder($order));
+
+        // the sales order still exists in Shipmondo, so the order stays linked to it
+        self::assertSame([self::UPLOADED, 1001], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame(
+            ['The order {order} was uploaded to Shipmondo as the sales order {salesOrder}', self::CANCELLED_WHILE_UPLOADING_MESSAGE, 'Could not delete the Shipmondo sales order {shipmondoId} of the order {order}'],
+            array_column($this->logger->records, 'message'),
+        );
+    }
+
+    /**
+     * @test
+     *
+     * @dataProvider uploadsThatCreatedNoSalesOrder
+     */
+    public function it_cancels_an_order_that_was_cancelled_while_it_was_uploading_when_no_sales_order_was_created(
+        int $statusCode,
+        ?int $version,
+        UploadOutcome $outcome,
+        string $settledState,
+    ): void {
+        $order = $this->order(1, self::UPLOADING);
+        $order->setVersion(5);
+        $this->cancelWhenReadAgain($order);
+        $this->shipmondo->respond($statusCode, ['error' => 'No']);
+        $this->entityManager->wrapInTransaction(Argument::type('callable'))->shouldBeCalledTimes(2);
+
+        // the upload still reports how it went, so a failure that says something about the store still counts
+        self::assertSame($outcome, $this->uploader()->uploadOrder($order, $version));
+
+        self::assertSame([self::CANCELLED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame([
+            [$outcome->value, $settledState],
+            [null, null],
+        ], array_map(static fn (array $record): array => [$record['context']['outcome'] ?? null, $record['context']['state'] ?? null], $this->logger->records));
+        self::assertSame(['order' => '#001', 'salesOrder' => null], $this->logger->records[1]['context']);
+        self::assertSame(self::CANCELLED_WHILE_UPLOADING_MESSAGE, $this->logger->records[1]['message']);
+    }
+
+    /**
+     * @return iterable<string, array{int, int|null, UploadOutcome, string}>
+     */
+    public static function uploadsThatCreatedNoSalesOrder(): iterable
+    {
+        yield 'rejected upload (failed)' => [422, null, UploadOutcome::Rejected, self::FAILED];
+        yield 'credentials failure (back to pending)' => [401, null, UploadOutcome::CredentialsFailure, self::PENDING];
+        yield 'changed while uploading (back to pending)' => [201, 4, UploadOutcome::ChangedWhileUploading, self::PENDING];
+    }
+
+    /**
+     * In an upload run, the sales order of an order cancelled while it was uploading is deleted once the order's
+     * UploadOrder command has finished. So failing to send the DeleteOrder command, e.g. because its transport is down,
+     * can't undo the upload, and the run goes on
+     *
+     * @test
+     */
+    public function it_keeps_the_upload_when_the_sales_order_of_an_order_cancelled_while_it_was_uploading_cannot_be_deleted(): void
+    {
+        $cancelled = $this->order(1);
+        $other = $this->order(2);
+        $this->cancelWhenReadAgain($cancelled);
+        $this->deleteOrderFails = true;
+        $this->shipmondo->respond(201, ['id' => 1001])->respond(201, ['id' => 1002]);
+
+        self::assertNull($this->uploader()->upload());
+
+        // the order stays uploaded and linked, so deleting its sales order in Shipmondo later makes it cancelled
+        self::assertSame([self::UPLOADED, 1001], [$cancelled->getShipmondoState(), $cancelled->getShipmondoId()]);
+        self::assertSame([self::UPLOADED, 1002], [$other->getShipmondoState(), $other->getShipmondoId()]);
+        self::assertSame(['POST sales_orders', 'POST sales_orders'], $this->shipmondo->requestLines());
+        self::assertSame([['#001', 'uploaded'], ['#001', null], ['#001', null], ['#002', 'uploaded']], $this->loggedOutcomes());
+
+        $failure = $this->logger->records[2];
+        self::assertSame([LogLevel::ERROR, 'The upload of the order {order} was settled, but a command it requested afterwards failed'], [$failure['level'], $failure['message']]);
+        self::assertInstanceOf(DelayedMessageHandlingException::class, $failure['context']['exception']);
+    }
+
+    /**
+     * Without the envelope of the order's UploadOrder command, the upload run can't tell how the upload went
+     *
+     * @test
+     */
+    public function it_rethrows_a_failure_after_an_upload_that_does_not_say_how_the_upload_went(): void
+    {
+        $this->order(1);
+        $failure = new DelayedMessageHandlingException([new TransportException('The transport is down')]);
+        $commandBus = $this->prophesize(MessageBusInterface::class);
+        $commandBus->dispatch(Argument::type(UploadOrder::class))->willThrow($failure);
+        $this->commandBus = $commandBus->reveal();
+
+        try {
+            $this->uploader()->upload();
+            self::fail('The failure was swallowed');
+        } catch (DelayedMessageHandlingException $e) {
+            self::assertSame($failure, $e);
+        }
     }
 
     /**
@@ -579,14 +736,22 @@ final class OrderUploaderTest extends TestCase
         yield 'handled by a handler that returns something else' => [new HandledStamp('uploaded', 'custom_handler')];
     }
 
+    /**
+     * An order in the given Shipmondo state. An uploaded order is linked to the sales order 999
+     */
     private function order(int $id, string $state = self::PENDING): Order
     {
-        $order = new Order();
-        (new \ReflectionProperty($order, 'id'))->setValue($order, $id);
-        $order->setNumber(sprintf('#%03d', $id));
-        $order->setShipmondoState($state);
+        return $this->orders[] = Orders::create($state, 999, id: $id, number: sprintf('#%03d', $id));
+    }
 
-        return $this->orders[] = $order;
+    /**
+     * Reading the order again to settle its upload reveals that an admin cancelled it in the meantime
+     */
+    private function cancelWhenReadAgain(Order $order): void
+    {
+        $this->entityManager->refresh($order, LockMode::PESSIMISTIC_WRITE)->will(static function () use ($order): void {
+            $order->setState(OrderInterface::STATE_CANCELLED);
+        });
     }
 
     private function uploader(): OrderUploader
@@ -604,26 +769,44 @@ final class OrderUploaderTest extends TestCase
             $orderRepository->find($order->getId())->willReturn($order);
         }
 
+        $orderWorkflow = OrderWorkflow::getWorkflow($this->eventDispatcher);
+        $shipmondoClient = ShipmondoApi::client($this->shipmondo);
+
         /** @var UploadOrderHandler|null $handler */
         $handler = null;
-        $commandBus = $this->commandBus ?? new MessageBus([new HandleMessageMiddleware(new HandlersLocator([
+        /** @var DeleteOrderHandler|null $deleteOrderHandler */
+        $deleteOrderHandler = null;
+        $deleteOrderFails = $this->deleteOrderFails;
+        $commandBus = $this->commandBus ?? new MessageBus([new DispatchAfterCurrentBusMiddleware(), new HandleMessageMiddleware(new HandlersLocator([
             UploadOrder::class => [static function (UploadOrder $message) use (&$handler): UploadOutcome {
                 Assert::isInstanceOf($handler, UploadOrderHandler::class);
 
                 return $handler($message);
             }],
+            DeleteOrder::class => [static function (DeleteOrder $message) use (&$deleteOrderHandler, $deleteOrderFails): bool {
+                if ($deleteOrderFails) {
+                    throw new TransportException('The transport is down');
+                }
+
+                Assert::isInstanceOf($deleteOrderHandler, DeleteOrderHandler::class);
+
+                return $deleteOrderHandler($message);
+            }],
         ]))]);
 
+        $orderCanceller = new OrderCanceller($commandBus, $orderWorkflow);
         $uploader = new OrderUploader(
             $provider->reveal(),
             $commandBus,
-            OrderWorkflow::getWorkflow($this->eventDispatcher),
-            ShipmondoApi::client($this->shipmondo),
+            $orderWorkflow,
+            $shipmondoClient,
             $this->salesOrderDataMapper->reveal(),
+            $orderCanceller,
             $this->logger,
             $managerRegistry->reveal(),
         );
         $handler = new UploadOrderHandler($orderRepository->reveal(), $uploader);
+        $deleteOrderHandler = new DeleteOrderHandler($orderRepository->reveal(), $shipmondoClient, $orderWorkflow, $orderCanceller, $this->logger);
 
         return $uploader;
     }
