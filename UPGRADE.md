@@ -249,24 +249,28 @@ Only if you extend or call the upload code:
 
 New: the `Uploader\UploadOutcome` enum, which says how an upload went.
 
-### 7. A cancelled order is cancelled in Shipmondo, and only an uploaded order is linked to a sales order
+### 7. A cancelled order's Shipmondo state becomes cancelled, and only an uploaded order is linked to a sales order
 
 In 1.x, cancelling an order left its Shipmondo state as it was, e.g. `pending` (see
 [#5](https://github.com/Setono/SyliusShipmondoPlugin/issues/5)). The `setono_sylius_shipmondo__order` workflow now
 has a `cancelled` state (`OrderInterface::SHIPMONDO_STATE_CANCELLED`) and a `cancel` transition
-(`OrderWorkflow::TRANSITION_CANCEL`) into it from `pending`, `failed` and `uploaded_to_shipmondo`. When an order is
-cancelled in Sylius, it depends on its Shipmondo state:
+(`OrderWorkflow::TRANSITION_CANCEL`) into it from `pending` and `failed`, the states in which Shipmondo has no sales
+order for the order. A guard on the workflow (`Workflow\OrderCancellationGuard`, service
+`setono_sylius_shipmondo.workflow.order_cancellation_guard`) lets `cancel` through only for an order that is cancelled
+in Sylius. When an order is cancelled in Sylius, it depends on its Shipmondo state:
 
 | Shipmondo state | What happens |
 |---|---|
-| `pending` or `failed` | the order is cancelled right away |
-| `uploaded_to_shipmondo` | its sales order is deleted (section 5), which cancels the order. If the deletion fails, the order stays `uploaded_to_shipmondo`; delete the sales order in Shipmondo, and the `orders/delete` webhook cancels the order |
-| `uploading_to_shipmondo` | its upload cancels it once the upload is settled. If Shipmondo created the sales order meanwhile, that sales order is deleted first |
+| `pending` or `failed` | the order becomes `cancelled` right away |
+| `uploaded_to_shipmondo` | its sales order is deleted (section 5): the order is `reset` to `pending` and then becomes `cancelled`. If the deletion fails, the order stays `uploaded_to_shipmondo`; delete the sales order in Shipmondo, and the `orders/delete` webhook makes the order `cancelled` the same way |
+| `uploading_to_shipmondo` | it is left to its upload, which makes it `cancelled` once the upload is settled. If Shipmondo created the sales order meanwhile, that sales order is deleted first |
 
-A guard on the workflow (`Workflow\OrderCancellationGuard`, service
-`setono_sylius_shipmondo.workflow.order_cancellation_guard`) lets `cancel` through only for an order that is cancelled
-in Sylius, and `reset` only for one that isn't. So when a cancelled order's sales order is deleted, through
-`DeleteOrder` or in Shipmondo, the order is cancelled instead of being reset to `pending`.
+Whenever an order's sales order is deleted, through `DeleteOrder` or in Shipmondo, the order is `reset` to `pending`,
+and then becomes `cancelled` if it is cancelled in Sylius. An order that isn't goes on to be uploaded again, as before.
+
+**If you route `DeleteOrder` to an async transport:** for an order cancelled while it was uploading, the upload sends
+`DeleteOrder` once its `UploadOrder` command has finished (Messenger's `DispatchAfterCurrentBusStamp`). If it can't be
+sent, the upload run logs it and goes on, and the order stays `uploaded_to_shipmondo`.
 
 The order grid shows a cancelled order with a yellow label, like Sylius shows a cancelled order. Uploading and uploaded
 orders now get their coloured labels too (see [#25](https://github.com/Setono/SyliusShipmondoPlugin/issues/25)): the
@@ -305,12 +309,13 @@ Only if you extend or call the code involved:
 | `Model\OrderInterface::setShipmondoState(string $shipmondoState)` | `setShipmondoState(string $shipmondoState, array $context = [])`, which throws an `\InvalidArgumentException` for `uploaded_to_shipmondo` without an integer under `OrderWorkflow::CONTEXT_SALES_ORDER_ID`. Implement the same rule if your order doesn't use `OrderTrait` |
 | `Workflow\OrderWorkflow::getWorkflow(Symfony\Contracts\EventDispatcher\EventDispatcherInterface $eventDispatcher)` | `getWorkflow(Symfony\Component\EventDispatcher\EventDispatcherInterface $eventDispatcher)`, which adds the `OrderCancellationGuard` to the event dispatcher |
 | | `EventListener\OrderCancellationListener::__construct(Canceller\OrderCancellerInterface $orderCanceller, $requestStack)` |
-| | `Message\CommandHandler\DeleteOrderHandler::__construct($orderRepository, $shipmondoClient, Symfony\Component\Workflow\WorkflowInterface $orderWorkflow, $logger)` |
+| | `Message\CommandHandler\DeleteOrderHandler::__construct($orderRepository, $shipmondoClient, Symfony\Component\Workflow\WorkflowInterface $orderWorkflow, Canceller\OrderCancellerInterface $orderCanceller, $logger)` |
+| | `Webhook\Handler\ResetUploadStateHandler::__construct($orderResolver, $orderWorkflow, Canceller\OrderCancellerInterface $orderCanceller, $managerRegistry)` |
 
 New: `Canceller\OrderCancellerInterface` and `Canceller\OrderCanceller` (service `setono_sylius_shipmondo.canceller.order`),
-which carry a Sylius cancellation over to Shipmondo; `Workflow\OrderCancellationGuard`; the
-`OrderInterface::SHIPMONDO_STATE_CANCELLED`, `OrderWorkflow::TRANSITION_CANCEL` and `OrderWorkflow::CONTEXT_SALES_ORDER_ID`
-constants.
+which make the Shipmondo state of an order that is cancelled in Sylius cancelled too, and the `Canceller\Cancellation`
+enum, which says what happened; `Workflow\OrderCancellationGuard`; the `OrderInterface::SHIPMONDO_STATE_CANCELLED`,
+`OrderWorkflow::TRANSITION_CANCEL` and `OrderWorkflow::CONTEXT_SALES_ORDER_ID` constants.
 
 ### Unchanged
 

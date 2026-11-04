@@ -19,6 +19,7 @@ use Setono\SyliusShipmondoPlugin\Message\Command\UploadOrder;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
+use Symfony\Component\Messenger\Exception\DelayedMessageHandlingException;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Workflow\WorkflowInterface;
@@ -142,7 +143,21 @@ final class OrderUploader implements OrderUploaderInterface
      */
     private function requestUpload(OrderInterface $order): ?UploadOutcome
     {
-        $result = $this->commandBus->dispatch(new UploadOrder($order))->last(HandledStamp::class)?->getResult();
+        try {
+            $envelope = $this->commandBus->dispatch(new UploadOrder($order));
+        } catch (DelayedMessageHandlingException $e) {
+            // the upload was settled, but a command it requested for afterwards failed, e.g. the DeleteOrder command for
+            // an order that was cancelled while it was uploading couldn't be sent to its transport
+            $this->logger->error('The upload of the order {order} was settled, but a command it requested afterwards failed', [
+                'order' => $order->getNumber(),
+                'exception' => $e,
+            ]);
+
+            // the middleware gives the exception the envelope of the command it dispatched
+            $envelope = $e->getEnvelope() ?? throw $e;
+        }
+
+        $result = $envelope->last(HandledStamp::class)?->getResult();
 
         return $result instanceof UploadOutcome ? $result : null;
     }
@@ -154,9 +169,9 @@ final class OrderUploader implements OrderUploaderInterface
      * order would then fail and close the entity manager, leaving the order in uploading and the sales order Shipmondo
      * just created unlinked. So the order's row is locked and read again first.
      *
-     * The order may even have been cancelled. Its cancellation left it to its upload, because the order was in uploading,
-     * so the cancellation is carried over to Shipmondo here: once the order is pending, failed or uploaded (and the sales
-     * order Shipmondo just created is deleted)
+     * The order may even have been cancelled. Its cancellation left it to its upload, because the order was uploading,
+     * so it becomes cancelled here, once it is pending or failed, or once the sales order Shipmondo just created is
+     * deleted
      */
     private function settle(
         OrderInterface $order,
@@ -179,12 +194,16 @@ final class OrderUploader implements OrderUploaderInterface
         $this->log($order, $outcome, $failure);
 
         if (OrderInterface::STATE_CANCELLED === $order->getState()) {
-            $this->logger->info('The order {order} was cancelled while it was uploading, so its cancellation is carried over to Shipmondo', [
+            $this->logger->info('The order {order} was cancelled while it was uploading, so it becomes cancelled once Shipmondo has no sales order for it', [
                 'order' => $order->getNumber(),
                 'salesOrder' => $order->getShipmondoId(),
             ]);
 
-            $manager->wrapInTransaction(fn (): ?bool => $this->orderCanceller->cancel($order));
+            $manager->wrapInTransaction(function () use ($manager, $order): void {
+                $manager->refresh($order, LockMode::PESSIMISTIC_WRITE);
+
+                $this->orderCanceller->cancel($order);
+            });
         }
 
         return $outcome;

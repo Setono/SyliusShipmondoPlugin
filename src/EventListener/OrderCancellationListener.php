@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\EventListener;
 
+use Setono\SyliusShipmondoPlugin\Canceller\Cancellation;
 use Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Symfony\Component\HttpFoundation\Exception\SessionNotFoundException;
@@ -12,9 +13,10 @@ use Symfony\Component\HttpFoundation\Session\FlashBagAwareSessionInterface;
 use Symfony\Component\Workflow\Event\CompletedEvent;
 
 /**
- * When a Sylius order is cancelled, cancel it in Shipmondo too ({@see OrderCancellerInterface}): an uploaded order's
- * sales order is deleted, and a flash message tells the user whether it was deleted, will be deleted (async
- * transport) or could not be deleted. A failed deletion never blocks the cancellation (see DeleteOrderHandler).
+ * When a Sylius order is cancelled, its Shipmondo state becomes cancelled too ({@see OrderCancellerInterface}). An
+ * uploaded order's sales order is deleted first, and a flash message tells the user whether it was deleted, will be
+ * deleted (async transport) or could not be deleted. A failed deletion never blocks the cancellation (see
+ * DeleteOrderHandler).
  *
  * Sylius 1.14 runs the `sylius_order` state machine on winzou by default, but it is migrating to
  * Symfony Workflow — so we hook both backends: a winzou `after` callback on the `cancel` transition
@@ -33,19 +35,11 @@ final class OrderCancellationListener
     public function __invoke(OrderInterface $order): void
     {
         // only the deletion of a sales order is worth telling the user about
-        $uploaded = null !== $order->getShipmondoId();
-
-        $deleted = $this->orderCanceller->cancel($order);
-
-        if (!$uploaded) {
-            return;
-        }
-
-        match ($deleted) {
-            // DeleteOrder was routed to an async transport, so the sales order is deleted later
-            null => $this->addFlash('info', 'setono_sylius_shipmondo.order_will_be_deleted_in_shipmondo'),
-            true => $this->addFlash('info', 'setono_sylius_shipmondo.order_deleted_in_shipmondo'),
-            false => $this->addFlash('error', 'setono_sylius_shipmondo.order_not_deleted_in_shipmondo'),
+        match ($this->orderCanceller->cancel($order)) {
+            Cancellation::SalesOrderDeleted => $this->addFlash('info', 'setono_sylius_shipmondo.order_deleted_in_shipmondo'),
+            Cancellation::SalesOrderDeletedLater => $this->addFlash('info', 'setono_sylius_shipmondo.order_will_be_deleted_in_shipmondo'),
+            Cancellation::SalesOrderNotDeleted => $this->addFlash('error', 'setono_sylius_shipmondo.order_not_deleted_in_shipmondo'),
+            default => null,
         };
     }
 

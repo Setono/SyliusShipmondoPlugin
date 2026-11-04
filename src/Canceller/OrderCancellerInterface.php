@@ -9,12 +9,11 @@ use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 interface OrderCancellerInterface
 {
     /**
-     * Carries the cancellation of an order in Sylius over to Shipmondo. A pending or failed order is cancelled right
-     * away. An uploaded order's sales order is deleted through the DeleteOrder command, which cancels the order once the
-     * sales order is gone. An order in uploading is left to its upload, which cancels it when the upload is settled.
-     *
-     * Returns false when the sales order couldn't be deleted (the order stays uploaded), null when that is decided
-     * later (DeleteOrder was sent to an asynchronous transport, or the order is uploading), and true otherwise
+     * Makes an order that is cancelled in Sylius cancelled in its Shipmondo state too. A pending or failed order becomes
+     * cancelled right away. An uploaded order's sales order is deleted through the DeleteOrder command, which makes the
+     * order cancelled once the sales order is gone; the command is dispatched once the command being handled (if any)
+     * has finished, so a failure to send it can't undo that command. An order in uploading is left to its upload, which
+     * makes it cancelled once the upload is settled.
      */
-    public function cancel(OrderInterface $order): ?bool;
+    public function cancel(OrderInterface $order): Cancellation;
 }

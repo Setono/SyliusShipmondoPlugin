@@ -15,6 +15,7 @@ use Symfony\Component\Workflow\StateMachine;
 use Symfony\Component\Workflow\Transition;
 use Symfony\Component\Workflow\TransitionBlocker;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\Orders;
 
 /**
  * Exercises the guard through the real order state machine, which registers it
@@ -31,22 +32,21 @@ final class OrderCancellationGuardTest extends TestCase
     /**
      * @test
      */
-    public function it_guards_the_cancel_and_reset_transitions_of_the_order_workflow(): void
+    public function it_guards_the_cancel_transition_of_the_order_workflow(): void
     {
         self::assertSame([
             'workflow.setono_sylius_shipmondo__order.guard.cancel' => 'guardCancel',
-            'workflow.setono_sylius_shipmondo__order.guard.reset' => 'guardReset',
         ], OrderCancellationGuard::getSubscribedEvents());
     }
 
     /**
      * @test
      *
-     * @dataProvider statesACancelledOrderIsCancelledFrom
+     * @dataProvider statesWithoutASalesOrder
      */
-    public function it_lets_an_order_that_is_cancelled_in_sylius_be_cancelled(string $state): void
+    public function it_lets_an_order_that_is_cancelled_in_sylius_become_cancelled(string $shipmondoState): void
     {
-        $order = self::order(OrderInterface::STATE_CANCELLED, $state);
+        $order = Orders::create($shipmondoState, state: OrderInterface::STATE_CANCELLED);
 
         self::assertTrue($this->workflow->can($order, OrderWorkflow::TRANSITION_CANCEL));
     }
@@ -54,46 +54,31 @@ final class OrderCancellationGuardTest extends TestCase
     /**
      * @return iterable<string, array{string}>
      */
-    public static function statesACancelledOrderIsCancelledFrom(): iterable
+    public static function statesWithoutASalesOrder(): iterable
     {
         yield 'pending' => [OrderInterface::SHIPMONDO_STATE_PENDING];
         yield 'failed' => [OrderInterface::SHIPMONDO_STATE_FAILED];
-        yield 'uploaded' => [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO];
     }
 
     /**
      * @test
      */
-    public function it_keeps_an_order_that_is_not_cancelled_in_sylius_from_being_cancelled(): void
+    public function it_keeps_an_order_that_is_not_cancelled_in_sylius_from_becoming_cancelled(): void
     {
-        $order = self::order(OrderInterface::STATE_NEW, OrderInterface::SHIPMONDO_STATE_PENDING);
+        $order = Orders::create();
 
-        self::assertSame(
-            ['Only an order that is cancelled in Sylius can be cancelled in Shipmondo'],
-            $this->blockers($order, OrderWorkflow::TRANSITION_CANCEL),
-        );
+        self::assertSame(['The order is not cancelled in Sylius'], $this->blockers($order, OrderWorkflow::TRANSITION_CANCEL));
     }
 
     /**
      * @test
      */
-    public function it_never_resets_a_cancelled_order_to_be_uploaded_again(): void
+    public function it_never_lets_an_order_with_a_sales_order_become_cancelled(): void
     {
-        $order = self::order(OrderInterface::STATE_CANCELLED, OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO);
+        // the order is reset to pending once its sales order is deleted, and becomes cancelled from there
+        $order = Orders::create(OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, 1001, OrderInterface::STATE_CANCELLED);
 
-        self::assertSame(
-            ['A cancelled order is cancelled in Shipmondo, not reset to be uploaded again'],
-            $this->blockers($order, OrderWorkflow::TRANSITION_RESET),
-        );
-    }
-
-    /**
-     * @test
-     */
-    public function it_resets_an_order_that_is_not_cancelled(): void
-    {
-        $order = self::order(OrderInterface::STATE_NEW, OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO);
-
+        self::assertFalse($this->workflow->can($order, OrderWorkflow::TRANSITION_CANCEL));
         self::assertTrue($this->workflow->can($order, OrderWorkflow::TRANSITION_RESET));
     }
 
@@ -102,15 +87,11 @@ final class OrderCancellationGuardTest extends TestCase
      */
     public function it_treats_a_subject_that_is_not_an_order_as_not_cancelled(): void
     {
-        $guard = new OrderCancellationGuard();
+        $event = new GuardEvent(new \stdClass(), new Marking(), new Transition(OrderWorkflow::TRANSITION_CANCEL, 'pending', 'cancelled'));
 
-        $cancel = new GuardEvent(new \stdClass(), new Marking(), new Transition(OrderWorkflow::TRANSITION_CANCEL, 'pending', 'cancelled'));
-        $guard->guardCancel($cancel);
-        self::assertTrue($cancel->isBlocked());
+        (new OrderCancellationGuard())->guardCancel($event);
 
-        $reset = new GuardEvent(new \stdClass(), new Marking(), new Transition(OrderWorkflow::TRANSITION_RESET, 'uploaded_to_shipmondo', 'pending'));
-        $guard->guardReset($reset);
-        self::assertFalse($reset->isBlocked());
+        self::assertTrue($event->isBlocked());
     }
 
     /**
@@ -122,14 +103,5 @@ final class OrderCancellationGuardTest extends TestCase
             static fn (TransitionBlocker $blocker): string => $blocker->getMessage(),
             iterator_to_array($this->workflow->buildTransitionBlockerList($order, $transition), false),
         );
-    }
-
-    private static function order(string $state, string $shipmondoState): Order
-    {
-        $order = new Order();
-        $order->setState($state);
-        $order->setShipmondoState($shipmondoState, [OrderWorkflow::CONTEXT_SALES_ORDER_ID => 1001]);
-
-        return $order;
     }
 }

@@ -281,10 +281,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
 
         // While the first order is uploaded, an admin cancels the second order, which the upload run has already loaded
         $this->onceWhen('workflow.setono_sylius_shipmondo__order.completed.complete_upload', function () use ($cancelled): void {
-            $this->connection()->executeStatement(
-                'UPDATE sylius_order SET state = ?, version = version + 1 WHERE id = ?',
-                [OrderInterface::STATE_CANCELLED, self::id($cancelled)],
-            );
+            $this->cancelBehindTheApplicationsBack($cancelled);
         });
 
         $this->shipmondo
@@ -399,10 +396,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
     private function cancelWhenMapped(OrderInterface $order): void
     {
         $this->onceWhen(SalesOrderMappedEvent::class, function () use ($order): void {
-            $this->connection()->executeStatement(
-                'UPDATE sylius_order SET state = ?, version = version + 1 WHERE id = ?',
-                [OrderInterface::STATE_CANCELLED, self::id($order)],
-            );
+            $this->cancelBehindTheApplicationsBack($order);
         });
     }
 

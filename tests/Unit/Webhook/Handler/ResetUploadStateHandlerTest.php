@@ -12,18 +12,21 @@ use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
 use Setono\Shipmondo\Enum\WebhookAction;
 use Setono\Shipmondo\Enum\WebhookResourceName;
+use Setono\SyliusShipmondoPlugin\Canceller\OrderCanceller;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\ResetUploadStateHandler;
 use Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Symfony\Component\EventDispatcher\EventDispatcher;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Workflow\Event\GuardEvent;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\Orders;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\Webhook\WebhookPayloadFixtures;
 
 /**
- * Exercises the handler with the real order state machine (including its guard) and real orders
+ * Exercises the handler with the real order state machine (including its guard), the real canceller and real orders
  */
 final class ResetUploadStateHandlerTest extends TestCase
 {
@@ -79,9 +82,7 @@ final class ResetUploadStateHandlerTest extends TestCase
     public function it_cancels_a_cancelled_order_when_its_sales_order_is_deleted(): void
     {
         $payload = WebhookPayloadFixtures::load('orders_delete');
-        $order = self::uploadedOrder(self::SALES_ORDER_ID);
-        $order->setState(OrderInterface::STATE_CANCELLED);
-        $this->resolve($payload, $order);
+        $order = $this->resolve($payload, Orders::create(OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, self::SALES_ORDER_ID, OrderInterface::STATE_CANCELLED));
         $this->expectFlush();
 
         $this->handle($payload, WebhookResourceName::Orders, WebhookAction::Delete);
@@ -157,10 +158,7 @@ final class ResetUploadStateHandlerTest extends TestCase
     {
         // e.g. the delete echoed back after our own DeleteOrder, which already cancelled the order
         $payload = WebhookPayloadFixtures::load('orders_delete');
-        $order = new Order();
-        $order->setState(OrderInterface::STATE_CANCELLED);
-        $order->setShipmondoState(OrderInterface::SHIPMONDO_STATE_CANCELLED);
-        $this->resolve($payload, $order);
+        $order = $this->resolve($payload, Orders::create(OrderInterface::SHIPMONDO_STATE_CANCELLED, state: OrderInterface::STATE_CANCELLED));
         $this->expectNoFlush();
 
         $this->handle($payload, WebhookResourceName::Orders, WebhookAction::Delete);
@@ -187,10 +185,7 @@ final class ResetUploadStateHandlerTest extends TestCase
 
     private static function uploadedOrder(int $salesOrderId): Order
     {
-        $order = new Order();
-        $order->setShipmondoState(OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, [OrderWorkflow::CONTEXT_SALES_ORDER_ID => $salesOrderId]);
-
-        return $order;
+        return Orders::create(OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, $salesOrderId);
     }
 
     /**
@@ -225,9 +220,16 @@ final class ResetUploadStateHandlerTest extends TestCase
      */
     private function handle(array $payload, WebhookResourceName $resource, WebhookAction $action): void
     {
+        $orderWorkflow = OrderWorkflow::getWorkflow($this->eventDispatcher);
+
+        // the order is pending by the time the canceller gets it, so it has no sales order to delete
+        $commandBus = $this->prophesize(MessageBusInterface::class);
+        $commandBus->dispatch(Argument::cetera())->shouldNotBeCalled();
+
         $handler = new ResetUploadStateHandler(
             $this->orderResolver->reveal(),
-            OrderWorkflow::getWorkflow($this->eventDispatcher),
+            $orderWorkflow,
+            new OrderCanceller($commandBus->reveal(), $orderWorkflow),
             $this->managerRegistry->reveal(),
         );
 

@@ -8,16 +8,17 @@ use Doctrine\Persistence\ManagerRegistry;
 use Setono\Doctrine\ORMTrait;
 use Setono\Shipmondo\Enum\WebhookAction;
 use Setono\Shipmondo\Enum\WebhookResourceName;
+use Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Symfony\Component\Workflow\WorkflowInterface;
 
 /**
- * Reacts to a sales order being deleted in Shipmondo: the order is no longer uploaded, so it is unlinked from the
- * sales order. An order that is cancelled in Sylius becomes cancelled (e.g. its sales order couldn't be deleted when
- * the order was cancelled, so an admin deleted it in Shipmondo). Any other order goes back to pending, which makes the
- * next upload run upload it again.
+ * Reacts to a sales order being deleted in Shipmondo: the order is no longer uploaded, so it is reset to pending, which
+ * makes the next upload run upload it again. An order that is cancelled in Sylius becomes cancelled right after
+ * ({@see OrderCancellerInterface}), e.g. when its sales order couldn't be deleted as the order was cancelled, so an
+ * admin deleted it in Shipmondo.
  *
  * Deleting a sales order in Shipmondo is intentionally *not* treated as a cancellation — cancelling an
  * order is a Sylius-side decision.
@@ -29,6 +30,7 @@ final class ResetUploadStateHandler implements RemoteEventHandlerInterface
     public function __construct(
         private readonly OrderResolverInterface $orderResolver,
         private readonly WorkflowInterface $orderWorkflow,
+        private readonly OrderCancellerInterface $orderCanceller,
         ManagerRegistry $managerRegistry,
     ) {
         $this->managerRegistry = $managerRegistry;
@@ -54,12 +56,12 @@ final class ResetUploadStateHandler implements RemoteEventHandlerInterface
             return;
         }
 
-        $transition = $this->orderWorkflow->can($order, OrderWorkflow::TRANSITION_CANCEL) ? OrderWorkflow::TRANSITION_CANCEL : OrderWorkflow::TRANSITION_RESET;
-        if (!$this->orderWorkflow->can($order, $transition)) {
+        if (!$this->orderWorkflow->can($order, OrderWorkflow::TRANSITION_RESET)) {
             return;
         }
 
-        $this->orderWorkflow->apply($order, $transition);
+        $this->orderWorkflow->apply($order, OrderWorkflow::TRANSITION_RESET);
+        $this->orderCanceller->cancel($order);
 
         $this->getManager($order)->flush();
     }

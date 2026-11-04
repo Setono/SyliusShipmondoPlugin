@@ -160,15 +160,15 @@ The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires
 **Order Workflow**
 - Defined in `src/Workflow/OrderWorkflow.php`
 - States: pending → uploading_to_shipmondo → uploaded_to_shipmondo (or failed), and cancelled
-- Transitions: `start_upload`, `complete_upload`, `fail`, `retry` (uploading_to_shipmondo → pending, after a failure that says nothing about the order), `reset` (uploaded_to_shipmondo → pending, when the sales order of an order that isn't cancelled is deleted), `cancel` (pending, failed or uploaded_to_shipmondo → cancelled, never from uploading)
-- `Workflow\OrderCancellationGuard` lets `cancel` through only for an order cancelled in Sylius, and `reset` only for one that isn't, so callers apply whichever of the two `can()` allows
+- Transitions: `start_upload`, `complete_upload`, `fail`, `retry` (uploading_to_shipmondo → pending, after a failure that says nothing about the order), `reset` (uploaded_to_shipmondo → pending, whenever the sales order is deleted), `cancel` (pending or failed → cancelled: only from states without a sales order)
+- `Workflow\OrderCancellationGuard` lets `cancel` through only for an order cancelled in Sylius. When a sales order is deleted, callers apply `reset` and then `OrderCancellerInterface::cancel()`, which makes a cancelled order cancelled
 - Workflow name: `setono_sylius_shipmondo__order`
 - State stored in Order entity's `shipmondoState` property. The state owns the link to the sales order (`shipmondoId`): the marking store passes the transition context to `setShipmondoState()`, which links the order on entering uploaded (`complete_upload` needs `[OrderWorkflow::CONTEXT_SALES_ORDER_ID => $id]`, or it throws) and unlinks it on entering any other state. There is no `setShipmondoId()`; tests put an order in a state with `setShipmondoState($state, $context)`
 - `OrderWorkflow::getWorkflow()` builds the same state machine without a container, guard included, for unit tests
 
 **Order Upload**
 - `Uploader\OrderUploader` owns the whole upload. `upload()` is the upload run: it claims each qualifying order (row lock, re-read, `start_upload`), dispatches `UploadOrder`, and applies the stop rules to the `UploadOutcome` it reads from the `HandledStamp` (none when routed async). `uploadOrder()` maps, creates, links, turns any failure into an `UploadOutcome`, settles the Shipmondo state and logs.
-- Settling re-reads the order; if it was cancelled while it was uploading, settling makes its normal move and then cancels it through `OrderCancellerInterface`, which deletes a sales order Shipmondo created meanwhile. The outcome (and so the stop rules) is unchanged.
+- Settling re-reads the order; if it was cancelled while it was uploading, settling makes its normal move and then calls `OrderCancellerInterface::cancel()` (locked and re-read again), which deletes a sales order Shipmondo created meanwhile. The outcome (and so the stop rules) is unchanged. `DeleteOrder` is dispatched with `DispatchAfterCurrentBusStamp`, so it runs after the `UploadOrder` transaction commits; `upload()` logs a `DelayedMessageHandlingException` and reads the outcome from its envelope.
 - `UploadOrderHandler` only loads the order and calls `uploadOrder()`. A failed upload is settled, never thrown, so Messenger doesn't retry it: the next upload run is the retry.
 - `UploadOrdersCommand` fails only when the run stops early (credentials failure, 429, three rejected uploads in a row), so cron monitoring notices; it is silent otherwise.
 
@@ -187,8 +187,8 @@ The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires
 
 **Order Cancellation**
 - `OrderCancellationListener` calls `Canceller\OrderCanceller` when a Sylius order is cancelled, hooked on both state-machine backends (a winzou callback prepended by the extension, and a Symfony Workflow listener), and flashes whether the sales order was deleted
-- `OrderCanceller` cancels a pending or failed order right away, dispatches `DeleteOrder` for an uploaded one, and leaves an uploading one to its upload
-- `DeleteOrderHandler` applies `cancel` (or, for an order that isn't cancelled, `reset`) once the sales order is gone; a failed deletion leaves the order uploaded and linked
+- `OrderCanceller` makes a pending or failed order cancelled right away, dispatches `DeleteOrder` for an uploaded one, and leaves an uploading one to its upload; it returns a `Canceller\Cancellation` saying which happened
+- `DeleteOrderHandler` applies `reset` once the sales order is gone, then calls the canceller; a failed deletion leaves the order uploaded and linked
 - `DeleteOrderHandler` must not throw on Shipmondo failures: handled synchronously it runs inside Sylius's cancel transaction, and the bus's `doctrine_transaction` rollback would make the cancel fail
 
 ### Entity Extensions

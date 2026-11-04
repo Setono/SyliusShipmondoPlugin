@@ -109,12 +109,11 @@ final class UploadOrderTest extends FunctionalTestCase
         // the command carries the order's version from when its upload started
         $message = new UploadOrder($order);
 
-        // an admin cancels the order before a worker handles the command. The cancellation leaves an order in uploading
-        // to its upload
-        $this->connection()->executeStatement(
-            'UPDATE sylius_order SET state = ?, version = version + 1 WHERE id = ?',
-            [OrderInterface::STATE_CANCELLED, self::id($order)],
-        );
+        // the order is cancelled before a worker handles the command. The cancellation leaves an order in uploading to its
+        // upload
+        $this->cancel($order);
+        self::assertSame(OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO, $this->orderRow(self::id($order))['shipmondo_state']);
+
         // a worker loads the order afresh
         $this->entityManager()->clear();
 

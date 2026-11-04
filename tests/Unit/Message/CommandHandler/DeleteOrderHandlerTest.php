@@ -5,10 +5,12 @@ declare(strict_types=1);
 namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Message\CommandHandler;
 
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
 use Psr\Log\LogLevel;
 use Setono\Shipmondo\Exception\InternalServerErrorException;
+use Setono\SyliusShipmondoPlugin\Canceller\OrderCanceller;
 use Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder;
 use Setono\SyliusShipmondoPlugin\Message\CommandHandler\DeleteOrderHandler;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
@@ -17,15 +19,17 @@ use Sylius\Component\Order\Model\OrderInterface as BaseOrderInterface;
 use Sylius\Component\Order\Repository\OrderRepositoryInterface;
 use Symfony\Component\EventDispatcher\EventDispatcher;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Workflow\Event\GuardEvent;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\Orders;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\RecordingLogger;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ScriptedHttpClient;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ShipmondoApi;
 
 /**
  * Exercises the handler with the real Shipmondo SDK over a scripted HTTP transport, the real order state machine
- * (including its guard) and real orders
+ * (including its guard), the real canceller and real orders
  */
 final class DeleteOrderHandlerTest extends TestCase
 {
@@ -64,7 +68,7 @@ final class DeleteOrderHandlerTest extends TestCase
         self::assertTrue($this->handle(new DeleteOrder(42)));
 
         self::assertSame([OrderInterface::SHIPMONDO_STATE_CANCELLED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
-        self::assertSame(['DELETE /api/public/v3/sales_orders/12345'], $this->requests());
+        self::assertSame(['DELETE sales_orders/12345'], $this->shipmondo->requestLines());
         self::assertSame([], $this->logger->records);
     }
 
@@ -98,13 +102,14 @@ final class DeleteOrderHandlerTest extends TestCase
     {
         $order = $this->uploadedOrder(cancelled: true);
         $this->shipmondo->respond(204);
-        $this->eventDispatcher->addListener('workflow.setono_sylius_shipmondo__order.guard.cancel', static function (GuardEvent $event): void {
+        $this->eventDispatcher->addListener('workflow.setono_sylius_shipmondo__order.guard.reset', static function (GuardEvent $event): void {
             $event->setBlocked(true);
         });
 
         self::assertTrue($this->handle(new DeleteOrder(42)));
 
         self::assertSame(OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, $order->getShipmondoState());
+        self::assertSame(['DELETE sales_orders/12345'], $this->shipmondo->requestLines());
     }
 
     /**
@@ -122,7 +127,7 @@ final class DeleteOrderHandlerTest extends TestCase
         self::assertCount(1, $this->logger->records);
         $record = $this->logger->records[0];
         self::assertSame(LogLevel::ERROR, $record['level']);
-        self::assertSame('Could not delete the Shipmondo sales order {shipmondoId} of the cancelled order {order}', $record['message']);
+        self::assertSame('Could not delete the Shipmondo sales order {shipmondoId} of the order {order}', $record['message']);
         self::assertSame([12345, '000000042'], [$record['context']['shipmondoId'], $record['context']['order']]);
         self::assertInstanceOf(InternalServerErrorException::class, $record['context']['exception']);
     }
@@ -132,13 +137,12 @@ final class DeleteOrderHandlerTest extends TestCase
      */
     public function it_does_nothing_when_the_order_was_not_uploaded(): void
     {
-        $order = $this->order();
-        $order->setState(OrderInterface::STATE_CANCELLED);
+        $order = $this->order(Orders::create(state: OrderInterface::STATE_CANCELLED, number: '000000042'));
 
         self::assertTrue($this->handle(new DeleteOrder(42)));
 
         self::assertSame(OrderInterface::SHIPMONDO_STATE_PENDING, $order->getShipmondoState());
-        self::assertSame([], $this->requests());
+        self::assertSame([], $this->shipmondo->requestLines());
     }
 
     /**
@@ -165,10 +169,11 @@ final class DeleteOrderHandlerTest extends TestCase
         $this->handle(new DeleteOrder(42));
     }
 
-    private function order(): Order
+    /**
+     * Makes the order the one with the id 42
+     */
+    private function order(Order $order): Order
     {
-        $order = new Order();
-        $order->setNumber('000000042');
         $this->orderRepository->find(42)->willReturn($order);
 
         return $order;
@@ -179,32 +184,27 @@ final class DeleteOrderHandlerTest extends TestCase
      */
     private function uploadedOrder(bool $cancelled): Order
     {
-        $order = $this->order();
-        $order->setShipmondoState(OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, [OrderWorkflow::CONTEXT_SALES_ORDER_ID => 12345]);
-        if ($cancelled) {
-            $order->setState(OrderInterface::STATE_CANCELLED);
-        }
-
-        return $order;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function requests(): array
-    {
-        return array_map(
-            static fn ($request): string => $request->getMethod() . ' ' . $request->getUri()->getPath(),
-            $this->shipmondo->requests(),
-        );
+        return $this->order(Orders::create(
+            OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO,
+            12345,
+            $cancelled ? OrderInterface::STATE_CANCELLED : OrderInterface::STATE_NEW,
+            number: '000000042',
+        ));
     }
 
     private function handle(DeleteOrder $message): bool
     {
+        $orderWorkflow = OrderWorkflow::getWorkflow($this->eventDispatcher);
+
+        // the order is pending by the time the canceller gets it, so it has no sales order to delete
+        $commandBus = $this->prophesize(MessageBusInterface::class);
+        $commandBus->dispatch(Argument::cetera())->shouldNotBeCalled();
+
         $handler = new DeleteOrderHandler(
             $this->orderRepository->reveal(),
             ShipmondoApi::client($this->shipmondo),
-            OrderWorkflow::getWorkflow($this->eventDispatcher),
+            $orderWorkflow,
+            new OrderCanceller($commandBus->reveal(), $orderWorkflow),
             $this->logger,
         );
 

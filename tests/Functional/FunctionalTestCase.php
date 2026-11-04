@@ -181,6 +181,18 @@ abstract class FunctionalTestCase extends WebTestCase
         $this->entityManager()->flush();
     }
 
+    /**
+     * Cancels the order behind the application's back, as an admin does in another request while the application is
+     * busy with the order: the database has the cancelled order, the application's entity manager doesn't
+     */
+    protected function cancelBehindTheApplicationsBack(OrderInterface $order): void
+    {
+        $this->connection()->executeStatement(
+            'UPDATE sylius_order SET state = ?, version = version + 1 WHERE id = ?',
+            [OrderInterface::STATE_CANCELLED, self::id($order)],
+        );
+    }
+
     protected function entityManager(): EntityManagerInterface
     {
         $entityManager = static::getContainer()->get('doctrine.orm.entity_manager');

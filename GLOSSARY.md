@@ -39,7 +39,7 @@ The order's upload can't succeed as it is: Shipmondo rejected it, or the order's
 _Avoid_: Error, broken
 
 **Cancelled**:
-The Sylius order was cancelled, and Shipmondo has no sales order for it: it was never uploaded, or its sales order was deleted. Nothing more happens to it.
+The Sylius order was cancelled, and Shipmondo has no sales order for it: it was never uploaded, or its sales order was deleted. Nothing more happens to it. An order that is cancelled in Sylius becomes cancelled right away when it is pending or failed, once its sales order is deleted when it is uploaded, and once its upload is settled when it is uploading.
 
 ### Upload failures
 

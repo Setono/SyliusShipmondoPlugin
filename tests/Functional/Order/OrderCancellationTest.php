@@ -117,6 +117,37 @@ final class OrderCancellationTest extends FunctionalTestCase
     }
 
     /**
+     * @test
+     */
+    public function it_cancels_an_order_whose_upload_failed_without_calling_shipmondo(): void
+    {
+        $order = $this->orderIn(OrderInterface::SHIPMONDO_STATE_FAILED);
+
+        $this->cancelInAdmin($order);
+
+        $row = $this->orderRow(self::id($order));
+        self::assertSame([OrderInterface::STATE_CANCELLED, OrderInterface::SHIPMONDO_STATE_CANCELLED], [$row['state'], $row['shipmondo_state']]);
+        self::assertSame([], $this->shipmondo->requests());
+    }
+
+    /**
+     * Its upload makes the order cancelled once the upload is settled
+     *
+     * @test
+     */
+    public function it_leaves_an_order_that_is_uploading_to_its_upload(): void
+    {
+        $order = $this->orderIn(OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO);
+
+        $this->cancelInAdmin($order);
+
+        self::assertResponseRedirects(sprintf('/admin/orders/%d', self::id($order)));
+        $row = $this->orderRow(self::id($order));
+        self::assertSame([OrderInterface::STATE_CANCELLED, OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], [$row['state'], $row['shipmondo_state']]);
+        self::assertSame([], $this->shipmondo->requests());
+    }
+
+    /**
      * Cancelling outside an HTTP request (e.g. from a console command or a message handler) has no session to
      * flash to, but still deletes the sales order.
      *
@@ -133,6 +164,15 @@ final class OrderCancellationTest extends FunctionalTestCase
         self::assertSame(OrderInterface::STATE_CANCELLED, $row['state']);
         self::assertSame([OrderInterface::SHIPMONDO_STATE_CANCELLED, null], [$row['shipmondo_state'], $row['shipmondo_id']]);
         self::assertCount(1, $this->shipmondo->requests('DELETE', 'sales_orders/' . self::SHIPMONDO_ID));
+    }
+
+    private function orderIn(string $shipmondoState): OrderInterface
+    {
+        $order = $this->fixtures->createOrder($this->fixtures->createCustomer());
+        $order->setShipmondoState($shipmondoState);
+        $this->entityManager()->flush();
+
+        return $order;
     }
 
     private function uploadedOrder(): OrderInterface

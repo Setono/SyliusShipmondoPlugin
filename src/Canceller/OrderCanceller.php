@@ -8,6 +8,7 @@ use Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Component\Messenger\Stamp\DispatchAfterCurrentBusStamp;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Workflow\WorkflowInterface;
 
@@ -19,20 +20,36 @@ final class OrderCanceller implements OrderCancellerInterface
     ) {
     }
 
-    public function cancel(OrderInterface $order): ?bool
+    public function cancel(OrderInterface $order): Cancellation
     {
-        if (null !== $order->getShipmondoId()) {
-            $handled = $this->commandBus->dispatch(new DeleteOrder($order))->last(HandledStamp::class);
-
-            return null === $handled ? null : true === $handled->getResult();
+        if (OrderInterface::STATE_CANCELLED !== $order->getState()) {
+            return Cancellation::NotCancelled;
         }
 
-        if (!$this->orderWorkflow->can($order, OrderWorkflow::TRANSITION_CANCEL)) {
-            return null;
+        return match ($order->getShipmondoState()) {
+            OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO => $this->deleteSalesOrder($order),
+            OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO => Cancellation::LeftToUpload,
+            default => $this->cancelRightAway($order),
+        };
+    }
+
+    private function deleteSalesOrder(OrderInterface $order): Cancellation
+    {
+        $handled = $this->commandBus->dispatch(new DeleteOrder($order), [new DispatchAfterCurrentBusStamp()])->last(HandledStamp::class);
+
+        if (null === $handled) {
+            return Cancellation::SalesOrderDeletedLater;
         }
 
-        $this->orderWorkflow->apply($order, OrderWorkflow::TRANSITION_CANCEL);
+        return true === $handled->getResult() ? Cancellation::SalesOrderDeleted : Cancellation::SalesOrderNotDeleted;
+    }
 
-        return true;
+    private function cancelRightAway(OrderInterface $order): Cancellation
+    {
+        if ($this->orderWorkflow->can($order, OrderWorkflow::TRANSITION_CANCEL)) {
+            $this->orderWorkflow->apply($order, OrderWorkflow::TRANSITION_CANCEL);
+        }
+
+        return OrderInterface::SHIPMONDO_STATE_CANCELLED === $order->getShipmondoState() ? Cancellation::Cancelled : Cancellation::NotCancelled;
     }
 }

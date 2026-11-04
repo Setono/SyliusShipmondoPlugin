@@ -116,13 +116,14 @@ final class OrderWorkflow
             new Transition(self::TRANSITION_START_UPLOAD, [OrderInterface::SHIPMONDO_STATE_PENDING], OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO),
             new Transition(self::TRANSITION_COMPLETE_UPLOAD, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO),
             new Transition(self::TRANSITION_FAIL, [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_FAILED),
-            // when the sales order of an order that isn't cancelled is deleted, the order goes back to pending to be uploaded again
+            // when an order's sales order is deleted, the order is no longer uploaded: it goes back to pending to be uploaded
+            // again, unless it is cancelled in Sylius, in which case it becomes cancelled right after
             new Transition(self::TRANSITION_RESET, [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_PENDING),
             // when an upload fails for a reason that says nothing about the order, the next upload run tries again
             new Transition(self::TRANSITION_RETRY, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_PENDING),
-            // when the order is cancelled in Sylius and Shipmondo has no sales order for it (anymore). An uploading order
-            // is cancelled by its upload, once it is pending, failed or uploaded again
-            new Transition(self::TRANSITION_CANCEL, [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_FAILED, OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_CANCELLED),
+            // when the order is cancelled in Sylius. It leaves only the states without a sales order: an uploaded order is
+            // reset once its sales order is deleted, and an uploading order is settled by its upload first
+            new Transition(self::TRANSITION_CANCEL, [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_FAILED], OrderInterface::SHIPMONDO_STATE_CANCELLED),
         ];
     }
 }

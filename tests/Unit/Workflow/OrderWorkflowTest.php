@@ -88,7 +88,7 @@ final class OrderWorkflowTest extends TestCase
         );
 
         self::assertSame(
-            [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_FAILED, OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO],
+            [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_FAILED],
             $byName[OrderWorkflow::TRANSITION_CANCEL]->getFroms(),
         );
         self::assertSame(
@@ -163,7 +163,6 @@ final class OrderWorkflowTest extends TestCase
             [OrderWorkflow::TRANSITION_RETRY, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], [OrderInterface::SHIPMONDO_STATE_PENDING]],
             [OrderWorkflow::TRANSITION_CANCEL, [OrderInterface::SHIPMONDO_STATE_PENDING], [OrderInterface::SHIPMONDO_STATE_CANCELLED]],
             [OrderWorkflow::TRANSITION_CANCEL, [OrderInterface::SHIPMONDO_STATE_FAILED], [OrderInterface::SHIPMONDO_STATE_CANCELLED]],
-            [OrderWorkflow::TRANSITION_CANCEL, [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO], [OrderInterface::SHIPMONDO_STATE_CANCELLED]],
         ], $transitions);
 
         foreach ([OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO] as $state) {
@@ -219,7 +218,7 @@ final class OrderWorkflowTest extends TestCase
                         'to' => [OrderInterface::SHIPMONDO_STATE_PENDING],
                     ],
                     OrderWorkflow::TRANSITION_CANCEL => [
-                        'from' => [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_FAILED, OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO],
+                        'from' => [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_FAILED],
                         'to' => [OrderInterface::SHIPMONDO_STATE_CANCELLED],
                     ],
                 ],
