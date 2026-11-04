@@ -7,6 +7,7 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Unit\DependencyInjection;
 use Matthias\SymfonyDependencyInjectionTest\PhpUnit\AbstractExtensionTestCase;
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
 use Setono\SyliusShipmondoPlugin\DependencyInjection\SetonoSyliusShipmondoExtension;
+use Setono\SyliusShipmondoPlugin\Doctrine\Type\PickupPointType;
 use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooks;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\RemoteEventHandlerInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
@@ -113,16 +114,7 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
      */
     public function it_hooks_order_cancellation_into_winzou_when_it_is_installed(): void
     {
-        $this->container->registerExtension(new class() extends Extension {
-            public function load(array $configs, ContainerBuilder $container): void
-            {
-            }
-
-            public function getAlias(): string
-            {
-                return 'winzou_state_machine';
-            }
-        });
+        $this->registerEmptyExtension('winzou_state_machine');
 
         (new SetonoSyliusShipmondoExtension())->prepend($this->container);
 
@@ -149,5 +141,51 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
         (new SetonoSyliusShipmondoExtension())->prepend($this->container);
 
         self::assertSame([], $this->container->getExtensionConfig('winzou_state_machine'));
+    }
+
+    /**
+     * @test
+     */
+    public function it_registers_the_pickup_point_type_with_doctrine_when_it_is_installed(): void
+    {
+        $this->registerEmptyExtension('doctrine');
+
+        (new SetonoSyliusShipmondoExtension())->prepend($this->container);
+
+        self::assertSame([[
+            'dbal' => [
+                'types' => [
+                    'setono_sylius_shipmondo_pickup_point' => PickupPointType::class,
+                ],
+            ],
+        ]], $this->container->getExtensionConfig('doctrine'));
+    }
+
+    /**
+     * @test
+     */
+    public function it_does_not_configure_doctrine_when_it_is_not_installed(): void
+    {
+        (new SetonoSyliusShipmondoExtension())->prepend($this->container);
+
+        self::assertSame([], $this->container->getExtensionConfig('doctrine'));
+    }
+
+    private function registerEmptyExtension(string $alias): void
+    {
+        $this->container->registerExtension(new class($alias) extends Extension {
+            public function __construct(private readonly string $alias)
+            {
+            }
+
+            public function load(array $configs, ContainerBuilder $container): void
+            {
+            }
+
+            public function getAlias(): string
+            {
+                return $this->alias;
+            }
+        });
     }
 }

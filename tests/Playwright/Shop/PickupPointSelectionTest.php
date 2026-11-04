@@ -92,7 +92,7 @@ final class PickupPointSelectionTest extends ShopTestCase
     /**
      * @test
      */
-    public function when_the_pickup_points_cannot_be_loaded_none_are_shown_and_the_checkout_can_continue(): void
+    public function when_the_pickup_points_cannot_be_loaded_the_customer_is_asked_to_choose_another_shipping_method(): void
     {
         // the endpoint fails with HTTP 500 when the Shipmondo API does
         $this->shipmondo->respond('GET', 'pickup_points', 500, ['error' => 'Internal server error']);
@@ -107,6 +107,13 @@ final class PickupPointSelectionTest extends ShopTestCase
         );
         expect($this->pickupPointList())->toHaveCount(0);
 
+        // a shipping method with pickup point delivery can't leave the checkout without a pickup point
+        $this->clickAndFollowRedirects($this->getPage()->getByRole('button', ['name' => 'Next']));
+        $this->assertOnStep('select-shipping');
+        expect($this->getPage()->locator('form[name="sylius_checkout_select_shipping"] > .sylius-validation-error'))
+            ->toContainText('Please choose a pickup point, or another shipping method.');
+
+        $this->selectShippingMethod(self::REGULAR_SHIPPING_METHOD_NAME);
         $this->continueToPaymentStep();
     }
 
@@ -154,7 +161,6 @@ final class PickupPointSelectionTest extends ShopTestCase
     {
         // the manager inserts the pickup points once they arrive, also when the customer has selected another
         // shipping method in the meantime; the preselected pickup point is then saved on that method's shipment
-        self::skipUntilFixed(27);
 
         $this->respondWithPickupPoints();
         // the page gets the pickup points only when the test says so

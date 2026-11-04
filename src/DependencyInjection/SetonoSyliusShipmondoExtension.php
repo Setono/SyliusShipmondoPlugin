@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\DependencyInjection;
 
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
+use Setono\SyliusShipmondoPlugin\Doctrine\Type\PickupPointType;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\RemoteEventHandlerInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Bundle\ResourceBundle\DependencyInjection\Extension\AbstractResourceExtension;
@@ -87,6 +88,17 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
                                 'args' => ['object'],
                             ],
                         ],
+                    ],
+                ],
+            ]);
+        }
+
+        // Stores the pickup point a customer chose on the shipment (ShipmentTrait)
+        if ($container->hasExtension('doctrine')) {
+            $container->prependExtensionConfig('doctrine', [
+                'dbal' => [
+                    'types' => [
+                        PickupPointType::NAME => PickupPointType::class,
                     ],
                 ],
             ]);

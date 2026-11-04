@@ -68,6 +68,12 @@ class PickupPointManager {
    * @param {HTMLInputElement} radio
    */
   #insertHtml(radio) {
+    // the customer selected another shipping method while the pickup points were loading. Its change handler shows
+    // the pickup points again if the customer selects this shipping method again
+    if(!radio.checked) {
+      return;
+    }
+
     if(!this.hasData(radio.value)) {
       radio.dispatchEvent(new CustomEvent('pickup_point_manager:loading', { bubbles: true, detail: { radio: radio, shippingMethod: radio.value } }));
 
@@ -78,6 +84,8 @@ class PickupPointManager {
       return;
     }
 
+    // selecting the shipping method again while its pickup points were loading waits for them twice
+    this.#removePickupPoints();
     this.#config.insertHtmlCallback.call(this, radio);
 
     radio.dispatchEvent(new CustomEvent('pickup_point_manager:inserted_html', { bubbles: true, detail: { radio: radio, shippingMethod: radio.value } }));

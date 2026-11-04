@@ -6,6 +6,7 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Functional\Support;
 
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ObjectRepository;
+use Setono\Shipmondo\Response\PickupPoint\PickupPoint;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\PaymentMethodInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShipmentInterface;
@@ -55,6 +56,13 @@ final class ShopFixtures
     public const COUNTRY_CODE = 'DK';
 
     public const SHIPPING_METHOD_CODE = 'gls_pickup_point';
+
+    /**
+     * A shipping method without pickup point delivery, created by {@see self::createRegularShippingMethod()}
+     */
+    public const REGULAR_SHIPPING_METHOD_CODE = 'ups';
+
+    public const REGULAR_SHIPPING_METHOD_NAME = 'UPS';
 
     public const PAYMENT_METHOD_CODE = 'bank_transfer';
 
@@ -207,6 +215,27 @@ final class ShopFixtures
         $this->persist($admin);
     }
 
+    /**
+     * A second shipping method to the customer's country, "UPS", without pickup point delivery
+     */
+    public function createRegularShippingMethod(): ShippingMethodInterface
+    {
+        $shippingMethod = $this->create('sylius.factory.shipping_method', ShippingMethodInterface::class);
+        $shippingMethod->setCode(self::REGULAR_SHIPPING_METHOD_CODE);
+        $shippingMethod->setCurrentLocale(self::LOCALE_CODE);
+        $shippingMethod->setFallbackLocale(self::LOCALE_CODE);
+        $shippingMethod->setName(self::REGULAR_SHIPPING_METHOD_NAME);
+        $shippingMethod->setZone($this->shippingMethod->getZone());
+        $shippingMethod->setCalculator(DefaultCalculators::FLAT_RATE);
+        $shippingMethod->setConfiguration([self::CHANNEL_CODE => ['amount' => 900]]);
+        $shippingMethod->addChannel($this->channel);
+        $shippingMethod->setEnabled(true);
+
+        $this->persist($shippingMethod);
+
+        return $shippingMethod;
+    }
+
     public function createCustomer(string $email = 'customer@example.com'): CustomerInterface
     {
         $customer = $this->create('sylius.factory.customer', CustomerInterface::class);
@@ -263,14 +292,12 @@ final class ShopFixtures
     /**
      * A placed order (checkout completed) whose payment is completed ($paid), authorized ($authorized) or still
      * awaiting payment, optionally delivered to a chosen pickup point
-     *
-     * @param array<string, mixed>|null $pickupPoint
      */
     public function createOrder(
         CustomerInterface $customer,
         bool $paid = true,
         bool $authorized = false,
-        ?array $pickupPoint = null,
+        ?PickupPoint $pickupPoint = null,
     ): OrderInterface {
         $order = $this->createCart($customer);
 

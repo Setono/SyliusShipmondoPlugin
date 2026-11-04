@@ -20,6 +20,9 @@ For most installations the required changes are:
 - move the cancelled orders that 1.x left pending or failed to the new `cancelled` Shipmondo state (section 7)
 - if you override the order grid's Shipmondo state label templates, rename `dispatching.html.twig` and
   `dispatched.html.twig` (section 7)
+- run a database migration, which only adds a comment to the shipment's pickup point column (section 8)
+- note that a shipping method with pickup point delivery now needs a pickup point in checkout, and don't let a
+  channel skip the shipping step when its only shipping method has pickup point delivery (section 8)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -32,7 +35,7 @@ The renamed SDK classes and the other class changes only matter if you extend th
 composer require setono/sylius-shipmondo-plugin:^2.0
 ```
 
-This pulls in `setono/shipmondo-php-sdk:^2.0`.
+This pulls in `setono/shipmondo-php-sdk:^2.0` (2.0.0-beta.2 or later).
 
 ### 2. Define the `SHIPMONDO_SANDBOX` environment variable (required)
 
@@ -317,9 +320,72 @@ which make the Shipmondo state of an order that is cancelled in Sylius cancelled
 enum, which says what happened; `Workflow\OrderCancellationGuard`; the `OrderInterface::SHIPMONDO_STATE_CANCELLED`,
 `OrderWorkflow::TRANSITION_CANCEL` and `OrderWorkflow::CONTEXT_SALES_ORDER_ID` constants.
 
+### 8. The checkout checks the chosen pickup point, and the shipment stores it as the SDK's `PickupPoint`
+
+In 1.x the shipping step stored whatever the pickup point field held: invalid JSON answered HTTP 500
+([#20](https://github.com/Setono/SyliusShipmondoPlugin/issues/20)), JSON of the wrong shape only failed when the order
+was uploaded ([#37](https://github.com/Setono/SyliusShipmondoPlugin/issues/37)), and a pickup point could end up on a
+shipment whose shipping method has no pickup point delivery
+([#27](https://github.com/Setono/SyliusShipmondoPlugin/issues/27)). Once the shipping step is submitted:
+
+| The shipment's shipping method | The submitted pickup point | What happens |
+|---|---|---|
+| has pickup point delivery | the JSON of a pickup point | it is stored on the shipment |
+| has pickup point delivery | none, e.g. because the picker couldn't load the pickup points | the step shows "Please choose a pickup point, or another shipping method." |
+| has pickup point delivery | anything else, such as invalid JSON or a missing key | the step shows "The chosen pickup point could not be read. Please choose it again." |
+| has no pickup point delivery | anything | the shipment gets no pickup point |
+
+The errors are shown at the top of the shipping step, since Sylius renders neither the pickup point field nor the
+shipment's errors. Their translation keys are `setono_sylius_shipmondo.checkout.pickup_point.missing` and
+`setono_sylius_shipmondo.checkout.pickup_point.invalid` in the `validators` domain. So a shipping method with pickup
+point delivery can't leave the checkout without a pickup point: while Shipmondo's pickup point search fails, the
+customer has to choose another shipping method.
+
+**Known gap:** a channel that skips the shipping step when only one shipping method is available never shows the
+pickup point picker. If that shipping method has pickup point delivery, its orders are uploaded without a service point.
+Don't combine the two.
+
+Also fixed:
+
+- the pickup point picker no longer shows pickup points that arrive after the customer selected another shipping
+  method (#27)
+- the shop's pickup point endpoint answers HTTP 400 for a shipping method without pickup point delivery, instead of
+  searching Shipmondo with its old carrier code
+  ([#21](https://github.com/Setono/SyliusShipmondoPlugin/issues/21))
+- turning off pickup point delivery in the admin clears the shipping method's carrier code (#21)
+
+**Run a database migration.** The shipment's pickup point column is now mapped with the plugin's Doctrine type
+`setono_sylius_shipmondo_pickup_point`, which the bundle registers, and Doctrine names that type in the column's
+comment. It is still a JSON column, so the migration only changes the comment. On MySQL it is:
+
+```sql
+ALTER TABLE sylius_shipment CHANGE shipmondoPickupPoint shipmondoPickupPoint JSON DEFAULT NULL COMMENT '(DC2Type:setono_sylius_shipmondo_pickup_point)';
+```
+
+Generate it with `bin/console doctrine:migrations:diff` as usual. The pickup points stored before the upgrade read as
+they are: 1.x and 2.x stored the same fields. A stored value the type can't read, which only a tampered checkout
+request could have stored, reads as no pickup point. If your shipment entity maps the column itself instead of
+through `ShipmentTrait`, map it with the type `setono_sylius_shipmondo_pickup_point`.
+
+**If you replaced `pickup-point-manager.js` or its `insertHtmlCallback`:** the radio buttons must still carry a pickup
+point's JSON, as the pickup point endpoint returns it. That JSON no longer includes `raw`, Shipmondo's whole response
+for the pickup point.
+
+Only if you extend or call the code involved:
+
+| 1.x | 2.x |
+|---|---|
+| `Model\ShipmentInterface::setShipmondoPickupPoint(?array $shipmondoPickupPoint)` | `setShipmondoPickupPoint(?Setono\Shipmondo\Response\PickupPoint\PickupPoint $shipmondoPickupPoint)` |
+| `Model\ShipmentInterface::getShipmondoPickupPoint(): ?array` | `getShipmondoPickupPoint(): ?Setono\Shipmondo\Response\PickupPoint\PickupPoint`. In Twig, `shipment.shipmondoPickupPoint.name` keeps working |
+| `Form\Extension\ShipmentTypeExtension::__construct()` | `__construct(Symfony\Contracts\Translation\TranslatorInterface $translator)`. Its `shipmondoPickupPoint` field is no longer mapped: the extension sets the shipment's pickup point once the shipping method is known |
+
+New: `Doctrine\Type\PickupPointType`. The SDK's `PickupPoint::fromArray()` rebuilds a pickup point from its JSON, and
+`ServicePoint::fromPickupPoint()` turns it into a sales order's service point; both need `setono/shipmondo-php-sdk`
+2.0.0-beta.2 or later.
+
 ### Unchanged
 
 Shipping-method / payment-method mapping behaves exactly as in 1.x. Everything else that changed is described
 above: the SDK types, the `sandbox` switch, webhook verification and registration, the webhook reactions, the
-cancel-deletes-in-Shipmondo behaviour, how a failed upload is handled, and the `cancelled` Shipmondo state with the
-link to the sales order.
+cancel-deletes-in-Shipmondo behaviour, how a failed upload is handled, the `cancelled` Shipmondo state with the
+link to the sales order, and the checked pickup point.

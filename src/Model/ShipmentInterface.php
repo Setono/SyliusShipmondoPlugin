@@ -4,17 +4,16 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Model;
 
+use Setono\Shipmondo\Response\PickupPoint\PickupPoint;
 use Sylius\Component\Core\Model\ShipmentInterface as BaseShipmentInterface;
 
 interface ShipmentInterface extends BaseShipmentInterface
 {
     /**
-     * @param array<string, mixed>|null $shipmondoPickupPoint
+     * The pickup point the customer chose in checkout. Only a shipment whose shipping method has pickup point delivery
+     * has one; the checkout makes sure of that
      */
-    public function setShipmondoPickupPoint(?array $shipmondoPickupPoint): void;
+    public function setShipmondoPickupPoint(?PickupPoint $shipmondoPickupPoint): void;
 
-    /**
-     * @return array<string, mixed>|null
-     */
-    public function getShipmondoPickupPoint(): ?array;
+    public function getShipmondoPickupPoint(): ?PickupPoint;
 }

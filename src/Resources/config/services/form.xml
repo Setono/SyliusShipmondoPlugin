@@ -9,6 +9,7 @@
 
         <service id="setono_sylius_shipmondo.form.type_extension.shipment"
                  class="Setono\SyliusShipmondoPlugin\Form\Extension\ShipmentTypeExtension">
+            <argument type="service" id="translator"/>
             <tag name="form.type_extension"/>
         </service>
     </services>

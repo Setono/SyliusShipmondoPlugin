@@ -6,6 +6,7 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Model;
 
 use PHPUnit\Framework\TestCase;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Shipment;
+use Tests\Setono\SyliusShipmondoPlugin\Support\PickupPoints;
 
 final class ShipmentTraitTest extends TestCase
 {
@@ -17,8 +18,9 @@ final class ShipmentTraitTest extends TestCase
         $shipment = new Shipment();
         self::assertNull($shipment->getShipmondoPickupPoint());
 
-        $shipment->setShipmondoPickupPoint(['id' => '95558', 'name' => 'Pakkeshop']);
-        self::assertSame(['id' => '95558', 'name' => 'Pakkeshop'], $shipment->getShipmondoPickupPoint());
+        $pickupPoint = PickupPoints::create();
+        $shipment->setShipmondoPickupPoint($pickupPoint);
+        self::assertSame($pickupPoint, $shipment->getShipmondoPickupPoint());
 
         $shipment->setShipmondoPickupPoint(null);
         self::assertNull($shipment->getShipmondoPickupPoint());

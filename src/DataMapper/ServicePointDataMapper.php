@@ -10,7 +10,7 @@ use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShipmentInterface;
 
 /**
- * Will map the pickup point data to the sales order
+ * Makes the pickup point the customer chose the sales order's service point
  */
 final class ServicePointDataMapper implements SalesOrderDataMapperInterface
 {
@@ -21,26 +21,11 @@ final class ServicePointDataMapper implements SalesOrderDataMapperInterface
             return;
         }
 
-        /**
-         * todo make the shipmondo pickup point a value object that's mapped in Doctrine
-         *
-         * The keys below match the properties from this class: \Setono\Shipmondo\Response\PickupPoint\PickupPoint
-         *
-         * @var array{id: string, name: string, address: string, zipcode: string, city: string, country: string, address2: string|null}|null $pickupPoint
-         */
         $pickupPoint = $shipment->getShipmondoPickupPoint();
         if (null === $pickupPoint) {
             return;
         }
 
-        $salesOrder->servicePoint = new ServicePoint(
-            id: $pickupPoint['id'],
-            name: $pickupPoint['name'],
-            address1: $pickupPoint['address'],
-            zipcode: $pickupPoint['zipcode'],
-            city: $pickupPoint['city'],
-            countryCode: $pickupPoint['country'],
-            address2: $pickupPoint['address2'] ?? null,
-        );
+        $salesOrder->servicePoint = ServicePoint::fromPickupPoint($pickupPoint);
     }
 }

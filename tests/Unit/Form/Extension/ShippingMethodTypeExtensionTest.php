@@ -96,6 +96,8 @@ final class ShippingMethodTypeExtensionTest extends TypeTestCase
         yield 'pickup point delivery with a carrier' => [['pickupPointDelivery' => '1', 'carrierCode' => 'gls'], true, 'gls'];
         yield 'pickup point delivery without a carrier' => [['pickupPointDelivery' => '1', 'carrierCode' => ''], true, null];
         yield 'no pickup point delivery' => [['carrierCode' => ''], false, null];
+        // the admin's carrier script only hides the carrier field, so it is still submitted (#21)
+        yield 'no pickup point delivery with a carrier' => [['carrierCode' => 'gls'], false, null];
     }
 
     /**

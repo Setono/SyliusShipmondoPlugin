@@ -83,8 +83,7 @@ final class PickupPointCheckoutTest extends ShopTestCase
         self::assertSame(self::pickupPoints()[0]['id'], $this->pickupPointOfLatestOrder()['pickup_point']['id'] ?? null);
 
         $this->backToShippingStep();
-        // wait until the preselected pickup point method's pickup points are shown: switching before they load still
-        // saves a pickup point (https://github.com/Setono/SyliusShipmondoPlugin/issues/27)
+        // the preselected pickup point method's pickup points are shown, and switching removes them
         expect($this->pickupPointRadios())->toHaveCount(2);
         $this->selectShippingMethod(self::REGULAR_SHIPPING_METHOD_NAME);
         expect($this->pickupPointList())->toHaveCount(0);
