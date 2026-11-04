@@ -13,6 +13,9 @@ For most installations the required changes are:
 - make `SHIPMONDO_WEBHOOKS_KEY` at least 32 bytes long and re-run
   `setono:sylius-shipmondo:register-webhooks` (section 4)
 - optionally drop the no longer used `setono_sylius_shipmondo__remote_event` table (section 4)
+- put orders that 1.x left stuck in `uploading_to_shipmondo` back to pending (section 6)
+- if you monitor the `setono:sylius-shipmondo:upload-orders` cron job, note that it now fails only when the upload
+  run stops early (section 6)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -170,8 +173,59 @@ command is handled synchronously, the admin sees an error telling them to delete
 manually. **When `DeleteOrder` is routed to an async transport, a failure is only logged and is not
 retried** (see [#16](https://github.com/Setono/SyliusShipmondoPlugin/issues/16)), so watch the logs.
 
+### 6. A failed upload settles the order instead of crashing the upload run
+
+In 1.x, any exception during an upload (a Shipmondo error, a network problem, a data mapper that throws) escaped
+`setono:sylius-shipmondo:upload-orders`: the upload run aborted, and the order stayed in `uploading_to_shipmondo`
+for good. In 2.x, `Uploader\OrderUploader` settles every failure on the order:
+
+| Failure | Order ends in | Synchronous upload run |
+|---|---|---|
+| Shipmondo rejects the upload: a 4xx other than 401, 403 and 429 (e.g. 422) | `failed` | continues |
+| The order can't be turned into a sales order (a data mapper throws), or another unexpected error | `failed` | continues |
+| Shipmondo doesn't accept the API credentials: 401 or 403 | `pending` | stops |
+| Shipmondo rate limits the upload: 429 | `pending` | stops |
+| A temporary failure: 5xx, a network error or a timeout | `pending` | continues |
+| The order changed after it was queued for upload | `pending` | continues |
+
+- A synchronous upload run also stops after three rejected uploads with no successful upload between them, because
+  Shipmondo answers 422 for shop-wide problems too, such as a mapped payment gateway that was deleted in Shipmondo.
+- **When the upload run stops early, the command prints why and exits with a failure code**, and the remaining orders
+  stay `pending` for the next run. Otherwise the command stays silent and succeeds, also when single uploads failed:
+  each failure is logged with the order number and Shipmondo's status code and error message, and a `failed` order
+  stays `failed` until an admin steps in.
+- Going back to pending uses the new `retry` transition (`OrderWorkflow::TRANSITION_RETRY`,
+  `uploading_to_shipmondo` → `pending`) of the `setono_sylius_shipmondo__order` workflow. `reset` is unchanged.
+- Retrying after a temporary failure can create a duplicate sales order, when Shipmondo created the sales order but
+  its answer was lost (see [#29](https://github.com/Setono/SyliusShipmondoPlugin/issues/29)).
+- **If you route `UploadOrder` to an async transport:** its handler no longer throws for a failed upload, so Messenger
+  no longer retries it; the next upload run is the retry. An async worker can't stop the uploads already queued, so
+  after a credentials failure each of them goes back to pending.
+- An order that something else changed after the upload run loaded it (another run, an admin, a payment update) is
+  now locked and read again before it is put in uploading. In 1.x the run aborted with a closed entity manager instead
+  (see [#34](https://github.com/Setono/SyliusShipmondoPlugin/issues/34)).
+
+Orders that 1.x left stuck in `uploading_to_shipmondo` without a sales order are never uploaded. Put them back to
+pending once (use your order entity's class):
+
+```bash
+bin/console doctrine:query:dql "UPDATE App\Entity\Order\Order o SET o.shipmondoState = 'pending' WHERE o.shipmondoState = 'uploading_to_shipmondo' AND o.shipmondoId IS NULL"
+```
+
+Only if you extend or call the upload code:
+
+| 1.x | 2.x |
+|---|---|
+| `Uploader\OrderUploaderInterface::upload(): void` | `upload(): ?Uploader\UploadOutcome`: the outcome that stopped the run early, or `null` |
+| | new `OrderUploaderInterface::uploadOrder(OrderInterface $order, ?int $version = null): UploadOutcome`, which uploads one order in `uploading_to_shipmondo` and settles its state |
+| `Uploader\OrderUploader::__construct($provider, $commandBus, $orderWorkflow, $managerRegistry)` | `__construct($provider, $commandBus, $orderWorkflow, Setono\Shipmondo\Client\ClientInterface $shipmondoClient, SalesOrderDataMapperInterface $salesOrderDataMapper, Psr\Log\LoggerInterface $logger, $managerRegistry)` |
+| `Message\CommandHandler\UploadOrderHandler::__construct($orderRepository, $shipmondoClient, $salesOrderDataMapper, $orderWorkflow)`; `__invoke()` returns `void` | `__construct($orderRepository, OrderUploaderInterface $orderUploader)`; `__invoke()` returns the `UploadOutcome` |
+| `Workflow\OrderWorkflow::getWorkflow()` returns a `Workflow`, on which `fail` is never enabled | returns a `StateMachine` with the transitions the container registers (see [#38](https://github.com/Setono/SyliusShipmondoPlugin/issues/38)) |
+
+New: the `Uploader\UploadOutcome` enum, which says how an upload went.
+
 ### Unchanged
 
-Shipping-method / payment-method mapping and order upload behave exactly as in 1.x. Everything else that
-changed is described above: the SDK types, the `sandbox` switch, webhook verification and registration,
-the webhook reactions, and the cancel-deletes-in-Shipmondo behaviour.
+Shipping-method / payment-method mapping behaves exactly as in 1.x. Everything else that changed is described
+above: the SDK types, the `sandbox` switch, webhook verification and registration, the webhook reactions, the
+cancel-deletes-in-Shipmondo behaviour, and how a failed upload is handled.

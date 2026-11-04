@@ -9,6 +9,7 @@ use Psr\Http\Client\ClientInterface as HttpClientInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
 use Setono\Shipmondo\Client\Client;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\NetworkException;
 
 /**
  * Stands in for the Shipmondo API at the HTTP boundary: the real SDK client builds the requests and maps
@@ -22,7 +23,7 @@ final class ShipmondoApiStub implements HttpClientInterface
 {
     private readonly Psr17Factory $psr17;
 
-    /** @var array<string, list<ResponseInterface>> */
+    /** @var array<string, list<ResponseInterface|null>> null fails to connect */
     private array $responses = [];
 
     /** @var list<RequestInterface> */
@@ -70,6 +71,16 @@ final class ShipmondoApiStub implements HttpClientInterface
         return $this;
     }
 
+    /**
+     * Answers the next matching request by failing to connect, as a network problem or a timeout does
+     */
+    public function failToConnect(string $method, string $path): self
+    {
+        $this->responses[self::key($method, $path)][] = null;
+
+        return $this;
+    }
+
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
         $this->requests[] = $request;
@@ -84,6 +95,10 @@ final class ShipmondoApiStub implements HttpClientInterface
         $response = $this->responses[$key][0];
         if (count($this->responses[$key]) > 1) {
             array_shift($this->responses[$key]);
+        }
+
+        if (null === $response) {
+            throw new NetworkException($request);
         }
 
         $response->getBody()->rewind();

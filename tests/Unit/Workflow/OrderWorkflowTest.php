@@ -33,7 +33,7 @@ final class OrderWorkflowTest extends TestCase
     {
         $transitions = OrderWorkflow::getTransitions();
 
-        self::assertCount(4, $transitions);
+        self::assertCount(5, $transitions);
         self::assertContainsOnlyInstancesOf(Transition::class, $transitions);
 
         $byName = [];
@@ -76,6 +76,15 @@ final class OrderWorkflowTest extends TestCase
             [OrderInterface::SHIPMONDO_STATE_PENDING],
             $byName[OrderWorkflow::TRANSITION_RESET]->getTos(),
         );
+
+        self::assertSame(
+            [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO],
+            $byName[OrderWorkflow::TRANSITION_RETRY]->getFroms(),
+        );
+        self::assertSame(
+            [OrderInterface::SHIPMONDO_STATE_PENDING],
+            $byName[OrderWorkflow::TRANSITION_RETRY]->getTos(),
+        );
     }
 
     /**
@@ -94,7 +103,7 @@ final class OrderWorkflowTest extends TestCase
 
         self::assertSame(OrderWorkflow::NAME, $workflow->getName());
         self::assertSame(OrderWorkflow::getStates(), array_values($workflow->getDefinition()->getPlaces()));
-        self::assertCount(4, $workflow->getDefinition()->getTransitions());
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_PENDING], $workflow->getDefinition()->getInitialPlaces());
 
         $order = new Order();
         self::assertTrue($workflow->can($order, OrderWorkflow::TRANSITION_START_UPLOAD));
@@ -103,6 +112,35 @@ final class OrderWorkflowTest extends TestCase
 
         self::assertSame(OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO, $order->getShipmondoState());
         self::assertSame(['completed.start_upload'], $dispatched);
+    }
+
+    /**
+     * @test
+     */
+    public function it_builds_the_state_machine_the_container_registers_so_a_transition_is_enabled_from_each_of_its_places(): void
+    {
+        $workflow = OrderWorkflow::getWorkflow(new EventDispatcher());
+
+        $transitions = array_map(
+            static fn (Transition $transition): array => [$transition->getName(), $transition->getFroms(), $transition->getTos()],
+            $workflow->getDefinition()->getTransitions(),
+        );
+
+        self::assertSame([
+            [OrderWorkflow::TRANSITION_START_UPLOAD, [OrderInterface::SHIPMONDO_STATE_PENDING], [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO]],
+            [OrderWorkflow::TRANSITION_COMPLETE_UPLOAD, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO]],
+            [OrderWorkflow::TRANSITION_FAIL, [OrderInterface::SHIPMONDO_STATE_PENDING], [OrderInterface::SHIPMONDO_STATE_FAILED]],
+            [OrderWorkflow::TRANSITION_FAIL, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], [OrderInterface::SHIPMONDO_STATE_FAILED]],
+            [OrderWorkflow::TRANSITION_RESET, [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO], [OrderInterface::SHIPMONDO_STATE_PENDING]],
+            [OrderWorkflow::TRANSITION_RETRY, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], [OrderInterface::SHIPMONDO_STATE_PENDING]],
+        ], $transitions);
+
+        foreach ([OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO] as $state) {
+            $order = new Order();
+            $order->setShipmondoState($state);
+
+            self::assertTrue($workflow->can($order, OrderWorkflow::TRANSITION_FAIL), sprintf('An order in "%s" can fail', $state));
+        }
     }
 
     /**
@@ -142,6 +180,10 @@ final class OrderWorkflowTest extends TestCase
                     ],
                     OrderWorkflow::TRANSITION_RESET => [
                         'from' => [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO],
+                        'to' => [OrderInterface::SHIPMONDO_STATE_PENDING],
+                    ],
+                    OrderWorkflow::TRANSITION_RETRY => [
+                        'from' => [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO],
                         'to' => [OrderInterface::SHIPMONDO_STATE_PENDING],
                     ],
                 ],

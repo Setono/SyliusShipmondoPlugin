@@ -4,28 +4,28 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Message\CommandHandler;
 
-use Setono\Shipmondo\Client\ClientInterface;
-use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
-use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
 use Setono\SyliusShipmondoPlugin\Message\Command\UploadOrder;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
-use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
+use Setono\SyliusShipmondoPlugin\Uploader\OrderUploaderInterface;
+use Setono\SyliusShipmondoPlugin\Uploader\UploadOutcome;
 use Sylius\Component\Order\Repository\OrderRepositoryInterface;
 use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
-use Symfony\Component\Workflow\WorkflowInterface;
 use Webmozart\Assert\Assert;
 
+/**
+ * Uploads the order the command names. The upload settles the order's Shipmondo state itself and never throws because
+ * it failed, so Messenger doesn't retry it: the next upload run is the retry. Returns the outcome, which the upload run
+ * reads when the command is handled synchronously.
+ */
 final class UploadOrderHandler
 {
     public function __construct(
         private readonly OrderRepositoryInterface $orderRepository,
-        private readonly ClientInterface $shipmondoClient,
-        private readonly SalesOrderDataMapperInterface $salesOrderDataMapper,
-        private readonly WorkflowInterface $orderWorkflow,
+        private readonly OrderUploaderInterface $orderUploader,
     ) {
     }
 
-    public function __invoke(UploadOrder $message): void
+    public function __invoke(UploadOrder $message): UploadOutcome
     {
         $order = $this->orderRepository->find($message->order);
         if (null === $order) {
@@ -34,19 +34,6 @@ final class UploadOrderHandler
 
         Assert::isInstanceOf($order, OrderInterface::class);
 
-        if (null !== $message->version && $order->getVersion() !== $message->version) {
-            throw new UnrecoverableMessageHandlingException(sprintf('Order with id %s has been updated since it was tried to be uploaded', $message->order));
-        }
-
-        // todo try catch exceptions and log errors
-
-        $salesOrder = new SalesOrderRequest();
-        $this->salesOrderDataMapper->map($order, $salesOrder);
-
-        $response = $this->shipmondoClient->salesOrders()->create($salesOrder);
-
-        $order->setShipmondoId($response->id);
-
-        $this->orderWorkflow->apply($order, OrderWorkflow::TRANSITION_COMPLETE_UPLOAD);
+        return $this->orderUploader->uploadOrder($order, $message->version);
     }
 }

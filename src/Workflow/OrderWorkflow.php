@@ -7,8 +7,8 @@ namespace Setono\SyliusShipmondoPlugin\Workflow;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Symfony\Component\Workflow\DefinitionBuilder;
 use Symfony\Component\Workflow\MarkingStore\MethodMarkingStore;
+use Symfony\Component\Workflow\StateMachine;
 use Symfony\Component\Workflow\Transition;
-use Symfony\Component\Workflow\Workflow;
 use Symfony\Contracts\EventDispatcher\EventDispatcherInterface;
 
 final class OrderWorkflow
@@ -24,6 +24,8 @@ final class OrderWorkflow
     final public const TRANSITION_FAIL = 'fail';
 
     final public const TRANSITION_RESET = 'reset';
+
+    final public const TRANSITION_RETRY = 'retry';
 
     private function __construct()
     {
@@ -70,11 +72,23 @@ final class OrderWorkflow
         ];
     }
 
-    public static function getWorkflow(EventDispatcherInterface $eventDispatcher): Workflow
+    /**
+     * Builds the state machine the container registers from {@see self::getConfig()}, without a container: like
+     * FrameworkBundle does for a state machine, a transition with several "from" places becomes one transition per
+     * place, so it is enabled from any of them
+     */
+    public static function getWorkflow(EventDispatcherInterface $eventDispatcher): StateMachine
     {
-        $definitionBuilder = new DefinitionBuilder(self::getStates(), self::getTransitions());
+        // the first place, pending, is the initial place
+        $definitionBuilder = new DefinitionBuilder(self::getStates());
 
-        return new Workflow(
+        foreach (self::getTransitions() as $transition) {
+            foreach ($transition->getFroms() as $from) {
+                $definitionBuilder->addTransition(new Transition($transition->getName(), $from, $transition->getTos()));
+            }
+        }
+
+        return new StateMachine(
             $definitionBuilder->build(),
             new MethodMarkingStore(true, self::PROPERTY_NAME),
             $eventDispatcher,
@@ -93,6 +107,8 @@ final class OrderWorkflow
             new Transition(self::TRANSITION_FAIL, [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_FAILED),
             // when an order is deleted in Shipmondo it is no longer uploaded, so reset it to pending
             new Transition(self::TRANSITION_RESET, [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_PENDING),
+            // when an upload fails for a reason that says nothing about the order, the next upload run tries again
+            new Transition(self::TRANSITION_RETRY, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_PENDING),
         ];
     }
 }
