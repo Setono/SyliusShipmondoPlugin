@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Tests\Setono\SyliusShipmondoPlugin\Functional\Command;
 
+use Setono\SyliusShipmondoPlugin\Event\SalesOrderMappedEvent;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
+use Symfony\Component\Console\Command\Command;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
@@ -158,36 +160,176 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
 
     /**
      * @test
+     *
+     * @dataProvider failuresTheUploadRunCarriesOnAfter
      */
-    public function it_keeps_uploading_the_other_orders_when_shipmondo_rejects_one(): void
+    public function it_settles_an_order_whose_upload_failed_and_keeps_uploading_the_other_orders(\Closure $fail, string $state): void
     {
-        self::skipUntilFixed(17);
-
         $customer = $this->fixtures->createCustomer();
-        $rejected = $this->fixtures->createOrder($customer);
-        $accepted = $this->fixtures->createOrder($customer);
+        $failed = $this->fixtures->createOrder($customer);
+        $uploaded = $this->fixtures->createOrder($customer);
+
+        $this->shipmondo->respond('GET', 'shipment_templates', 200, []);
+        $fail($this, $failed);
+        $this->shipmondo->respond('POST', 'sales_orders', 201, ['id' => 1002]);
+
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+
+        $failedRow = $this->orderRow(self::id($failed));
+        self::assertSame([$state, null], [$failedRow['shipmondo_state'], $failedRow['shipmondo_id']]);
+
+        $uploadedRow = $this->orderRow(self::id($uploaded));
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, 1002], [$uploadedRow['shipmondo_state'], $uploadedRow['shipmondo_id']]);
+    }
+
+    /**
+     * @return iterable<string, array{\Closure(self, OrderInterface): mixed, string}>
+     */
+    public static function failuresTheUploadRunCarriesOnAfter(): iterable
+    {
+        yield 'rejected upload (422)' => [
+            static fn (self $test): mixed => $test->shipmondo->respond('POST', 'sales_orders', 422, ['error' => 'The payment gateway does not exist']),
+            OrderInterface::SHIPMONDO_STATE_FAILED,
+        ];
+        yield 'temporary failure (500)' => [
+            static fn (self $test): mixed => $test->shipmondo->respond('POST', 'sales_orders', 500, ['error' => 'Internal Server Error']),
+            OrderInterface::SHIPMONDO_STATE_PENDING,
+        ];
+        yield 'temporary failure (network)' => [
+            static fn (self $test): mixed => $test->shipmondo->failToConnect('POST', 'sales_orders'),
+            OrderInterface::SHIPMONDO_STATE_PENDING,
+        ];
+        yield 'unexpected failure (a data mapper throws)' => [
+            static function (self $test, OrderInterface $order): void {
+                $test->failToMap($order);
+            },
+            OrderInterface::SHIPMONDO_STATE_FAILED,
+        ];
+    }
+
+    /**
+     * @test
+     *
+     * @dataProvider answersThatStopTheUploadRun
+     */
+    public function it_stops_the_upload_run_when_shipmondo_turns_the_store_away(int $statusCode): void
+    {
+        $customer = $this->fixtures->createCustomer();
+        $turnedAway = $this->fixtures->createOrder($customer);
+        $notTried = $this->fixtures->createOrder($customer);
 
         $this->shipmondo
             ->respond('GET', 'shipment_templates', 200, [])
-            ->respond('POST', 'sales_orders', 500, ['error' => 'Internal Server Error'])
+            ->respond('POST', 'sales_orders', $statusCode, ['error' => 'No'])
+        ;
+
+        // fails, so whatever runs the command (cron, a scheduler) notices that no order can be uploaded
+        $tester = $this->executeCommand(self::COMMAND);
+        self::assertSame(Command::FAILURE, $tester->getStatusCode());
+        self::assertStringContainsString('The remaining orders stay pending for the next run.', (string) preg_replace('/\s+/', ' ', $tester->getDisplay()));
+
+        self::assertCount(1, $this->shipmondo->requests('POST', 'sales_orders'));
+        foreach ([$turnedAway, $notTried] as $order) {
+            $row = $this->orderRow(self::id($order));
+            self::assertSame([OrderInterface::SHIPMONDO_STATE_PENDING, null], [$row['shipmondo_state'], $row['shipmondo_id']]);
+        }
+    }
+
+    /**
+     * @return iterable<string, array{int}>
+     */
+    public static function answersThatStopTheUploadRun(): iterable
+    {
+        yield 'credentials failure (401)' => [401];
+        yield 'credentials failure (403)' => [403];
+        yield 'rate limited (429)' => [429];
+    }
+
+    /**
+     * @test
+     */
+    public function it_stops_the_upload_run_after_three_rejected_uploads_in_a_row(): void
+    {
+        $customer = $this->fixtures->createCustomer();
+        $rejected = [$this->fixtures->createOrder($customer), $this->fixtures->createOrder($customer), $this->fixtures->createOrder($customer)];
+        $notTried = $this->fixtures->createOrder($customer);
+
+        // e.g. the payment gateway every order is mapped to was deleted in Shipmondo
+        $this->shipmondo
+            ->respond('GET', 'shipment_templates', 200, [])
+            ->respond('POST', 'sales_orders', 422, ['error' => 'The payment gateway does not exist'])
+        ;
+
+        self::assertSame(Command::FAILURE, $this->executeCommand(self::COMMAND)->getStatusCode());
+
+        self::assertCount(3, $this->shipmondo->requests('POST', 'sales_orders'));
+        foreach ($rejected as $order) {
+            self::assertSame(OrderInterface::SHIPMONDO_STATE_FAILED, $this->orderRow(self::id($order))['shipmondo_state']);
+        }
+        self::assertSame(OrderInterface::SHIPMONDO_STATE_PENDING, $this->orderRow(self::id($notTried))['shipmondo_state']);
+    }
+
+    /**
+     * @test
+     */
+    public function it_skips_an_order_that_changed_after_the_upload_run_loaded_it_such_as_one_that_was_cancelled(): void
+    {
+        $customer = $this->fixtures->createCustomer();
+        $first = $this->fixtures->createOrder($customer);
+        $cancelled = $this->fixtures->createOrder($customer);
+        $last = $this->fixtures->createOrder($customer);
+
+        // While the first order is uploaded, an admin cancels the second order, which the upload run has already loaded
+        $this->onceWhen('workflow.setono_sylius_shipmondo__order.completed.complete_upload', function () use ($cancelled): void {
+            $this->connection()->executeStatement(
+                'UPDATE sylius_order SET state = ?, version = version + 1 WHERE id = ?',
+                [OrderInterface::STATE_CANCELLED, self::id($cancelled)],
+            );
+        });
+
+        $this->shipmondo
+            ->respond('GET', 'shipment_templates', 200, [])
+            ->respond('POST', 'sales_orders', 201, ['id' => 1001])
+            ->respond('POST', 'sales_orders', 201, ['id' => 1003])
+        ;
+
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+
+        self::assertSame(1001, $this->orderRow(self::id($first))['shipmondo_id']);
+        self::assertSame(1003, $this->orderRow(self::id($last))['shipmondo_id']);
+        $cancelledRow = $this->orderRow(self::id($cancelled));
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_PENDING, null], [$cancelledRow['shipmondo_state'], $cancelledRow['shipmondo_id']]);
+
+        // the next upload run checks again whether the order qualifies for upload, and a cancelled order doesn't
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+        self::assertCount(2, $this->shipmondo->requests('POST', 'sales_orders'));
+    }
+
+    /**
+     * @test
+     */
+    public function it_links_the_sales_order_to_an_order_that_changed_while_shipmondo_was_called(): void
+    {
+        $customer = $this->fixtures->createCustomer();
+        $changed = $this->fixtures->createOrder($customer);
+        $other = $this->fixtures->createOrder($customer);
+
+        // While its sales order is created in Shipmondo, something else changes the order, e.g. its payment is captured
+        $this->onceWhen(SalesOrderMappedEvent::class, function () use ($changed): void {
+            $this->connection()->executeStatement('UPDATE sylius_order SET version = version + 1 WHERE id = ?', [self::id($changed)]);
+        });
+
+        $this->shipmondo
+            ->respond('GET', 'shipment_templates', 200, [])
+            ->respond('POST', 'sales_orders', 201, ['id' => 1001])
             ->respond('POST', 'sales_orders', 201, ['id' => 1002])
         ;
 
-        try {
-            $this->executeCommand(self::COMMAND);
-        } catch (\Throwable) {
-            // whether the command reports the failure is up to the fix; what it leaves behind is what matters
-        }
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
 
-        // the other order is still uploaded in the same run
-        self::assertCount(2, $this->shipmondo->requests('POST', 'sales_orders'));
-        self::assertSame(OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, $this->orderRow(self::id($accepted))['shipmondo_state']);
-
-        // and the rejected order is either retried by the next run (pending) or visibly failed, not stuck in "uploading"
-        self::assertContains($this->orderRow(self::id($rejected))['shipmondo_state'], [
-            OrderInterface::SHIPMONDO_STATE_PENDING,
-            OrderInterface::SHIPMONDO_STATE_FAILED,
-        ]);
+        $changedRow = $this->orderRow(self::id($changed));
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, 1001], [$changedRow['shipmondo_state'], $changedRow['shipmondo_id']]);
+        self::assertSame(1002, $this->orderRow(self::id($other))['shipmondo_id']);
     }
 
     private function respondWithShipmentTemplates(): void

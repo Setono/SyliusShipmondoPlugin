@@ -15,7 +15,7 @@ Creating the sales order for a Sylius order in Shipmondo.
 _Avoid_: Dispatch, sync, export, push
 
 **Upload run**:
-One pass of the order upload, which uploads every pending order that qualifies for upload.
+One pass of the order upload, which uploads every pending order that qualifies for upload. It stops early after a credentials failure, a rate-limited upload, or three rejected uploads with no upload between them, and the remaining orders stay pending for the next run.
 _Avoid_: Sync, batch
 
 **Shipmondo state**:
@@ -46,5 +46,14 @@ An upload Shipmondo refused because of something about this order, such as inval
 **Credentials failure**:
 An upload Shipmondo refused because it didn't accept the store's API credentials. It says nothing about the order, which goes back to pending.
 
+**Rate-limited upload**:
+An upload Shipmondo refused with 429 Too Many Requests. Like a credentials failure, it says nothing about the order, which goes back to pending.
+
 **Temporary failure**:
 An upload that failed for a reason expected to pass, such as a Shipmondo server error or a network problem. The order goes back to pending.
+
+**Unexpected failure**:
+An upload that failed before Shipmondo answered, or in a way nothing expects, such as order data a data mapper can't turn into a sales order. The order becomes failed.
+
+**Upload outcome**:
+How one upload went: uploaded, one of the failures above, the order changed while it was uploading (back to pending), or skipped because the order wasn't uploading. It decides the order's Shipmondo state.
