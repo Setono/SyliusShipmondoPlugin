@@ -154,7 +154,7 @@ The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires
   - `ShippingSalesOrderDataMapper`: Shipping information
   - `PaymentDetailsSalesOrderDataMapper`: Payment details
   - `ShipmentTemplateSalesOrderDataMapper`: Shipment templates
-  - `ServicePointDataMapper`: Pickup point data
+  - `ServicePointDataMapper`: The chosen pickup point, as the sales order's service point
 - New mappers can be added by implementing `SalesOrderDataMapperInterface` and will be auto-registered via the `setono_sylius_shipmondo.sales_order_data_mapper` tag
 
 **Order Workflow**
@@ -191,11 +191,17 @@ The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires
 - `DeleteOrderHandler` applies `reset` once the sales order is gone, then calls the canceller; a failed deletion leaves the order uploaded and linked
 - `DeleteOrderHandler` must not throw on Shipmondo failures: handled synchronously it runs inside Sylius's cancel transaction, and the bus's `doctrine_transaction` rollback would make the cancel fail
 
+**Pickup Points**
+- The chosen pickup point is the SDK's `PickupPoint`. `GetPickupPointsAction` (the shop's `/ajax/get-pickup-points`, HTTP 400 unless the shipping method has pickup point delivery) searches Shipmondo, and the template puts each pickup point's JSON in a radio button, which `pickup-point-manager.js` names after the shipping method field
+- `Form\Extension\ShipmentTypeExtension` adds an unmapped hidden `shipmondoPickupPoint` field and, on `POST_SUBMIT` once the shipping method is known (and Sylius could read it), parses it with `Parser\PickupPointParser` (JSON, then `PickupPoint::fromArray()`): a shipping method without pickup point delivery gets no pickup point, and one with it needs a readable one (`ERROR_MISSING_PICKUP_POINT`, `ERROR_INVALID_PICKUP_POINT`). Its errors go on the root form, the only errors Sylius's shipping step renders
+- `Doctrine\Type\PickupPointType` (registered by the extension's prepend) stores it in the shipment's JSON column and reads it with the same parser; a stored value it can't read reads as `null`. `ServicePointDataMapper` sends it with `ServicePoint::fromPickupPoint()`
+- Turning off pickup point delivery in the admin clears the carrier code: a `SUBMIT` listener on the `carrierCode` field of `ShippingMethodTypeExtension`
+
 ### Entity Extensions
 
 The plugin extends these Sylius entities via traits:
-- **Order**: `OrderTrait` - adds the Shipmondo state, which owns the link to the sales order (`shipmondoId`), and pickup point data
-- **Shipment**: `ShipmentTrait` - adds Shipmondo ID, package/parcel numbers, label URL
+- **Order**: `OrderTrait` - adds the Shipmondo state, which owns the link to the sales order (`shipmondoId`)
+- **Shipment**: `ShipmentTrait` - adds the chosen pickup point (`shipmondoPickupPoint`, the SDK's `PickupPoint`, see Pickup Points above)
 - **ShippingMethod**: `ShippingMethodTrait` - adds pickup point delivery flag and carrier code
 - **PaymentMethod**: `PaymentMethodTrait` - adds Shipmondo payment name
 

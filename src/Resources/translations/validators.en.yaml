@@ -1,4 +1,8 @@
 setono_sylius_shipmondo:
+    checkout:
+        pickup_point:
+            invalid: The chosen pickup point could not be read. Please choose it again.
+            missing: Please choose a pickup point, or another shipping method.
     shipping_method:
         carrier_code:
             not_blank: When the pickup point delivery is set, you have to select a carrier.

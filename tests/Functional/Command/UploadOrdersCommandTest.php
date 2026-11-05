@@ -10,20 +10,11 @@ use Symfony\Component\Console\Command\Command;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
+use Tests\Setono\SyliusShipmondoPlugin\Support\PickupPoints;
 
 final class UploadOrdersCommandTest extends FunctionalTestCase
 {
     private const COMMAND = 'setono:sylius-shipmondo:upload-orders';
-
-    private const PICKUP_POINT = [
-        'id' => '96285',
-        'name' => 'Pakkeshop Netto Vestergade',
-        'address' => 'Vestergade 20',
-        'zipcode' => '8000',
-        'city' => 'Aarhus C',
-        'country' => 'DK',
-        'address2' => null,
-    ];
 
     /**
      * @test
@@ -33,7 +24,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         $this->fixtures->shippingMethod->setAllowedShipmentTemplates([664116, 664115]);
         $customer = $this->fixtures->createCustomer();
 
-        $paid = $this->fixtures->createOrder($customer, pickupPoint: self::PICKUP_POINT);
+        $paid = $this->fixtures->createOrder($customer, pickupPoint: PickupPoints::create());
         $authorized = $this->fixtures->createOrder($customer, paid: false, authorized: true);
         $awaitingPayment = $this->fixtures->createOrder($customer, paid: false);
         $alreadyUploaded = $this->fixtures->createOrder($customer);
@@ -83,7 +74,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
     public function it_maps_the_order_to_a_shipmondo_sales_order(): void
     {
         $this->fixtures->shippingMethod->setAllowedShipmentTemplates([664116, 664115]);
-        $order = $this->fixtures->createOrder($this->fixtures->createCustomer(), pickupPoint: self::PICKUP_POINT);
+        $order = $this->fixtures->createOrder($this->fixtures->createCustomer(), pickupPoint: PickupPoints::create());
 
         $this->respondWithShipmentTemplates();
         $this->shipmondo->respond('POST', 'sales_orders', 201, ['id' => 1001]);

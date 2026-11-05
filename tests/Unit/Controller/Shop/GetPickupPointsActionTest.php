@@ -24,6 +24,7 @@ use Symfony\Component\HttpFoundation\Response;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Shipment;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\ShippingMethod;
+use Tests\Setono\SyliusShipmondoPlugin\Support\PickupPoints;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ShipmondoApi;
 use Twig\Environment;
 
@@ -74,24 +75,11 @@ final class GetPickupPointsActionTest extends TestCase
     public function it_puts_the_already_chosen_pickup_point_first(): void
     {
         $this->givenShippingMethod();
-        $this->cartContext->getCart()->willReturn(self::cart(['id' => '3']));
+        $this->cartContext->getCart()->willReturn(self::cart('3'));
         $this->givenPickupPoints(['1', '2', '3', '4']);
         $this->expectRenderedPickupPoints(['3', '1', '2', '4']);
 
         self::assertSame(['3', '1', '2', '4'], self::pickupPointIds($this->invoke()));
-    }
-
-    /**
-     * @test
-     */
-    public function it_keeps_the_order_when_the_chosen_pickup_point_has_no_id(): void
-    {
-        $this->givenShippingMethod();
-        $this->cartContext->getCart()->willReturn(self::cart(['name' => 'Pakkeshop']));
-        $this->givenPickupPoints(['1', '2']);
-        $this->expectRenderedPickupPoints(['1', '2']);
-
-        self::assertSame(['1', '2'], self::pickupPointIds($this->invoke()));
     }
 
     /**
@@ -134,20 +122,6 @@ final class GetPickupPointsActionTest extends TestCase
     /**
      * @test
      */
-    public function it_rejects_a_chosen_pickup_point_with_an_id_that_is_not_a_string(): void
-    {
-        $this->givenShippingMethod();
-        $this->cartContext->getCart()->willReturn(self::cart(['id' => 3]));
-        $this->givenPickupPoints(['1', '3']);
-
-        $this->expectException(\InvalidArgumentException::class);
-
-        $this->invoke();
-    }
-
-    /**
-     * @test
-     */
     public function it_requires_a_shipping_method(): void
     {
         $this->expectNoSearch();
@@ -172,6 +146,19 @@ final class GetPickupPointsActionTest extends TestCase
     public function it_requires_a_shipmondo_shipping_method(): void
     {
         $this->shippingMethodRepository->findOneBy(['code' => 'gls_pickup', 'enabled' => true])->willReturn(new BaseShippingMethod());
+        $this->expectNoSearch();
+
+        self::assertBadRequest($this->invoke());
+    }
+
+    /**
+     * @test
+     */
+    public function it_requires_a_shipping_method_with_pickup_point_delivery(): void
+    {
+        // e.g. one that had pickup point delivery once, and still has its carrier code
+        $this->givenShippingMethod(pickupPointDelivery: false);
+        $this->cartContext->getCart()->willReturn(self::cart());
         $this->expectNoSearch();
 
         self::assertBadRequest($this->invoke());
@@ -250,11 +237,11 @@ final class GetPickupPointsActionTest extends TestCase
         yield 'no street' => ['gls', 'DK', '9000', null];
     }
 
-    private function givenShippingMethod(?string $carrierCode = 'gls'): void
+    private function givenShippingMethod(?string $carrierCode = 'gls', bool $pickupPointDelivery = true): void
     {
         $shippingMethod = new ShippingMethod();
         $shippingMethod->setCode('gls_pickup');
-        $shippingMethod->setPickupPointDelivery(true);
+        $shippingMethod->setPickupPointDelivery($pickupPointDelivery);
         $shippingMethod->setCarrierCode($carrierCode);
 
         $this->shippingMethodRepository->findOneBy(['code' => 'gls_pickup', 'enabled' => true])->willReturn($shippingMethod);
@@ -316,9 +303,9 @@ final class GetPickupPointsActionTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed>|null $chosenPickupPoint
+     * A cart, whose customer may already have chosen the pickup point with the given id
      */
-    private static function cart(?array $chosenPickupPoint = null): Order
+    private static function cart(?string $chosenPickupPoint = null): Order
     {
         $address = new Address();
         $address->setCountryCode('DK');
@@ -326,7 +313,7 @@ final class GetPickupPointsActionTest extends TestCase
         $address->setStreet('Algade 1');
 
         $shipment = new Shipment();
-        $shipment->setShipmondoPickupPoint($chosenPickupPoint);
+        $shipment->setShipmondoPickupPoint(null === $chosenPickupPoint ? null : PickupPoints::create($chosenPickupPoint));
 
         $order = new Order();
         $order->setShippingAddress($address);

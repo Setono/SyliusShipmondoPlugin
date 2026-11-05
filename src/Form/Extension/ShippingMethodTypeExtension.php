@@ -9,6 +9,8 @@ use Symfony\Component\Form\AbstractTypeExtension;
 use Symfony\Component\Form\Extension\Core\Type\CheckboxType;
 use Symfony\Component\Form\Extension\Core\Type\ChoiceType;
 use Symfony\Component\Form\FormBuilderInterface;
+use Symfony\Component\Form\FormEvent;
+use Symfony\Component\Form\FormEvents;
 use Symfony\Component\Validator\Constraints as Assert;
 
 final class ShippingMethodTypeExtension extends AbstractTypeExtension
@@ -63,6 +65,15 @@ final class ShippingMethodTypeExtension extends AbstractTypeExtension
                 ],
             ])
         ;
+
+        // A shipping method without pickup point delivery has no carrier code. The admin's carrier script only hides
+        // the carrier field, so the carrier code is still submitted
+        $builder->get('carrierCode')->addEventListener(FormEvents::SUBMIT, static function (FormEvent $event): void {
+            $shippingMethodForm = $event->getForm()->getParent();
+            if (null !== $shippingMethodForm && true !== $shippingMethodForm->get('pickupPointDelivery')->getData()) {
+                $event->setData(null);
+            }
+        });
     }
 
     public static function getExtendedTypes(): iterable

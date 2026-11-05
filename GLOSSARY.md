@@ -60,3 +60,12 @@ An upload that failed before Shipmondo answered, or in a way nothing expects, su
 
 **Upload outcome**:
 How one upload went: uploaded, one of the failures above, the order changed while it was uploading (back to pending), or skipped because the order wasn't uploading. It decides the order's Shipmondo state.
+
+### Pickup points
+
+**Pickup point**:
+A carrier's location, often in a shop, where the customer collects the parcel. The customer chooses one in checkout from Shipmondo's pickup points near the shipping address, and it becomes the sales order's service point.
+_Avoid_: parcel shop, droppoint, service point (Shipmondo's name for it on a sales order)
+
+**Pickup point delivery**:
+A shipping method setting: its shipments are delivered to a pickup point the customer chooses in checkout, searched with the method's carrier. The shipping step doesn't accept such a shipping method without a pickup point, and drops the pickup point chosen for any other shipping method.

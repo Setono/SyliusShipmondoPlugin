@@ -96,8 +96,6 @@ final class AdminIntegrationTest extends FunctionalTestCase
      */
     public function it_clears_the_carrier_when_pickup_point_delivery_is_disabled(): void
     {
-        self::skipUntilFixed(21);
-
         $this->logIn();
 
         $form = $this->shippingMethodForm();

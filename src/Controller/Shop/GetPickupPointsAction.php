@@ -17,7 +17,6 @@ use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Twig\Environment;
-use Webmozart\Assert\Assert;
 
 final class GetPickupPointsAction
 {
@@ -42,7 +41,7 @@ final class GetPickupPointsAction
             'enabled' => true,
         ]);
 
-        if (!$shippingMethod instanceof ShippingMethodInterface) {
+        if (!$shippingMethod instanceof ShippingMethodInterface || !$shippingMethod->isPickupPointDelivery()) {
             return new JsonResponse(status: Response::HTTP_BAD_REQUEST);
         }
 
@@ -102,14 +101,6 @@ final class GetPickupPointsAction
             return null;
         }
 
-        $pickupPoint = $shipment->getShipmondoPickupPoint();
-        if (null === $pickupPoint) {
-            return null;
-        }
-
-        $id = $pickupPoint['id'] ?? null;
-        Assert::nullOrString($id);
-
-        return $id;
+        return $shipment->getShipmondoPickupPoint()?->id;
     }
 }

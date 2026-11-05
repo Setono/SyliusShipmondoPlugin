@@ -9,6 +9,7 @@ use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShipmentInterface;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
+use Tests\Setono\SyliusShipmondoPlugin\Support\PickupPoints;
 
 /**
  * A customer choosing a pickup point in the checkout: the shop's pickup point endpoint and the shipping step
@@ -51,7 +52,7 @@ final class PickupPointTest extends FunctionalTestCase
         $cart = $this->cartOfLoggedInCustomer();
         $shipment = $cart->getShipments()->first();
         self::assertInstanceOf(ShipmentInterface::class, $shipment);
-        $shipment->setShipmondoPickupPoint(['id' => '96286', 'name' => 'Pakkeshop Føtex Frederiks Allé']);
+        $shipment->setShipmondoPickupPoint(PickupPoints::create('96286', 'Pakkeshop Føtex Frederiks Allé'));
         $this->entityManager()->flush();
         $this->respondWithPickupPoints();
 
@@ -90,6 +91,21 @@ final class PickupPointTest extends FunctionalTestCase
     /**
      * @test
      */
+    public function it_rejects_a_shipping_method_without_pickup_point_delivery(): void
+    {
+        $this->fixtures->createRegularShippingMethod()->setCarrierCode('ups');
+        $this->entityManager()->flush();
+        $this->cartOfLoggedInCustomer();
+
+        $this->browser->request('GET', self::ENDPOINT, ['shippingMethod' => ShopFixtures::REGULAR_SHIPPING_METHOD_CODE]);
+
+        self::assertResponseStatusCodeSame(400);
+        self::assertSame([], $this->shipmondo->requests());
+    }
+
+    /**
+     * @test
+     */
     public function it_rejects_a_visitor_without_a_shipping_address(): void
     {
         $this->browser->request('GET', self::ENDPOINT, ['shippingMethod' => ShopFixtures::SHIPPING_METHOD_CODE]);
@@ -108,7 +124,7 @@ final class PickupPointTest extends FunctionalTestCase
     {
         $cart = $this->cartOfLoggedInCustomer();
 
-        $crawler = $this->browser->request('GET', '/en_US/checkout/select-shipping');
+        $this->browser->request('GET', '/en_US/checkout/select-shipping');
 
         self::assertResponseIsSuccessful();
         // the pickup point picker is loaded for the shipping methods with pickup point delivery
@@ -118,56 +134,67 @@ final class PickupPointTest extends FunctionalTestCase
             (string) $this->browser->getResponse()->getContent(),
         );
 
-        $pickupPoint = ['id' => '96285', 'name' => 'Pakkeshop Netto Vestergade', 'address' => 'Vestergade 20', 'zipcode' => '8000', 'city' => 'Aarhus C', 'country' => 'DK'];
-
-        $form = $crawler->filter('form[name="sylius_checkout_select_shipping"]')->form();
-        self::choice($form, 'sylius_checkout_select_shipping[shipments][0][method]')->setValue(ShopFixtures::SHIPPING_METHOD_CODE);
-
-        // pickup-point-manager.js injects the pickup points as radio buttons named after the method field
-        // (…[method] → …[shipmondoPickupPoint]), each carrying the pickup point as JSON
-        $values = $form->getPhpValues();
-        self::assertIsArray($values['sylius_checkout_select_shipping']);
-        self::assertIsArray($values['sylius_checkout_select_shipping']['shipments']);
-        self::assertIsArray($values['sylius_checkout_select_shipping']['shipments'][0]);
-        $values['sylius_checkout_select_shipping']['shipments'][0]['shipmondoPickupPoint'] = json_encode($pickupPoint, \JSON_THROW_ON_ERROR);
-        $this->browser->request($form->getMethod(), $form->getUri(), $values);
+        $this->submitShippingStep(ShopFixtures::SHIPPING_METHOD_CODE, PickupPoints::JSON);
 
         self::assertResponseRedirects('/en_US/checkout/select-payment');
-
-        $stored = $this->database()->fetchOne('SELECT shipmondoPickupPoint FROM sylius_shipment WHERE order_id = ?', [self::id($cart)]);
-        self::assertIsString($stored);
-        $stored = json_decode($stored, true, 512, \JSON_THROW_ON_ERROR);
-        self::assertIsArray($stored);
-
-        // MySQL's JSON type normalizes the key order, so compare the pickup points key by key
-        ksort($pickupPoint);
-        ksort($stored);
-        self::assertSame($pickupPoint, $stored);
+        self::assertEquals(json_decode(PickupPoints::JSON, true), $this->storedPickupPoint($cart));
     }
 
     /**
+     * Pickup points that arrive after the customer selected another shipping method, or a tampered request
+     *
      * @test
      */
-    public function it_rejects_a_pickup_point_that_is_not_valid_json_without_failing(): void
+    public function it_drops_a_pickup_point_chosen_for_a_shipping_method_without_pickup_point_delivery(): void
     {
-        self::skipUntilFixed(20);
+        $this->fixtures->createRegularShippingMethod();
+        $cart = $this->cartOfLoggedInCustomer();
 
-        $this->cartOfLoggedInCustomer();
+        $this->submitShippingStep(ShopFixtures::REGULAR_SHIPPING_METHOD_CODE, PickupPoints::JSON);
 
-        $crawler = $this->browser->request('GET', '/en_US/checkout/select-shipping');
-        $form = $crawler->filter('form[name="sylius_checkout_select_shipping"]')->form();
-        self::choice($form, 'sylius_checkout_select_shipping[shipments][0][method]')->setValue(ShopFixtures::SHIPPING_METHOD_CODE);
+        self::assertResponseRedirects('/en_US/checkout/select-payment');
+        self::assertNull($this->storedPickupPoint($cart));
+    }
 
-        $values = $form->getPhpValues();
-        self::assertIsArray($values['sylius_checkout_select_shipping']);
-        self::assertIsArray($values['sylius_checkout_select_shipping']['shipments']);
-        self::assertIsArray($values['sylius_checkout_select_shipping']['shipments'][0]);
-        $values['sylius_checkout_select_shipping']['shipments'][0]['shipmondoPickupPoint'] = 'not json';
-        $this->browser->request($form->getMethod(), $form->getUri(), $values);
+    /**
+     * E.g. when the pickup point picker couldn't load the pickup points
+     *
+     * @test
+     */
+    public function it_asks_for_a_pickup_point_when_the_shipping_method_has_pickup_point_delivery(): void
+    {
+        $cart = $this->cartOfLoggedInCustomer();
 
-        $status = $this->browser->getResponse()->getStatusCode();
-        self::assertLessThan(500, $status, 'A tampered pickup point must be a form error, not a server error');
-        self::assertNotSame(302, $status, 'A tampered pickup point must not be accepted');
+        $this->submitShippingStep(ShopFixtures::SHIPPING_METHOD_CODE, null);
+
+        $this->assertShippingStepShowsError('Please choose a pickup point, or another shipping method.');
+        self::assertNull($this->storedPickupPoint($cart));
+    }
+
+    /**
+     * A tampered request or a broken pickup point picker
+     *
+     * @test
+     *
+     * @dataProvider unreadablePickupPoints
+     */
+    public function it_rejects_a_pickup_point_it_cannot_read_without_failing(string $pickupPoint): void
+    {
+        $cart = $this->cartOfLoggedInCustomer();
+
+        $this->submitShippingStep(ShopFixtures::SHIPPING_METHOD_CODE, $pickupPoint);
+
+        $this->assertShippingStepShowsError('The chosen pickup point could not be read. Please choose it again.');
+        self::assertNull($this->storedPickupPoint($cart));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function unreadablePickupPoints(): iterable
+    {
+        yield 'not JSON (#20)' => ['not json'];
+        yield 'JSON of the wrong shape (#37)' => ['{"id":"96285"}'];
     }
 
     private function cartOfLoggedInCustomer(): OrderInterface
@@ -176,6 +203,57 @@ final class PickupPointTest extends FunctionalTestCase
         $this->loginAs($this->fixtures->createShopUser($customer), 'shop');
 
         return $this->fixtures->createCart($customer);
+    }
+
+    /**
+     * Submits the real shipping step form with the given shipping method and, as pickup-point-manager.js does, the
+     * given pickup point in the field named after the method field (…[method] → …[shipmondoPickupPoint])
+     */
+    private function submitShippingStep(string $shippingMethod, ?string $pickupPoint): void
+    {
+        $crawler = $this->browser->request('GET', '/en_US/checkout/select-shipping');
+        self::assertResponseIsSuccessful();
+
+        $form = $crawler->filter('form[name="sylius_checkout_select_shipping"]')->form();
+        self::choice($form, 'sylius_checkout_select_shipping[shipments][0][method]')->setValue($shippingMethod);
+
+        $values = $form->getPhpValues();
+        self::assertIsArray($values['sylius_checkout_select_shipping']);
+        self::assertIsArray($values['sylius_checkout_select_shipping']['shipments']);
+        self::assertIsArray($values['sylius_checkout_select_shipping']['shipments'][0]);
+        if (null !== $pickupPoint) {
+            $values['sylius_checkout_select_shipping']['shipments'][0]['shipmondoPickupPoint'] = $pickupPoint;
+        }
+
+        $this->browser->request($form->getMethod(), $form->getUri(), $values);
+    }
+
+    private function assertShippingStepShowsError(string $error): void
+    {
+        $response = $this->browser->getResponse();
+        self::assertLessThan(500, $response->getStatusCode(), 'The shipping step must show an error, not fail');
+        self::assertFalse($response->isRedirection(), 'The shipping step must not be accepted');
+
+        // the errors Sylius renders at the top of the shipping step (form_errors(form))
+        $errors = $this->browser->getCrawler()->filter('form[name="sylius_checkout_select_shipping"] > .sylius-validation-error');
+        self::assertStringContainsString($error, $errors->text(''), 'The error must be shown at the top of the shipping step');
+    }
+
+    /**
+     * @return array<array-key, mixed>|null
+     */
+    private function storedPickupPoint(OrderInterface $cart): ?array
+    {
+        $stored = $this->database()->fetchOne('SELECT shipmondoPickupPoint FROM sylius_shipment WHERE order_id = ?', [self::id($cart)]);
+        if (null === $stored) {
+            return null;
+        }
+
+        self::assertIsString($stored);
+        $stored = json_decode($stored, true, 512, \JSON_THROW_ON_ERROR);
+        self::assertIsArray($stored);
+
+        return $stored;
     }
 
     private function respondWithPickupPoints(): void

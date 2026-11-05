@@ -92,7 +92,7 @@ final class PickupPointSelectionTest extends ShopTestCase
     /**
      * @test
      */
-    public function when_the_pickup_points_cannot_be_loaded_none_are_shown_and_the_checkout_can_continue(): void
+    public function when_the_pickup_points_cannot_be_loaded_the_customer_is_asked_to_choose_another_shipping_method(): void
     {
         // the endpoint fails with HTTP 500 when the Shipmondo API does
         $this->shipmondo->respond('GET', 'pickup_points', 500, ['error' => 'Internal server error']);
@@ -107,6 +107,13 @@ final class PickupPointSelectionTest extends ShopTestCase
         );
         expect($this->pickupPointList())->toHaveCount(0);
 
+        // a shipping method with pickup point delivery can't leave the checkout without a pickup point
+        $this->clickAndFollowRedirects($this->getPage()->getByRole('button', ['name' => 'Next']));
+        $this->assertOnStep('select-shipping');
+        expect($this->getPage()->locator('form[name="sylius_checkout_select_shipping"] > .sylius-validation-error'))
+            ->toContainText('Please choose a pickup point, or another shipping method.');
+
+        $this->selectShippingMethod(self::REGULAR_SHIPPING_METHOD_NAME);
         $this->continueToPaymentStep();
     }
 
@@ -152,10 +159,8 @@ final class PickupPointSelectionTest extends ShopTestCase
      */
     public function switching_to_another_shipping_method_before_the_pickup_points_have_loaded_does_not_show_them(): void
     {
-        // the manager inserts the pickup points once they arrive, also when the customer has selected another
-        // shipping method in the meantime; the preselected pickup point is then saved on that method's shipment
-        self::skipUntilFixed(27);
-
+        // pickup points that arrive after the customer selected another shipping method would preselect a pickup point
+        // for that shipping method (#27)
         $this->respondWithPickupPoints();
         // the page gets the pickup points only when the test says so
         $this->getPage()->addInitScript(<<<'JS'
@@ -179,7 +184,7 @@ final class PickupPointSelectionTest extends ShopTestCase
         $this->selectShippingMethod(self::PICKUP_POINT_SHIPPING_METHOD_NAME);
         $this->selectShippingMethod(self::REGULAR_SHIPPING_METHOD_NAME);
         $this->getPage()->evaluate('() => window.releasePickupPoints()');
-        // give the manager, which checks for the pickup points every 100 ms, time to (wrongly) insert them
+        // give the manager, which checks for the pickup points every 100 ms, time to insert them if it would
         $this->settle();
 
         expect($this->shippingMethodRadio(self::REGULAR_SHIPPING_METHOD_CODE))->toBeChecked();

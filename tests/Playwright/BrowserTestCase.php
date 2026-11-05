@@ -15,8 +15,6 @@ use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Component\Core\Factory\PaymentMethodFactoryInterface;
 use Sylius\Component\Core\Model\CustomerInterface;
-use Sylius\Component\Resource\Factory\FactoryInterface;
-use Sylius\Component\Shipping\Calculator\DefaultCalculators;
 use Symfony\Component\HttpFoundation\Request;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
@@ -43,9 +41,9 @@ use Webmozart\Assert\Assert;
  */
 abstract class BrowserTestCase extends PlaywrightTestCase
 {
-    public const REGULAR_SHIPPING_METHOD_CODE = 'ups';
+    public const REGULAR_SHIPPING_METHOD_CODE = ShopFixtures::REGULAR_SHIPPING_METHOD_CODE;
 
-    public const REGULAR_SHIPPING_METHOD_NAME = 'UPS';
+    public const REGULAR_SHIPPING_METHOD_NAME = ShopFixtures::REGULAR_SHIPPING_METHOD_NAME;
 
     public const PICKUP_POINT_SHIPPING_METHOD_NAME = 'GLS pickup point';
 
@@ -383,23 +381,7 @@ abstract class BrowserTestCase extends PlaywrightTestCase
 
     private function createRegularShippingMethod(): ShippingMethodInterface
     {
-        $factory = static::getContainer()->get('sylius.factory.shipping_method');
-        Assert::isInstanceOf($factory, FactoryInterface::class);
-
-        $shippingMethod = $factory->createNew();
-        Assert::isInstanceOf($shippingMethod, ShippingMethodInterface::class);
-        $shippingMethod->setCode(self::REGULAR_SHIPPING_METHOD_CODE);
-        $shippingMethod->setCurrentLocale(ShopFixtures::LOCALE_CODE);
-        $shippingMethod->setFallbackLocale(ShopFixtures::LOCALE_CODE);
-        $shippingMethod->setName(self::REGULAR_SHIPPING_METHOD_NAME);
-        $shippingMethod->setZone($this->fixtures->shippingMethod->getZone());
-        $shippingMethod->setCalculator(DefaultCalculators::FLAT_RATE);
-        $shippingMethod->setConfiguration([ShopFixtures::CHANNEL_CODE => ['amount' => 900]]);
-        $shippingMethod->addChannel($this->fixtures->channel);
-        $shippingMethod->setEnabled(true);
-
-        $this->entityManager()->persist($shippingMethod);
-        $this->entityManager()->flush();
+        $shippingMethod = $this->fixtures->createRegularShippingMethod();
 
         // listed (and so selected by default) before the pickup point shipping method. Set in the database because
         // the position is a Gedmo sortable position, which Gedmo assigns itself
