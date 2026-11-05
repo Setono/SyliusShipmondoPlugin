@@ -10,8 +10,8 @@ use Sylius\Component\Core\Model\ShipmentInterface as BaseShipmentInterface;
 interface ShipmentInterface extends BaseShipmentInterface
 {
     /**
-     * The pickup point the customer chose in checkout. Only a shipment whose shipping method has pickup point delivery
-     * has one; the checkout makes sure of that
+     * The pickup point the customer chose in the shipping step of the checkout, which requires one for a shipping method
+     * with pickup point delivery and drops it for any other shipping method
      */
     public function setShipmondoPickupPoint(?PickupPoint $shipmondoPickupPoint): void;
 

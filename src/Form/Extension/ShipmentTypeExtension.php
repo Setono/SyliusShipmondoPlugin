@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Form\Extension;
 
-use Setono\Shipmondo\Response\PickupPoint\PickupPoint;
 use Setono\SyliusShipmondoPlugin\Model\ShipmentInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
+use Setono\SyliusShipmondoPlugin\Parser\PickupPointParser;
 use Sylius\Bundle\CoreBundle\Form\Type\Checkout\ShipmentType;
 use Symfony\Component\Form\AbstractTypeExtension;
 use Symfony\Component\Form\Extension\Core\Type\HiddenType;
@@ -27,6 +27,17 @@ use Symfony\Contracts\Translation\TranslatorInterface;
  */
 final class ShipmentTypeExtension extends AbstractTypeExtension
 {
+    /**
+     * The error when the shipping method has pickup point delivery and no pickup point was chosen. A translation key in
+     * the validators domain
+     */
+    public const ERROR_MISSING_PICKUP_POINT = 'setono_sylius_shipmondo.checkout.pickup_point.missing';
+
+    /**
+     * The error when the chosen pickup point can't be read. A translation key in the validators domain
+     */
+    public const ERROR_INVALID_PICKUP_POINT = 'setono_sylius_shipmondo.checkout.pickup_point.invalid';
+
     public function __construct(private readonly TranslatorInterface $translator)
     {
     }
@@ -51,6 +62,13 @@ final class ShipmentTypeExtension extends AbstractTypeExtension
             return;
         }
 
+        $form = $event->getForm();
+
+        // Sylius reports a shipping method it can't read, and the shipment still has its previous one
+        if (!$form->get('method')->isSynchronized()) {
+            return;
+        }
+
         $shippingMethod = $shipment->getMethod();
         if (!$shippingMethod instanceof ShippingMethodInterface || !$shippingMethod->isPickupPointDelivery()) {
             $shipment->setShipmondoPickupPoint(null);
@@ -58,33 +76,21 @@ final class ShipmentTypeExtension extends AbstractTypeExtension
             return;
         }
 
-        $form = $event->getForm();
         $json = $form->get('shipmondoPickupPoint')->getData();
         if (!is_string($json)) {
-            $this->addError($form, 'setono_sylius_shipmondo.checkout.pickup_point.missing');
+            $this->addError($form, self::ERROR_MISSING_PICKUP_POINT);
 
             return;
         }
 
-        $pickupPoint = self::parse($json);
+        $pickupPoint = PickupPointParser::parse($json);
         if (null === $pickupPoint) {
-            $this->addError($form, 'setono_sylius_shipmondo.checkout.pickup_point.invalid');
+            $this->addError($form, self::ERROR_INVALID_PICKUP_POINT);
 
             return;
         }
 
         $shipment->setShipmondoPickupPoint($pickupPoint);
-    }
-
-    private static function parse(string $json): ?PickupPoint
-    {
-        try {
-            $data = json_decode($json, true, flags: \JSON_THROW_ON_ERROR);
-
-            return is_array($data) ? PickupPoint::fromArray($data) : null;
-        } catch (\JsonException|\InvalidArgumentException) {
-            return null;
-        }
     }
 
     private function addError(FormInterface $form, string $message): void

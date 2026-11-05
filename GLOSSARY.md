@@ -64,8 +64,8 @@ How one upload went: uploaded, one of the failures above, the order changed whil
 ### Pickup points
 
 **Pickup point**:
-A carrier's location, such as a parcel shop, where the customer collects the parcel. The customer chooses one in checkout from Shipmondo's pickup points near the shipping address, and it becomes the sales order's service point.
+A carrier's location, often in a shop, where the customer collects the parcel. The customer chooses one in checkout from Shipmondo's pickup points near the shipping address, and it becomes the sales order's service point.
 _Avoid_: parcel shop, droppoint, service point (Shipmondo's name for it on a sales order)
 
 **Pickup point delivery**:
-A shipping method setting: its shipments are delivered to a pickup point the customer chooses in checkout, searched with the method's carrier. A shipment whose shipping method has pickup point delivery can't leave checkout without a pickup point, and no other shipment has one.
+A shipping method setting: its shipments are delivered to a pickup point the customer chooses in checkout, searched with the method's carrier. The shipping step doesn't accept such a shipping method without a pickup point, and drops the pickup point chosen for any other shipping method.

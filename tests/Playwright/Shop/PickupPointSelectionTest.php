@@ -159,9 +159,8 @@ final class PickupPointSelectionTest extends ShopTestCase
      */
     public function switching_to_another_shipping_method_before_the_pickup_points_have_loaded_does_not_show_them(): void
     {
-        // the manager inserts the pickup points once they arrive, also when the customer has selected another
-        // shipping method in the meantime; the preselected pickup point is then saved on that method's shipment
-
+        // pickup points that arrive after the customer selected another shipping method would preselect a pickup point
+        // for that shipping method (#27)
         $this->respondWithPickupPoints();
         // the page gets the pickup points only when the test says so
         $this->getPage()->addInitScript(<<<'JS'
@@ -185,7 +184,7 @@ final class PickupPointSelectionTest extends ShopTestCase
         $this->selectShippingMethod(self::PICKUP_POINT_SHIPPING_METHOD_NAME);
         $this->selectShippingMethod(self::REGULAR_SHIPPING_METHOD_NAME);
         $this->getPage()->evaluate('() => window.releasePickupPoints()');
-        // give the manager, which checks for the pickup points every 100 ms, time to (wrongly) insert them
+        // give the manager, which checks for the pickup points every 100 ms, time to insert them if it would
         $this->settle();
 
         expect($this->shippingMethodRadio(self::REGULAR_SHIPPING_METHOD_CODE))->toBeChecked();

@@ -40,10 +40,6 @@ final class ShipmentTypeExtensionTest extends TypeTestCase
 
     private const REGULAR_METHOD = 'ups';
 
-    private const INVALID = 'setono_sylius_shipmondo.checkout.pickup_point.invalid';
-
-    private const MISSING = 'setono_sylius_shipmondo.checkout.pickup_point.missing';
-
     /** @var ObjectProphecy<ShippingMethodsResolverInterface> */
     private ObjectProphecy $shippingMethodsResolver;
 
@@ -61,7 +57,7 @@ final class ShipmentTypeExtensionTest extends TypeTestCase
     }
 
     /**
-     * A tampered request or a broken pickup point picker
+     * A tampered request or a broken pickup point picker. PickupPointParserTest covers what can't be read
      *
      * @test
      *
@@ -74,7 +70,7 @@ final class ShipmentTypeExtensionTest extends TypeTestCase
 
         $form = $this->submit($shipment, self::PICKUP_POINT_METHOD, $pickupPoint);
 
-        self::assertErrors([self::INVALID], $form);
+        self::assertErrors([ShipmentTypeExtension::ERROR_INVALID_PICKUP_POINT], $form);
         self::assertEquals(PickupPoints::create(), $shipment->getShipmondoPickupPoint(), 'The shipment keeps its pickup point');
     }
 
@@ -84,9 +80,7 @@ final class ShipmentTypeExtensionTest extends TypeTestCase
     public static function unreadablePickupPoints(): iterable
     {
         yield 'not JSON (#20)' => ['not json'];
-        yield 'JSON with a missing key (#37)' => ['{"id":"96285"}'];
-        yield 'JSON with a value of the wrong type (#37)' => [str_replace('"id":"96285"', '"id":96285', PickupPoints::JSON)];
-        yield 'JSON that is not an object' => ['"96285"'];
+        yield 'JSON of the wrong shape (#37)' => ['{"id":"96285"}'];
     }
 
     /**
@@ -98,7 +92,7 @@ final class ShipmentTypeExtensionTest extends TypeTestCase
     {
         $form = $this->submit(new Shipment(), self::PICKUP_POINT_METHOD, null);
 
-        self::assertErrors([self::MISSING], $form);
+        self::assertErrors([ShipmentTypeExtension::ERROR_MISSING_PICKUP_POINT], $form);
     }
 
     /**
@@ -156,6 +150,25 @@ final class ShipmentTypeExtensionTest extends TypeTestCase
         $this->submit($shipment, null, PickupPoints::JSON);
 
         self::assertNull($shipment->getShipmondoPickupPoint());
+    }
+
+    /**
+     * Sylius reports a shipping method it can't read, and the shipment still has its previous shipping method, so
+     * the pickup point can't be checked against it
+     *
+     * @test
+     */
+    public function it_leaves_the_pickup_point_alone_when_the_shipping_method_cannot_be_read(): void
+    {
+        $shipment = new Shipment();
+        $shipment->setMethod(self::shippingMethod(self::PICKUP_POINT_METHOD, true));
+        $shipment->setShipmondoPickupPoint(PickupPoints::create());
+
+        $form = $this->submit($shipment, 'unknown', null);
+
+        self::assertFalse($form->get('method')->isSynchronized());
+        self::assertCount(0, $form->getErrors(), 'Only Sylius reports the shipping method');
+        self::assertEquals(PickupPoints::create(), $shipment->getShipmondoPickupPoint());
     }
 
     /**

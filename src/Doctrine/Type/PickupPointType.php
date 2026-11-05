@@ -8,6 +8,7 @@ use Doctrine\DBAL\Platforms\AbstractPlatform;
 use Doctrine\DBAL\Types\ConversionException;
 use Doctrine\DBAL\Types\JsonType;
 use Setono\Shipmondo\Response\PickupPoint\PickupPoint;
+use Setono\SyliusShipmondoPlugin\Parser\PickupPointParser;
 
 /**
  * Stores the pickup point a customer chose as its JSON in a JSON column. The bundle registers it with Doctrine.
@@ -38,13 +39,12 @@ final class PickupPointType extends JsonType
      */
     public function convertToPHPValue($value, AbstractPlatform $platform): ?PickupPoint
     {
-        try {
-            $data = parent::convertToPHPValue($value, $platform);
-
-            return is_array($data) ? PickupPoint::fromArray($data) : null;
-        } catch (ConversionException|\InvalidArgumentException) {
-            return null;
+        // some drivers read a JSON column as a stream
+        if (is_resource($value)) {
+            $value = stream_get_contents($value);
         }
+
+        return is_string($value) ? PickupPointParser::parse($value) : null;
     }
 
     public function getName(): string

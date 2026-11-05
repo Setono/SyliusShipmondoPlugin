@@ -379,7 +379,7 @@ Only if you extend or call the code involved:
 | `Model\ShipmentInterface::getShipmondoPickupPoint(): ?array` | `getShipmondoPickupPoint(): ?Setono\Shipmondo\Response\PickupPoint\PickupPoint`. In Twig, `shipment.shipmondoPickupPoint.name` keeps working |
 | `Form\Extension\ShipmentTypeExtension::__construct()` | `__construct(Symfony\Contracts\Translation\TranslatorInterface $translator)`. Its `shipmondoPickupPoint` field is no longer mapped: the extension sets the shipment's pickup point once the shipping method is known |
 
-New: `Doctrine\Type\PickupPointType`. The SDK's `PickupPoint::fromArray()` rebuilds a pickup point from its JSON, and
+New: `Doctrine\Type\PickupPointType`, `Parser\PickupPointParser`, and the `ShipmentTypeExtension::ERROR_MISSING_PICKUP_POINT` and `ERROR_INVALID_PICKUP_POINT` constants (the translation keys of the errors). The SDK's `PickupPoint::fromArray()` rebuilds a pickup point from its JSON, and
 `ServicePoint::fromPickupPoint()` turns it into a sales order's service point; both need `setono/shipmondo-php-sdk`
 2.0.0-beta.2 or later.
 

@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Tests\Setono\SyliusShipmondoPlugin\Functional\Controller\Shop;
 
 use Psr\Http\Message\RequestInterface;
-use Setono\Shipmondo\Response\PickupPoint\PickupPoint;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShipmentInterface;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
+use Tests\Setono\SyliusShipmondoPlugin\Support\PickupPoints;
 
 /**
  * A customer choosing a pickup point in the checkout: the shop's pickup point endpoint and the shipping step
@@ -17,22 +17,6 @@ use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
 final class PickupPointTest extends FunctionalTestCase
 {
     private const ENDPOINT = '/en_US/ajax/get-pickup-points';
-
-    /**
-     * A pickup point as the pickup point picker submits it: the JSON of a pickup point from the endpoint
-     */
-    private const PICKUP_POINT = [
-        'id' => '96285',
-        'number' => '96285',
-        'companyName' => 'GLS',
-        'name' => 'Pakkeshop Netto Vestergade',
-        'address' => 'Vestergade 20',
-        'zipcode' => '8000',
-        'city' => 'Aarhus C',
-        'country' => 'DK',
-        'openingHours' => ['Man-Fre: 08:00-21:00'],
-        'address2' => null,
-    ];
 
     /**
      * @test
@@ -68,7 +52,7 @@ final class PickupPointTest extends FunctionalTestCase
         $cart = $this->cartOfLoggedInCustomer();
         $shipment = $cart->getShipments()->first();
         self::assertInstanceOf(ShipmentInterface::class, $shipment);
-        $shipment->setShipmondoPickupPoint(PickupPoint::fromArray(['id' => '96286', 'name' => 'Pakkeshop Føtex Frederiks Allé'] + self::PICKUP_POINT));
+        $shipment->setShipmondoPickupPoint(PickupPoints::create('96286', 'Pakkeshop Føtex Frederiks Allé'));
         $this->entityManager()->flush();
         $this->respondWithPickupPoints();
 
@@ -150,10 +134,10 @@ final class PickupPointTest extends FunctionalTestCase
             (string) $this->browser->getResponse()->getContent(),
         );
 
-        $this->submitShippingStep(ShopFixtures::SHIPPING_METHOD_CODE, json_encode(self::PICKUP_POINT, \JSON_THROW_ON_ERROR));
+        $this->submitShippingStep(ShopFixtures::SHIPPING_METHOD_CODE, PickupPoints::JSON);
 
         self::assertResponseRedirects('/en_US/checkout/select-payment');
-        self::assertEquals(self::PICKUP_POINT, $this->storedPickupPoint($cart));
+        self::assertEquals(json_decode(PickupPoints::JSON, true), $this->storedPickupPoint($cart));
     }
 
     /**
@@ -166,7 +150,7 @@ final class PickupPointTest extends FunctionalTestCase
         $this->fixtures->createRegularShippingMethod();
         $cart = $this->cartOfLoggedInCustomer();
 
-        $this->submitShippingStep(ShopFixtures::REGULAR_SHIPPING_METHOD_CODE, json_encode(self::PICKUP_POINT, \JSON_THROW_ON_ERROR));
+        $this->submitShippingStep(ShopFixtures::REGULAR_SHIPPING_METHOD_CODE, PickupPoints::JSON);
 
         self::assertResponseRedirects('/en_US/checkout/select-payment');
         self::assertNull($this->storedPickupPoint($cart));
@@ -210,9 +194,7 @@ final class PickupPointTest extends FunctionalTestCase
     public static function unreadablePickupPoints(): iterable
     {
         yield 'not JSON (#20)' => ['not json'];
-        yield 'JSON with a missing key (#37)' => ['{"id":"96285"}'];
-        yield 'JSON with a value of the wrong type (#37)' => [json_encode(['id' => 96285] + self::PICKUP_POINT, \JSON_THROW_ON_ERROR)];
-        yield 'JSON that is not an object' => ['"96285"'];
+        yield 'JSON of the wrong shape (#37)' => ['{"id":"96285"}'];
     }
 
     private function cartOfLoggedInCustomer(): OrderInterface

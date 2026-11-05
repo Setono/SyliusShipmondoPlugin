@@ -82,25 +82,26 @@ final class PickupPointTypeTest extends TestCase
 
     /**
      * Only a tampered checkout request could have stored one, before the checkout parsed pickup points. The order
-     * must still load everywhere
+     * must still load everywhere. PickupPointParserTest covers what can't be read
      *
      * @test
-     *
-     * @dataProvider unreadablePickupPoints
      */
-    public function it_reads_a_stored_pickup_point_it_cannot_read_as_null(string $value): void
+    public function it_reads_a_stored_pickup_point_it_cannot_read_as_null(): void
     {
-        self::assertNull(self::type()->convertToPHPValue($value, self::platform()));
+        self::assertNull(self::type()->convertToPHPValue('{"id":"96285","name":"Pakkeshop Netto Vestergade"}', self::platform()));
     }
 
     /**
-     * @return iterable<string, array{string}>
+     * @test
      */
-    public static function unreadablePickupPoints(): iterable
+    public function it_reads_a_pickup_point_the_driver_reads_as_a_stream(): void
     {
-        yield 'not JSON' => ['not json'];
-        yield 'JSON that is not an object' => ['"96285"'];
-        yield 'JSON with a missing key' => ['{"id":"96285","name":"Pakkeshop Netto Vestergade"}'];
+        $stream = fopen('php://memory', 'r+b');
+        self::assertIsResource($stream);
+        fwrite($stream, PickupPoints::JSON);
+        rewind($stream);
+
+        self::assertEquals(PickupPoints::create(), self::type()->convertToPHPValue($stream, self::platform()));
     }
 
     /**
