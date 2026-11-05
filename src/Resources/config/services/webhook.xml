@@ -14,7 +14,7 @@
         <service id="setono_sylius_shipmondo.webhook.webhook_consumer"
                  class="Setono\SyliusShipmondoPlugin\Webhook\WebhookConsumer">
             <argument type="service" id="setono_sylius_shipmondo.webhook.order_resolver"/>
-            <argument type="tagged_iterator" tag="setono_sylius_shipmondo.order_webhook_handler"/>
+            <argument type="service" id="setono_sylius_shipmondo.webhook.order_webhook_handlers"/>
             <argument type="service" id="logger"/>
             <argument type="service" id="doctrine"/>
 

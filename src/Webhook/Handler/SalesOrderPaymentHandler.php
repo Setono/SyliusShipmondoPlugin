@@ -12,7 +12,7 @@ use Sylius\Component\Core\OrderPaymentTransitions;
 use Sylius\Component\Payment\PaymentTransitions;
 
 /**
- * Keeps the Sylius order's payment state in sync with Shipmondo payment events.
+ * Keeps the Sylius order's payment state in step with Shipmondo's payment webhooks.
  *
  * Orders are uploaded to Shipmondo while either `paid` or `authorized`, so an authorized payment can be
  * captured (or its authorization voided) later in Shipmondo:
@@ -37,9 +37,9 @@ final class SalesOrderPaymentHandler implements OrderWebhookHandlerInterface
         return [WebhookAction::PaymentCaptured, WebhookAction::PaymentVoided];
     }
 
-    public function handle(OrderInterface $order, RemoteEvent $event): void
+    public function handle(OrderInterface $order, RemoteEvent $webhook): void
     {
-        if (WebhookAction::PaymentCaptured === $event->getAction()) {
+        if (WebhookAction::PaymentCaptured === $webhook->getAction()) {
             $this->capture($order);
 
             return;

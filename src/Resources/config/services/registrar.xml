@@ -6,7 +6,7 @@
                  class="Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar">
             <argument type="service" id="setono_sylius_shipmondo.client"/>
             <argument type="service" id="router"/>
-            <argument type="tagged_iterator" tag="setono_sylius_shipmondo.order_webhook_handler"/>
+            <argument type="service" id="setono_sylius_shipmondo.webhook.order_webhook_handlers"/>
             <argument>%setono_sylius_shipmondo.webhooks.key%</argument>
             <argument>%setono_sylius_shipmondo.webhooks.name_prefix%</argument>
         </service>

@@ -71,7 +71,7 @@ final class SalesOrderShippedHandlerTest extends TestCase
     /**
      * @test
      */
-    public function it_does_nothing_on_a_status_update_that_is_only_fulfilled_not_shipped(): void
+    public function it_does_nothing_when_the_sales_order_is_only_fulfilled_not_shipped(): void
     {
         // real captured payload: order is fulfilled/packed (fulfilled_percent 100) but shipped_percent 0
         $this->expectNoTransition();

@@ -8,7 +8,7 @@ use Doctrine\Persistence\ManagerRegistry;
 use Psr\Log\LoggerInterface;
 use Setono\Doctrine\ORMTrait;
 use Setono\Shipmondo\Enum\WebhookResourceName;
-use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlerInterface;
+use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers;
 use Symfony\Component\RemoteEvent\Consumer\ConsumerInterface;
 use Symfony\Component\RemoteEvent\RemoteEvent as BaseRemoteEvent;
 use Webmozart\Assert\Assert;
@@ -19,18 +19,16 @@ use Webmozart\Assert\Assert;
  *
  * A webhook nothing subscribes to is ignored, which is what Shipmondo sends until the webhooks are registered again.
  * Nothing is caught: a handler that fails, or a flush that fails because something else changed the order meanwhile
- * (its version column), makes the webhook fail, and Shipmondo sends it again.
+ * (its version column), makes the webhook fail. Handled synchronously (the default), Shipmondo gets an error response
+ * and sends the webhook again; routed to an async transport, Messenger retries it.
  */
 final class WebhookConsumer implements ConsumerInterface
 {
     use ORMTrait;
 
-    /**
-     * @param iterable<OrderWebhookHandlerInterface> $handlers in the order they run in
-     */
     public function __construct(
         private readonly OrderResolverInterface $orderResolver,
-        private readonly iterable $handlers,
+        private readonly OrderWebhookHandlers $handlers,
         private readonly LoggerInterface $logger,
         ManagerRegistry $managerRegistry,
     ) {
@@ -48,14 +46,8 @@ final class WebhookConsumer implements ConsumerInterface
             return;
         }
 
-        $handlers = [];
-        foreach ($this->handlers as $handler) {
-            if (in_array($event->getAction(), $handler::getSubscribedActions(), true)) {
-                $handlers[] = $handler;
-            }
-        }
-
-        if ([] === $handlers) {
+        $subscribedHandlers = $this->handlers->forAction($event->getAction());
+        if ([] === $subscribedHandlers) {
             return;
         }
 
@@ -71,7 +63,7 @@ final class WebhookConsumer implements ConsumerInterface
             return;
         }
 
-        foreach ($handlers as $handler) {
+        foreach ($subscribedHandlers as $handler) {
             $handler->handle($order, $event);
         }
 

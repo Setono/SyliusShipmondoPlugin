@@ -77,8 +77,8 @@ Shipmondo's message that something happened to one of its records, named by reso
 _Avoid_: remote event (Symfony's name for it), callback, notification
 
 **Webhook handler**:
-A reaction to one or more sales order webhooks, run on the Sylius order the webhook belongs to. Each one says which webhooks it handles.
+What the plugin does to a Sylius order when a webhook about its sales order arrives, such as shipping the order's shipments when Shipmondo reports the sales order shipped.
 
 **Webhook registration**:
-Telling Shipmondo which webhooks to send the store: exactly the ones a webhook handler handles. It has to run again whenever that set changes.
+The set of webhooks the store has asked Shipmondo to send it: exactly the ones a webhook handler handles. Shipmondo sends the webhooks of the latest registration, so a change to that set takes effect only once the webhooks are registered again.
 _Avoid_: subscription sync

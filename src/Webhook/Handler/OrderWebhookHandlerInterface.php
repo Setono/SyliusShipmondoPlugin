@@ -12,10 +12,11 @@ use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
  * A reaction to Shipmondo webhooks about sales orders (the orders resource), run on the Sylius order the webhook
  * belongs to.
  *
- * The webhook consumer ({@see \Setono\SyliusShipmondoPlugin\Webhook\WebhookConsumer}) calls it only for the actions it
- * subscribes to, only once it has found that order (by its link to the sales order, or else by its order number), and
- * flushes once every handler has run. Webhook registration subscribes to exactly the actions the handlers subscribe
- * to, so run `setono:sylius-shipmondo:register-webhooks` again after adding a handler for another action.
+ * The actions it subscribes to are read once, when the container is built. The webhook consumer
+ * ({@see \Setono\SyliusShipmondoPlugin\Webhook\WebhookConsumer}) calls it only for those actions, only once it has
+ * found that order (by its link to the sales order, or else by its order number), and flushes once every handler has
+ * run. Webhook registration subscribes to exactly the actions the handlers subscribe to, so run
+ * `setono:sylius-shipmondo:register-webhooks` again after adding a handler for another action.
  *
  * Implementations are autoconfigured with the `setono_sylius_shipmondo.order_webhook_handler` tag; its priority
  * decides the order handlers subscribed to the same action run in.
@@ -28,7 +29,7 @@ interface OrderWebhookHandlerInterface
     public static function getSubscribedActions(): array;
 
     /**
-     * @param RemoteEvent $event the webhook; its payload is the sales order
+     * @param RemoteEvent $webhook its payload is the sales order
      */
-    public function handle(OrderInterface $order, RemoteEvent $event): void;
+    public function handle(OrderInterface $order, RemoteEvent $webhook): void;
 }

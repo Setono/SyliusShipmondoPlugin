@@ -5,11 +5,10 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\Registrar;
 
 use Setono\Shipmondo\Client\ClientInterface;
-use Setono\Shipmondo\Enum\WebhookAction;
 use Setono\Shipmondo\Enum\WebhookResourceName;
 use Setono\Shipmondo\Request\Webhook\WebhookRequest;
 use Setono\Shipmondo\Response\Webhook\Webhook as WebhookResponse;
-use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlerInterface;
+use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use function Symfony\Component\String\u;
 
@@ -18,13 +17,10 @@ use function Symfony\Component\String\u;
  */
 final class WebhookRegistrar implements WebhookRegistrarInterface
 {
-    /**
-     * @param iterable<OrderWebhookHandlerInterface> $handlers
-     */
     public function __construct(
         private readonly ClientInterface $client,
         private readonly UrlGeneratorInterface $urlGenerator,
-        private readonly iterable $handlers,
+        private readonly OrderWebhookHandlers $handlers,
         private readonly string $webhooksKey,
         private readonly string $namePrefix,
     ) {
@@ -62,18 +58,9 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
      */
     public function getWebhooks(): \Generator
     {
-        $subscribedActions = [];
-        foreach ($this->handlers as $handler) {
-            $subscribedActions = [...$subscribedActions, ...$handler::getSubscribedActions()];
-        }
-
         $resource = WebhookResourceName::Orders;
 
-        foreach (WebhookAction::cases() as $action) {
-            if (!in_array($action, $subscribedActions, true)) {
-                continue;
-            }
-
+        foreach ($this->handlers->subscribedActions() as $action) {
             yield new Webhook(
                 sprintf('%s - [%s:%s]', $this->namePrefix, u($resource->value)->snake()->toString(), $action->value),
                 $this->urlGenerator->generate(

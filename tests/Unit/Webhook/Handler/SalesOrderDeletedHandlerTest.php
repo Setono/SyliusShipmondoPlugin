@@ -93,6 +93,23 @@ final class SalesOrderDeletedHandlerTest extends TestCase
     }
 
     /**
+     * An order the plugin didn't move through its Shipmondo state, such as one 1.x left uploaded without a link
+     *
+     * @test
+     */
+    public function it_does_nothing_when_the_payload_has_no_sales_order_id_and_the_order_has_no_link_either(): void
+    {
+        $payload = WebhookPayloadFixtures::load('orders_delete');
+        unset($payload['id']);
+        $order = self::uploadedOrder(self::SALES_ORDER_ID);
+        (new \ReflectionProperty($order, 'shipmondoId'))->setValue($order, null);
+
+        $this->handle($order, $payload);
+
+        self::assertSame(OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, $order->getShipmondoState());
+    }
+
+    /**
      * @test
      */
     public function it_does_nothing_when_the_order_is_linked_to_another_sales_order(): void

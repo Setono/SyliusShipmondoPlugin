@@ -10,9 +10,9 @@ use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
 
 /**
  * Records what it was handed in a log it shares with other spies, so a test can tell which handlers ran, and in which
- * order. A test subclasses it anonymously to choose the actions it subscribes to.
+ * order. Tests put it into an OrderWebhookHandlers by hand, under the actions they choose, so it subscribes to none.
  */
-abstract class OrderWebhookHandlerSpy implements OrderWebhookHandlerInterface
+final class OrderWebhookHandlerSpy implements OrderWebhookHandlerInterface
 {
     /**
      * @param \ArrayObject<int, array{string, OrderInterface, RemoteEvent}> $log
@@ -21,8 +21,13 @@ abstract class OrderWebhookHandlerSpy implements OrderWebhookHandlerInterface
     {
     }
 
-    public function handle(OrderInterface $order, RemoteEvent $event): void
+    public static function getSubscribedActions(): array
     {
-        $this->log->append([$this->name, $order, $event]);
+        return [];
+    }
+
+    public function handle(OrderInterface $order, RemoteEvent $webhook): void
+    {
+        $this->log->append([$this->name, $order, $webhook]);
     }
 }

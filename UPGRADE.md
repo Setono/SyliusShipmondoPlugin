@@ -133,9 +133,9 @@ autoconfigured with the `setono_sylius_shipmondo.order_webhook_handler` tag, who
 the same action. A handler:
 
 - names the actions on the orders resource it handles in the static `getSubscribedActions()`, a list of the SDK's
-  `Setono\Shipmondo\Enum\WebhookAction` enum. Webhook registration subscribes to exactly those, so re-run
-  `setono:sylius-shipmondo:register-webhooks` after adding a handler for another action;
-- gets `handle(OrderInterface $order, Webhook\RemoteEvent $event)`: the Sylius order the webhook belongs to, and the
+  `Setono\Shipmondo\Enum\WebhookAction` enum, read once when the container is built. Webhook registration subscribes
+  to exactly those, so re-run `setono:sylius-shipmondo:register-webhooks` after adding a handler for another action;
+- gets `handle(OrderInterface $order, Webhook\RemoteEvent $webhook)`: the Sylius order the webhook belongs to, and the
   webhook, whose payload is the sales order (the parser unwraps the webhook's `data` envelope).
   `RemoteEvent::getResource()` / `getAction()` now return the SDK enums `WebhookResourceName` / `WebhookAction`
   instead of strings.
@@ -144,7 +144,8 @@ the same action. A handler:
 sales order, or else the one with its order number. It runs the handlers subscribed to the action and then flushes
 once. A webhook for an order the store doesn't know, such as another shop's on the same Shipmondo account, is
 logged at `info` level and acknowledged. Nothing is caught: if a handler fails, or the order changed meanwhile, the
-webhook gets an error response and Shipmondo sends it again.
+webhook fails. Handled synchronously, which is the default, it gets an error response and Shipmondo sends it again;
+if you route Symfony's `ConsumeRemoteEventMessage` to an async transport, Messenger retries it instead.
 
 Webhook verification and parsing are delegated to the SDK's `Setono\Shipmondo\Webhook\WebhookParser`
 (the plugin requires `setono/shipmondo-php-sdk:^2.0` and `firebase/php-jwt:^7.0`). Shipmondo identifies
@@ -168,17 +169,24 @@ Class, service and configuration changes, which only matter if you extend or ref
 | the `setono_sylius_shipmondo.resources.remote_event` config node and its `setono_sylius_shipmondo.model.remote_event.*` parameters | removed |
 | `Setono\SyliusShipmondoPlugin\RequestMatcher\HasQueryParameterRequestMatcher` | removed (webhooks are matched on their `SMD-*` headers) |
 | `Webhook\WebhookParser::__construct(string $webhooksKey)` | `__construct(Setono\Shipmondo\Webhook\WebhookParserInterface $shipmondoWebhookParser, string $webhooksKey)` |
-| `Webhook\WebhookConsumer::__construct(RemoteEventFactoryInterface, ManagerRegistry)` | `__construct(Webhook\OrderResolverInterface $orderResolver, iterable $handlers, Psr\Log\LoggerInterface $logger, ManagerRegistry $managerRegistry)`; `$handlers` are the `OrderWebhookHandlerInterface` services, in the order they run in |
-| `Registrar\WebhookRegistrar::__construct($client, $urlGenerator, string $webhooksKey, string $namePrefix)` | `__construct($client, $urlGenerator, iterable $handlers, string $webhooksKey, string $namePrefix)`; `getWebhooks()` yields one webhook per action on the orders resource that a handler subscribes to |
+| `Webhook\WebhookConsumer::__construct(RemoteEventFactoryInterface, ManagerRegistry)` | `__construct(Webhook\OrderResolverInterface $orderResolver, Webhook\Handler\OrderWebhookHandlers $handlers, Psr\Log\LoggerInterface $logger, ManagerRegistry $managerRegistry)` |
+| `Registrar\WebhookRegistrar::__construct($client, $urlGenerator, string $webhooksKey, string $namePrefix)` | `__construct($client, $urlGenerator, Webhook\Handler\OrderWebhookHandlers $handlers, string $webhooksKey, string $namePrefix)`; `getWebhooks()` yields one webhook per action on the orders resource that a handler subscribes to |
 | `Registrar\Webhook::$action` / `$resource` are strings | they are the SDK's `WebhookAction` / `WebhookResourceName` enums |
 
-New: `Webhook\Handler\OrderWebhookHandlerInterface` (see above) and the plugin's three webhook handlers
-`Webhook\Handler\SalesOrderShippedHandler`, `SalesOrderPaymentHandler` and `SalesOrderDeletedHandler` (services
-`setono_sylius_shipmondo.webhook.handler.sales_order_shipped`, `.sales_order_payment` and `.sales_order_deleted`),
-`Webhook\OrderResolverInterface`
-(service `setono_sylius_shipmondo.webhook.order_resolver`, links a webhook payload to its Sylius order),
-the `reset` transition (`OrderWorkflow::TRANSITION_RESET`, `uploaded_to_shipmondo` → `pending`) on the
-`setono_sylius_shipmondo__order` workflow, and the `Message\Command\DeleteOrder` command (section 5).
+New:
+
+- `Webhook\Handler\OrderWebhookHandlerInterface` (see above);
+- the plugin's three webhook handlers `Webhook\Handler\SalesOrderShippedHandler`, `SalesOrderPaymentHandler` and
+  `SalesOrderDeletedHandler` (services `setono_sylius_shipmondo.webhook.handler.sales_order_shipped`,
+  `.sales_order_payment` and `.sales_order_deleted`);
+- `Webhook\Handler\OrderWebhookHandlers` (service `setono_sylius_shipmondo.webhook.order_webhook_handlers`), the
+  handlers of each action, which `DependencyInjection\Compiler\RegisterOrderWebhookHandlersPass` fills when the
+  container is built;
+- `Webhook\OrderResolverInterface` (service `setono_sylius_shipmondo.webhook.order_resolver`), which links a webhook
+  payload to its Sylius order;
+- the `reset` transition (`OrderWorkflow::TRANSITION_RESET`, `uploaded_to_shipmondo` → `pending`) on the
+  `setono_sylius_shipmondo__order` workflow;
+- the `Message\Command\DeleteOrder` command (section 5).
 
 ### 5. Cancelling a Sylius order deletes its Shipmondo sales order
 

@@ -33,9 +33,9 @@ final class SalesOrderShippedHandler implements OrderWebhookHandlerInterface
         return [WebhookAction::CreateShipment, WebhookAction::StatusUpdate];
     }
 
-    public function handle(OrderInterface $order, RemoteEvent $event): void
+    public function handle(OrderInterface $order, RemoteEvent $webhook): void
     {
-        if (!self::isFullyShipped($event->getPayload())) {
+        if (!self::isFullyShipped($webhook->getPayload())) {
             return;
         }
 

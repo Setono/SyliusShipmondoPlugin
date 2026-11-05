@@ -2,6 +2,12 @@
 <container xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://symfony.com/schema/dic/services"
            xsi:schemaLocation="http://symfony.com/schema/dic/services http://symfony.com/schema/dic/services/services-1.0.xsd">
     <services>
+        <!-- RegisterOrderWebhookHandlersPass gives it the handlers of each action -->
+        <service id="setono_sylius_shipmondo.webhook.order_webhook_handlers"
+                 class="Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers">
+            <argument type="collection"/>
+        </service>
+
         <service id="setono_sylius_shipmondo.webhook.order_resolver"
                  class="Setono\SyliusShipmondoPlugin\Webhook\OrderResolver">
             <argument type="service" id="sylius.repository.order"/>

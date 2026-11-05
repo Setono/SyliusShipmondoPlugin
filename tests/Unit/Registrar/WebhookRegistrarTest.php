@@ -8,13 +8,13 @@ use PHPUnit\Framework\TestCase;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Psr\Http\Client\ClientInterface as HttpClientInterface;
 use Psr\Http\Message\RequestInterface;
-use Setono\Shipmondo\Client\ClientInterface;
 use Setono\Shipmondo\Enum\WebhookAction;
 use Setono\Shipmondo\Enum\WebhookResourceName;
 use Setono\SyliusShipmondoPlugin\Registrar\Webhook;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar;
-use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlerInterface;
+use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\ScriptedHttpClient;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ShipmondoApi;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\Webhook\OrderWebhookHandlerSpy;
 
@@ -27,14 +27,13 @@ final class WebhookRegistrarTest extends TestCase
     /**
      * @test
      */
-    public function it_registers_each_action_a_webhook_handler_handles_once(): void
+    public function it_registers_each_action_a_webhook_handler_handles(): void
     {
         $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
         $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn('https://example.com/webhook');
 
-        $registrar = new WebhookRegistrar($this->prophesize(ClientInterface::class)->reveal(), $urlGenerator->reveal(), self::handlers(), 'key', 'prefix');
+        $registrar = new WebhookRegistrar(ShipmondoApi::client(new ScriptedHttpClient()), $urlGenerator->reveal(), self::handlers(), 'key', 'prefix');
 
-        // in the order of the SDK's actions, whatever order the handlers run in
         self::assertEquals([
             new Webhook('prefix - [orders:status_update]', 'https://example.com/webhook', 'key', WebhookAction::StatusUpdate, WebhookResourceName::Orders),
             new Webhook('prefix - [orders:create_shipment]', 'https://example.com/webhook', 'key', WebhookAction::CreateShipment, WebhookResourceName::Orders),
@@ -48,7 +47,7 @@ final class WebhookRegistrarTest extends TestCase
      */
     public function it_registers_no_webhooks_without_webhook_handlers(): void
     {
-        $registrar = new WebhookRegistrar($this->prophesize(ClientInterface::class)->reveal(), $this->prophesize(UrlGeneratorInterface::class)->reveal(), [], 'key', 'prefix');
+        $registrar = new WebhookRegistrar(ShipmondoApi::client(new ScriptedHttpClient()), $this->prophesize(UrlGeneratorInterface::class)->reveal(), new OrderWebhookHandlers([]), 'key', 'prefix');
 
         self::assertSame([], iterator_to_array($registrar->getWebhooks()));
     }
@@ -105,35 +104,15 @@ final class WebhookRegistrarTest extends TestCase
         self::assertSame($expected, $created);
     }
 
-    /**
-     * Two of them handle the creation of a shipment, and one also handles a status update
-     *
-     * @return list<OrderWebhookHandlerInterface>
-     */
-    private static function handlers(): array
+    private static function handlers(): OrderWebhookHandlers
     {
         $log = new \ArrayObject();
 
-        return [
-            new class('deleted', $log) extends OrderWebhookHandlerSpy {
-                public static function getSubscribedActions(): array
-                {
-                    return [WebhookAction::Delete];
-                }
-            },
-            new class('shipped', $log) extends OrderWebhookHandlerSpy {
-                public static function getSubscribedActions(): array
-                {
-                    return [WebhookAction::CreateShipment, WebhookAction::StatusUpdate];
-                }
-            },
-            new class('shipment created', $log) extends OrderWebhookHandlerSpy {
-                public static function getSubscribedActions(): array
-                {
-                    return [WebhookAction::CreateShipment];
-                }
-            },
-        ];
+        return new OrderWebhookHandlers([
+            'delete' => [new OrderWebhookHandlerSpy('deleted', $log)],
+            'create_shipment' => [new OrderWebhookHandlerSpy('shipped', $log)],
+            'status_update' => [new OrderWebhookHandlerSpy('shipped', $log)],
+        ]);
     }
 
     /**

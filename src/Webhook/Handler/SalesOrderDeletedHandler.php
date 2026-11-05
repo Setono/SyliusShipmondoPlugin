@@ -33,12 +33,13 @@ final class SalesOrderDeletedHandler implements OrderWebhookHandlerInterface
         return [WebhookAction::Delete];
     }
 
-    public function handle(OrderInterface $order, RemoteEvent $event): void
+    public function handle(OrderInterface $order, RemoteEvent $webhook): void
     {
         // Only react when the deleted sales order is the one this order is linked to. The order may have been found by
         // its order number, so a deleted duplicate (same order_id, another id) must not unlink the order, and neither
         // must the delete echoed back after our own DeleteOrder, which has already unlinked it.
-        if ($order->getShipmondoId() !== ($event->getPayload()['id'] ?? null)) {
+        $salesOrderId = $webhook->getPayload()['id'] ?? null;
+        if (!is_int($salesOrderId) || $order->getShipmondoId() !== $salesOrderId) {
             return;
         }
 
