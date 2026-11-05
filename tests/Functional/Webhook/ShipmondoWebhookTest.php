@@ -14,7 +14,7 @@ use Webmozart\Assert\Assert;
 
 /**
  * Posts signed Shipmondo webhooks (real captured payloads) to the Symfony webhook endpoint and asserts what the
- * plugin's remote event handlers persisted.
+ * plugin's webhook handlers persisted.
  */
 final class ShipmondoWebhookTest extends FunctionalTestCase
 {
@@ -172,6 +172,23 @@ final class ShipmondoWebhookTest extends FunctionalTestCase
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame(OrderShippingStates::STATE_READY, $this->orderRow(self::id($order))['shipping_state']);
+    }
+
+    /**
+     * Shipmondo keeps sending the webhooks of an earlier webhook registration until the webhooks are registered again
+     *
+     * @test
+     */
+    public function it_acknowledges_a_webhook_no_webhook_handler_handles_and_changes_nothing(): void
+    {
+        $order = $this->uploadedOrder();
+        $before = $this->orderRow(self::id($order));
+
+        // a fully shipped sales order, which the handler of create_shipment would ship
+        $this->postWebhook('Orders', 'create_fulfillment', $this->payload('orders_create_shipment', $order));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame($before, $this->orderRow(self::id($order)));
     }
 
     /**

@@ -172,7 +172,8 @@ final class ShipmondoControllerTest extends FunctionalTestCase
         $this->browser->request('GET', '/admin/shipmondo/register-webhooks');
 
         self::assertResponseRedirects('/admin/shipmondo');
-        self::assertCount(11, $this->shipmondo->requests('POST', 'webhooks'));
+        // one per action the plugin's webhook handlers handle
+        self::assertCount(5, $this->shipmondo->requests('POST', 'webhooks'));
         self::assertSame(1, self::nullableInt($this->database()->fetchOne('SELECT COUNT(*) FROM setono_sylius_shipmondo__registered_webhooks')));
 
         $this->respondWithGatewaysAndTemplates();

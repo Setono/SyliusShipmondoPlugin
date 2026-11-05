@@ -4,12 +4,9 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Webhook\Handler;
 
-use Doctrine\Persistence\ManagerRegistry;
-use Setono\Doctrine\ORMTrait;
 use Setono\Shipmondo\Enum\WebhookAction;
-use Setono\Shipmondo\Enum\WebhookResourceName;
 use Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface;
-use Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface;
+use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Symfony\Component\Workflow\WorkflowInterface;
@@ -23,36 +20,25 @@ use Symfony\Component\Workflow\WorkflowInterface;
  * Deleting a sales order in Shipmondo is intentionally *not* treated as a cancellation — cancelling an
  * order is a Sylius-side decision.
  */
-final class ResetUploadStateHandler implements RemoteEventHandlerInterface
+final class SalesOrderDeletedHandler implements OrderWebhookHandlerInterface
 {
-    use ORMTrait;
-
     public function __construct(
-        private readonly OrderResolverInterface $orderResolver,
         private readonly WorkflowInterface $orderWorkflow,
         private readonly OrderCancellerInterface $orderCanceller,
-        ManagerRegistry $managerRegistry,
     ) {
-        $this->managerRegistry = $managerRegistry;
     }
 
-    public function handle(RemoteEvent $remoteEvent): void
+    public static function getSubscribedActions(): array
     {
-        if (WebhookResourceName::Orders !== $remoteEvent->getResource() || WebhookAction::Delete !== $remoteEvent->getAction()) {
-            return;
-        }
+        return [WebhookAction::Delete];
+    }
 
-        $payload = $remoteEvent->getPayload();
-        $shipmondoId = $payload['id'] ?? null;
-        if (!is_int($shipmondoId)) {
-            return;
-        }
-
-        // Only react when the deleted sales order is the one this order is linked to. The resolver falls back
-        // to the order number, so a deleted duplicate (same order_id, another id) must not unlink the order,
-        // and neither must the delete echoed back after our own DeleteOrder, which has already cleared the id.
-        $order = $this->orderResolver->resolveFromPayload($payload);
-        if (null === $order || $order->getShipmondoId() !== $shipmondoId) {
+    public function handle(OrderInterface $order, RemoteEvent $event): void
+    {
+        // Only react when the deleted sales order is the one this order is linked to. The order may have been found by
+        // its order number, so a deleted duplicate (same order_id, another id) must not unlink the order, and neither
+        // must the delete echoed back after our own DeleteOrder, which has already unlinked it.
+        if ($order->getShipmondoId() !== ($event->getPayload()['id'] ?? null)) {
             return;
         }
 
@@ -62,7 +48,5 @@ final class ResetUploadStateHandler implements RemoteEventHandlerInterface
 
         $this->orderWorkflow->apply($order, OrderWorkflow::TRANSITION_RESET);
         $this->orderCanceller->cancel($order);
-
-        $this->getManager($order)->flush();
     }
 }

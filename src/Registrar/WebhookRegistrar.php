@@ -9,14 +9,22 @@ use Setono\Shipmondo\Enum\WebhookAction;
 use Setono\Shipmondo\Enum\WebhookResourceName;
 use Setono\Shipmondo\Request\Webhook\WebhookRequest;
 use Setono\Shipmondo\Response\Webhook\Webhook as WebhookResponse;
+use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlerInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use function Symfony\Component\String\u;
 
+/**
+ * Registers the webhooks the webhook handlers handle: one per action on the orders resource that a handler subscribes to
+ */
 final class WebhookRegistrar implements WebhookRegistrarInterface
 {
+    /**
+     * @param iterable<OrderWebhookHandlerInterface> $handlers
+     */
     public function __construct(
         private readonly ClientInterface $client,
         private readonly UrlGeneratorInterface $urlGenerator,
+        private readonly iterable $handlers,
         private readonly string $webhooksKey,
         private readonly string $namePrefix,
     ) {
@@ -54,26 +62,29 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
      */
     public function getWebhooks(): \Generator
     {
-        $resources = [
-            [WebhookResourceName::Shipments, [WebhookAction::Create, WebhookAction::Cancel]],
-            [WebhookResourceName::Orders, [WebhookAction::Create, WebhookAction::StatusUpdate, WebhookAction::CreateFulfillment, WebhookAction::CreateShipment, WebhookAction::PaymentCaptured, WebhookAction::PaymentVoided, WebhookAction::Delete]],
-            [WebhookResourceName::ShipmentMonitor, [WebhookAction::Latest, WebhookAction::Delivered]],
-        ];
+        $subscribedActions = [];
+        foreach ($this->handlers as $handler) {
+            $subscribedActions = [...$subscribedActions, ...$handler::getSubscribedActions()];
+        }
 
-        foreach ($resources as [$resource, $actions]) {
-            foreach ($actions as $action) {
-                yield new Webhook(
-                    sprintf('%s - [%s:%s]', $this->namePrefix, u($resource->value)->snake()->toString(), $action->value),
-                    $this->urlGenerator->generate(
-                        '_webhook_controller',
-                        ['type' => 'shipmondo'],
-                        UrlGeneratorInterface::ABSOLUTE_URL,
-                    ),
-                    $this->webhooksKey,
-                    $action,
-                    $resource,
-                );
+        $resource = WebhookResourceName::Orders;
+
+        foreach (WebhookAction::cases() as $action) {
+            if (!in_array($action, $subscribedActions, true)) {
+                continue;
             }
+
+            yield new Webhook(
+                sprintf('%s - [%s:%s]', $this->namePrefix, u($resource->value)->snake()->toString(), $action->value),
+                $this->urlGenerator->generate(
+                    '_webhook_controller',
+                    ['type' => 'shipmondo'],
+                    UrlGeneratorInterface::ABSOLUTE_URL,
+                ),
+                $this->webhooksKey,
+                $action,
+                $resource,
+            );
         }
     }
 }

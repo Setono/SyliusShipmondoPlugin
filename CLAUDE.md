@@ -182,8 +182,9 @@ The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires
 - Symfony webhook component integration
 - Webhook routing identifier: `shipmondo`
 - Custom parser: `setono_sylius_shipmondo.webhook.webhook_parser`, a thin adapter over the SDK's `WebhookParser` (verifies the HS256 signature, reads the `SMD-*` headers, unwraps the `data` envelope) that yields a `Webhook\RemoteEvent`
-- `WebhookConsumer` passes each event to `CompositeRemoteEventHandler`, which runs every `RemoteEventHandlerInterface` (auto-tagged `setono_sylius_shipmondo.remote_event_handler`): `FulfillOrderHandler`, `PaymentStateHandler`, `ResetUploadStateHandler` in `src/Webhook/Handler/`
-- `OrderResolver` links a payload to its Sylius order via `shipmondoId`, falling back to the order number
+- Webhook handlers implement `OrderWebhookHandlerInterface` (auto-tagged `setono_sylius_shipmondo.order_webhook_handler`; the tag's priority orders the handlers of one action): the static `getSubscribedActions()` names the actions on the orders resource a handler handles, and `handle(OrderInterface $order, RemoteEvent $event)` reacts. The plugin's are `SalesOrderShippedHandler`, `SalesOrderPaymentHandler` and `SalesOrderDeletedHandler` in `src/Webhook/Handler/`; they neither find the order nor flush
+- `WebhookConsumer` routes: it ignores a webhook no handler subscribes to (and every other resource), finds the order once with `OrderResolver` (via `shipmondoId`, falling back to the order number; it logs at info when no order matches), runs the subscribed handlers and flushes once. It catches nothing, so a failure answers with an error and Shipmondo sends the webhook again
+- `WebhookRegistrar` registers one webhook per action the handlers subscribe to, so webhook registration (`setono:sylius-shipmondo:register-webhooks`) has to run again whenever that set changes
 
 **Order Cancellation**
 - `OrderCancellationListener` calls `Canceller\OrderCanceller` when a Sylius order is cancelled, hooked on both state-machine backends (a winzou callback prepended by the extension, and a Symfony Workflow listener), and flashes whether the sales order was deleted

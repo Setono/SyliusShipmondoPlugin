@@ -9,9 +9,14 @@ use Prophecy\PhpUnit\ProphecyTrait;
 use Psr\Http\Client\ClientInterface as HttpClientInterface;
 use Psr\Http\Message\RequestInterface;
 use Setono\Shipmondo\Client\ClientInterface;
+use Setono\Shipmondo\Enum\WebhookAction;
+use Setono\Shipmondo\Enum\WebhookResourceName;
+use Setono\SyliusShipmondoPlugin\Registrar\Webhook;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar;
+use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlerInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ShipmondoApi;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\Webhook\OrderWebhookHandlerSpy;
 
 final class WebhookRegistrarTest extends TestCase
 {
@@ -22,15 +27,30 @@ final class WebhookRegistrarTest extends TestCase
     /**
      * @test
      */
-    public function it_returns_version(): void
+    public function it_registers_each_action_a_webhook_handler_handles_once(): void
     {
-        $client = $this->prophesize(ClientInterface::class);
         $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
         $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn('https://example.com/webhook');
 
-        $registrar = new WebhookRegistrar($client->reveal(), $urlGenerator->reveal(), 'key', 'prefix');
+        $registrar = new WebhookRegistrar($this->prophesize(ClientInterface::class)->reveal(), $urlGenerator->reveal(), self::handlers(), 'key', 'prefix');
 
-        self::assertSame('49fb4dab33cd8cf27e6a9d1944dcbbdb', $registrar->getVersion());
+        // in the order of the SDK's actions, whatever order the handlers run in
+        self::assertEquals([
+            new Webhook('prefix - [orders:status_update]', 'https://example.com/webhook', 'key', WebhookAction::StatusUpdate, WebhookResourceName::Orders),
+            new Webhook('prefix - [orders:create_shipment]', 'https://example.com/webhook', 'key', WebhookAction::CreateShipment, WebhookResourceName::Orders),
+            new Webhook('prefix - [orders:delete]', 'https://example.com/webhook', 'key', WebhookAction::Delete, WebhookResourceName::Orders),
+        ], iterator_to_array($registrar->getWebhooks(), false));
+        self::assertSame('00dc066b504bf3f9ef2067a52b04c921', $registrar->getVersion());
+    }
+
+    /**
+     * @test
+     */
+    public function it_registers_no_webhooks_without_webhook_handlers(): void
+    {
+        $registrar = new WebhookRegistrar($this->prophesize(ClientInterface::class)->reveal(), $this->prophesize(UrlGeneratorInterface::class)->reveal(), [], 'key', 'prefix');
+
+        self::assertSame([], iterator_to_array($registrar->getWebhooks()));
     }
 
     /**
@@ -67,7 +87,7 @@ final class WebhookRegistrarTest extends TestCase
         $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
         $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn('https://example.com/webhook/shipmondo');
 
-        $registrar = new WebhookRegistrar(ShipmondoApi::client($httpClient->reveal()), $urlGenerator->reveal(), self::KEY, 'Shop');
+        $registrar = new WebhookRegistrar(ShipmondoApi::client($httpClient->reveal()), $urlGenerator->reveal(), self::handlers(), self::KEY, 'Shop');
         $registrar->register();
 
         $expected = [];
@@ -81,10 +101,39 @@ final class WebhookRegistrarTest extends TestCase
             ];
         }
 
-        self::assertCount(11, $expected);
+        self::assertCount(3, $expected);
         self::assertSame($expected, $created);
-        self::assertSame('Shop - [orders:create]', $created[2]['name']);
-        self::assertSame('Shop - [shipment_monitor:delivered]', $created[10]['name']);
+    }
+
+    /**
+     * Two of them handle the creation of a shipment, and one also handles a status update
+     *
+     * @return list<OrderWebhookHandlerInterface>
+     */
+    private static function handlers(): array
+    {
+        $log = new \ArrayObject();
+
+        return [
+            new class('deleted', $log) extends OrderWebhookHandlerSpy {
+                public static function getSubscribedActions(): array
+                {
+                    return [WebhookAction::Delete];
+                }
+            },
+            new class('shipped', $log) extends OrderWebhookHandlerSpy {
+                public static function getSubscribedActions(): array
+                {
+                    return [WebhookAction::CreateShipment, WebhookAction::StatusUpdate];
+                }
+            },
+            new class('shipment created', $log) extends OrderWebhookHandlerSpy {
+                public static function getSubscribedActions(): array
+                {
+                    return [WebhookAction::CreateShipment];
+                }
+            },
+        ];
     }
 
     /**

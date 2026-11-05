@@ -22,11 +22,6 @@ final class SetonoSyliusShipmondoPlugin extends AbstractResourceBundle
             'setono_sylius_shipmondo.data_mapper.sales_order.composite',
             'setono_sylius_shipmondo.sales_order_data_mapper',
         ));
-
-        $container->addCompilerPass(new CompositeCompilerPass(
-            'setono_sylius_shipmondo.webhook.remote_event_handler.composite',
-            'setono_sylius_shipmondo.remote_event_handler',
-        ));
     }
 
     /**

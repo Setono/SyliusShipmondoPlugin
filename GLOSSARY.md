@@ -69,3 +69,16 @@ _Avoid_: parcel shop, droppoint, service point (Shipmondo's name for it on a sal
 
 **Pickup point delivery**:
 A shipping method setting: its shipments are delivered to a pickup point the customer chooses in checkout, searched with the method's carrier. The shipping step doesn't accept such a shipping method without a pickup point, and drops the pickup point chosen for any other shipping method.
+
+### Webhooks
+
+**Webhook**:
+Shipmondo's message that something happened to one of its records, named by resource and action, e.g. orders/delete when a sales order is deleted. A webhook about a sales order belongs to the Sylius order linked to that sales order, or, if none is, to the order with its order number (a sales order the plugin didn't create, or a duplicate).
+_Avoid_: remote event (Symfony's name for it), callback, notification
+
+**Webhook handler**:
+A reaction to one or more sales order webhooks, run on the Sylius order the webhook belongs to. Each one says which webhooks it handles.
+
+**Webhook registration**:
+Telling Shipmondo which webhooks to send the store: exactly the ones a webhook handler handles. It has to run again whenever that set changes.
+_Avoid_: subscription sync
