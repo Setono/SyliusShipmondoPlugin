@@ -14,6 +14,16 @@ use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
 final class PickupPointSelectionTest extends ShopTestCase
 {
     /**
+     * Keeps the events pickup-point-manager.js dispatches in window.pickupPointManagerEvents, by name
+     */
+    private const RECORD_PICKUP_POINT_MANAGER_EVENTS = <<<'JS'
+        window.pickupPointManagerEvents = { loading: [], inserted_html: [], load_failed: [] };
+        for (const name of Object.keys(window.pickupPointManagerEvents)) {
+            document.addEventListener(`pickup_point_manager:${name}`, (event) => window.pickupPointManagerEvents[name].push(event.detail.shippingMethod));
+        }
+        JS;
+
+    /**
      * @test
      */
     public function pickup_points_are_only_requested_for_pickup_point_shipping_methods(): void
@@ -219,14 +229,15 @@ final class PickupPointSelectionTest extends ShopTestCase
      */
     public function no_pickup_points_are_requested_when_no_shipping_method_has_pickup_point_delivery(): void
     {
-        // the manager treats an empty list of pickup point shipping methods as all of them, so the page has no manager
+        // the picker treats an empty list of pickup point shipping methods as all of them, so the page has no picker
         // when no shipping method has pickup point delivery
         $this->fixtures->shippingMethod->setPickupPointDelivery(false);
         $this->entityManager()->flush();
         $this->recordConsoleErrors();
+        // from the start of every page, since a picker would dispatch them while the shipping step loads
+        $this->recordPickupPointManagerEventsOnEveryPage();
 
         $this->checkoutToShippingStep();
-        $this->recordPickupPointManagerEvents();
         $this->settle();
 
         self::assertSame([], $this->requestedPickupPoints());
@@ -276,14 +287,15 @@ final class PickupPointSelectionTest extends ShopTestCase
      */
     private function recordPickupPointManagerEvents(): void
     {
-        $this->getPage()->evaluate(<<<'JS'
-            () => {
-                window.pickupPointManagerEvents = { loading: [], inserted_html: [], load_failed: [] };
-                for (const name of Object.keys(window.pickupPointManagerEvents)) {
-                    document.addEventListener(`pickup_point_manager:${name}`, (event) => window.pickupPointManagerEvents[name].push(event.detail.shippingMethod));
-                }
-            }
-            JS);
+        $this->getPage()->evaluate(sprintf('() => { %s }', self::RECORD_PICKUP_POINT_MANAGER_EVENTS));
+    }
+
+    /**
+     * Records the events pickup-point-manager.js dispatches from the start of every page loaded from now on
+     */
+    private function recordPickupPointManagerEventsOnEveryPage(): void
+    {
+        $this->getPage()->addInitScript(sprintf('(() => { %s })();', self::RECORD_PICKUP_POINT_MANAGER_EVENTS));
     }
 
     /**

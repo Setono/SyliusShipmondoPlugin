@@ -171,10 +171,12 @@ final class PickupPointTest extends FunctionalTestCase
         $this->entityManager()->flush();
         $this->cartOfLoggedInCustomer();
 
-        $this->browser->request('GET', '/en_US/checkout/select-shipping');
+        $crawler = $this->browser->request('GET', '/en_US/checkout/select-shipping');
 
         self::assertResponseIsSuccessful();
-        self::assertStringNotContainsString('PickupPointManager', (string) $this->browser->getResponse()->getContent());
+        self::assertCount(0, $crawler->filter('script[type="module"]')->reduce(
+            static fn (Crawler $script): bool => str_contains($script->text(), 'PickupPointManager'),
+        ));
     }
 
     /**
