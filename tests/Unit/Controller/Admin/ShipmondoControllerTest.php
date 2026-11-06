@@ -225,7 +225,7 @@ final class ShipmondoControllerTest extends TestCase
 
         // an unknown shipping method must not stop the mapping of the following ones
         $this->controller()->index(self::post([
-            'mapped_shipping_methods' => ['99', '1'],
+            'listed_shipping_methods' => ['99', '1'],
             'shipping_methods' => [99 => ['21'], 1 => ['664116', '664115']],
         ]));
 
@@ -251,7 +251,7 @@ final class ShipmondoControllerTest extends TestCase
         $this->shippingMethodRepository->add($cleared)->shouldBeCalledOnce();
         $this->shippingMethodRepository->add($mapped)->shouldBeCalledOnce();
 
-        $this->controller()->index(self::post(['mapped_shipping_methods' => ['1', '2'], 'shipping_methods' => [2 => ['664116']]]));
+        $this->controller()->index(self::post(['listed_shipping_methods' => ['1', '2'], 'shipping_methods' => [2 => ['664116']]]));
 
         self::assertSame([], $cleared->getAllowedShipmentTemplates());
         self::assertSame([664116], $mapped->getAllowedShipmentTemplates());
@@ -271,7 +271,7 @@ final class ShipmondoControllerTest extends TestCase
         $this->shippingMethodRepository->add($shippingMethod)->shouldBeCalledOnce();
 
         // no shipping_methods at all
-        $this->controller()->index(self::post(['mapped_shipping_methods' => ['1']]));
+        $this->controller()->index(self::post(['listed_shipping_methods' => ['1']]));
 
         self::assertSame([], $shippingMethod->getAllowedShipmentTemplates());
     }

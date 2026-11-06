@@ -103,7 +103,7 @@ final class ShipmondoController extends AbstractController
         }
 
         // todo this should be made using Symfony forms
-        if ($request->isMethod('POST') && ($request->request->has('mapped_shipping_methods') || $request->request->has('shipping_methods'))) {
+        if ($request->isMethod('POST') && ($request->request->has('listed_shipping_methods') || $request->request->has('shipping_methods'))) {
             /**
              * Example of posted array (the key is a Sylius shipping method id, the value is an array of Shipmondo shipment template ids):
              *
@@ -126,11 +126,11 @@ final class ShipmondoController extends AbstractController
              * A select without a selected shipment template isn't submitted, so the form also posts the ids of the shipping
              * methods it lists. A template override without them can still map shipment templates, but not remove them all
              *
-             * @var list<string> $mappedShippingMethods
+             * @var list<string> $listedShippingMethodIds
              */
-            $mappedShippingMethods = $request->request->all('mapped_shipping_methods');
+            $listedShippingMethodIds = $request->request->all('listed_shipping_methods');
 
-            foreach (array_unique([...$mappedShippingMethods, ...array_keys($postedShippingMethods)]) as $shippingMethodId) {
+            foreach (array_unique([...$listedShippingMethodIds, ...array_keys($postedShippingMethods)]) as $shippingMethodId) {
                 $shippingMethod = $this->shippingMethodRepository->find($shippingMethodId);
                 if (null === $shippingMethod) {
                     continue;
