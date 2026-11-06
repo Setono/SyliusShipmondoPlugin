@@ -9,7 +9,6 @@ use Setono\Shipmondo\Enum\OrderLineType;
 use Setono\Shipmondo\Request\SalesOrder\OrderLine;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\Event\ShippingOrderLineMappedEvent;
-use function Setono\SyliusShipmondoPlugin\formatAmount;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Sylius\Component\Core\Model\AdjustmentInterface;
 use Webmozart\Assert\Assert;
@@ -40,19 +39,17 @@ final class ShippingSalesOrderDataMapper implements SalesOrderDataMapperInterfac
             Assert::lessThanEq($taxAdjustments->count(), 1);
 
             $taxAdjustment = $taxAdjustments->first();
-            if (false === $taxAdjustment) {
-                $unitPrice = AmountWithVat::excludingVat($shippingAdjustment->getAmount(), 0);
-            } elseif ($taxAdjustment->isNeutral()) {
-                $unitPrice = AmountWithVat::includingVat($shippingAdjustment->getAmount(), $taxAdjustment->getAmount());
-            } else {
-                $unitPrice = AmountWithVat::excludingVat($shippingAdjustment->getAmount(), $taxAdjustment->getAmount());
-            }
+            $tax = false === $taxAdjustment ? 0 : $taxAdjustment->getAmount();
+            $unitPrice = false !== $taxAdjustment && $taxAdjustment->isNeutral()
+                ? AmountWithVat::fromAmountIncludingVat($shippingAdjustment->getAmount(), $tax)
+                : AmountWithVat::fromAmountExcludingVat($shippingAdjustment->getAmount(), $tax)
+            ;
 
             $orderLine = new OrderLine(
                 lineType: OrderLineType::Shipping,
                 itemName: $shippingAdjustment->getLabel(),
                 quantity: 1,
-                unitPriceExcludingVat: formatAmount($unitPrice->excludingVat),
+                unitPriceExcludingVat: $unitPrice->amountExcludingVat(),
                 vatPercent: $unitPrice->vatPercent(),
                 currencyCode: $order->getCurrencyCode(),
             );
