@@ -38,6 +38,8 @@
             <argument type="service" id="setono_sylius_shipmondo.client"/>
 
             <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="50"/>
+            <!-- forgets the shipment templates it fetched between requests and messages -->
+            <tag name="kernel.reset" method="reset"/>
         </service>
 
         <service id="setono_sylius_shipmondo.data_mapper.sales_order.service_point"

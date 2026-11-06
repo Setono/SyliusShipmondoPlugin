@@ -14,10 +14,12 @@ use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\DataMapper\ShipmentTemplateSalesOrderDataMapper;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Sylius\Component\Core\Model\Address;
+use Sylius\Component\Core\Model\Channel;
 use Sylius\Component\Core\Model\OrderItemInterface;
 use Sylius\Component\Core\Model\ProductVariant;
 use Sylius\Component\Core\Model\Shipment as BaseShipment;
 use Sylius\Component\Core\Model\ShippingMethod as BaseShippingMethod;
+use Sylius\Component\Core\Model\ShopBillingData;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Shipment;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\ShippingMethod;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ShipmondoApi;
@@ -78,6 +80,94 @@ final class ShipmentTemplateSalesOrderDataMapperTest extends TestCase
         $order = $this->order('DK', self::shippingMethod('GLS', [1, 2]), [self::item(5.0, 1)]);
 
         self::assertSame(2, $this->map($order)->shipmentTemplateId);
+    }
+
+    /**
+     * The shipping method's shipment templates say where the store ships from, also when its company is registered in
+     * another country
+     *
+     * @test
+     */
+    public function it_chooses_among_shipment_templates_that_all_ship_from_another_country_than_denmark(): void
+    {
+        $this->givenShipmentTemplates([
+            self::template(1, 'SE', 'SE', 5),
+            self::template(2, 'SE', 'NO', 5),
+        ]);
+
+        $order = $this->order('SE', self::shippingMethod('PostNord', [1, 2]), [self::item(1.0, 1)], shopBillingCountry: 'DK');
+
+        self::assertSame(1, $this->map($order)->shipmentTemplateId);
+    }
+
+    /**
+     * @test
+     */
+    public function it_chooses_among_the_shipment_templates_that_ship_from_the_channels_shop_billing_country_when_they_ship_from_several_countries(): void
+    {
+        $this->givenShipmentTemplates([
+            self::template(1, 'DK', 'DK', 5),
+            self::template(2, 'SE', 'DK', 5),
+        ]);
+
+        $order = $this->order('DK', self::shippingMethod('GLS', [1, 2]), [self::item(1.0, 1)], shopBillingCountry: 'SE');
+
+        self::assertSame(2, $this->map($order)->shipmentTemplateId);
+    }
+
+    /**
+     * @test
+     */
+    public function it_does_not_map_a_shipment_template_when_the_shipment_templates_ship_from_several_countries_and_the_channel_has_no_shop_billing_country(): void
+    {
+        $this->givenShipmentTemplates([
+            self::template(1, 'DK', 'DK', 5),
+            self::template(2, 'SE', 'DK', 5),
+        ]);
+
+        $order = $this->order('DK', self::shippingMethod('GLS', [1, 2]), [self::item(1.0, 1)]);
+
+        self::assertNull($this->map($order)->shipmentTemplateId);
+    }
+
+    /**
+     * @test
+     */
+    public function it_does_not_map_a_shipment_template_when_the_shipment_templates_ship_from_several_countries_and_the_order_has_no_channel(): void
+    {
+        $this->givenShipmentTemplates([
+            self::template(1, 'DK', 'DK', 5),
+            self::template(2, 'SE', 'DK', 5),
+        ]);
+
+        $order = $this->order('DK', self::shippingMethod('GLS', [1, 2]), [self::item(1.0, 1)], inChannel: false);
+
+        self::assertNull($this->map($order)->shipmentTemplateId);
+    }
+
+    /**
+     * An upload run maps every order with the same mapper, and kernel.reset resets it between requests and messages
+     *
+     * @test
+     */
+    public function it_fetches_the_shipment_templates_once_until_it_is_reset(): void
+    {
+        $this->httpClient
+            ->sendRequest(ShipmondoApi::request('GET', 'shipment_templates'))
+            ->willReturn(ShipmondoApi::json([self::template(1, 'DK', 'DK', 5)]))
+            ->shouldBeCalledTimes(2)
+        ;
+        $mapper = new ShipmentTemplateSalesOrderDataMapper(ShipmondoApi::client($this->httpClient->reveal()));
+        $order = $this->order('DK', self::shippingMethod('GLS', [1]), [self::item(1.0, 1)]);
+
+        foreach ([1, 2] as $upload) {
+            $mapper->map($order, $salesOrder = new SalesOrderRequest());
+            self::assertSame(1, $salesOrder->shipmentTemplateId);
+        }
+
+        $mapper->reset();
+        $mapper->map($order, $salesOrder = new SalesOrderRequest());
+        self::assertSame(1, $salesOrder->shipmentTemplateId);
     }
 
     /**
@@ -239,12 +329,20 @@ final class ShipmentTemplateSalesOrderDataMapperTest extends TestCase
     /**
      * @param list<OrderItemInterface> $items
      */
-    private function order(string $countryCode, ShippingMethod $shippingMethod, array $items): OrderInterface
+    private function order(string $countryCode, ShippingMethod $shippingMethod, array $items, ?string $shopBillingCountry = null, bool $inChannel = true): OrderInterface
     {
         $shipment = new Shipment();
         $shipment->setMethod($shippingMethod);
 
+        $channel = $inChannel ? new Channel() : null;
+        if (null !== $channel && null !== $shopBillingCountry) {
+            $shopBillingData = new ShopBillingData();
+            $shopBillingData->setCountryCode($shopBillingCountry);
+            $channel->setShopBillingData($shopBillingData);
+        }
+
         $order = $this->prophesize(OrderInterface::class);
+        $order->getChannel()->willReturn($channel);
         $order->getShippingAddress()->willReturn(self::address($countryCode));
         $order->getShipments()->willReturn(new ArrayCollection([$shipment]));
         $order->getItems()->willReturn(new ArrayCollection($items));
