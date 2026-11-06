@@ -26,7 +26,7 @@ final class OrderLinesSalesOrderDataMapper implements SalesOrderDataMapperInterf
             $orderItemUnit = $orderItem->getUnits()->first();
             Assert::isInstanceOf($orderItemUnit, OrderItemUnitInterface::class);
 
-            $unitPriceExcludingVat = $orderItemUnit->getTotal() - $orderItemUnit->getTaxTotal();
+            $unitPrice = AmountWithVat::includingVat($orderItemUnit->getTotal(), $orderItemUnit->getTaxTotal());
 
             $itemName = (string) $orderItem->getProductName();
             if ($orderItem->getVariantName() !== null) {
@@ -37,8 +37,8 @@ final class OrderLinesSalesOrderDataMapper implements SalesOrderDataMapperInterf
                 itemName: $itemName,
                 itemSku: $orderItem->getVariant()?->getCode(),
                 quantity: $orderItem->getQuantity(),
-                unitPriceExcludingVat: formatAmount($unitPriceExcludingVat),
-                vatPercent: (string) ($orderItemUnit->getTaxTotal() / $unitPriceExcludingVat),
+                unitPriceExcludingVat: formatAmount($unitPrice->excludingVat),
+                vatPercent: $unitPrice->vatPercent(),
                 currencyCode: $order->getCurrencyCode(),
                 unitWeight: null === $orderItem->getVariant()?->getWeight() ? null : (int) $orderItem->getVariant()->getWeight(),
             );
