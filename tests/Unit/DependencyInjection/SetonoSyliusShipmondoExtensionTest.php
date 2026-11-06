@@ -9,7 +9,7 @@ use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
 use Setono\SyliusShipmondoPlugin\DependencyInjection\SetonoSyliusShipmondoExtension;
 use Setono\SyliusShipmondoPlugin\Doctrine\Type\PickupPointType;
 use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooks;
-use Setono\SyliusShipmondoPlugin\Webhook\Handler\RemoteEventHandlerInterface;
+use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlerInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
@@ -54,14 +54,14 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
     /**
      * @test
      */
-    public function it_autoconfigures_data_mappers_and_remote_event_handlers(): void
+    public function it_autoconfigures_data_mappers_and_webhook_handlers(): void
     {
         $this->load();
 
         $autoconfigured = $this->container->getAutoconfiguredInstanceof();
 
         self::assertTrue($autoconfigured[SalesOrderDataMapperInterface::class]->hasTag('setono_sylius_shipmondo.sales_order_data_mapper'));
-        self::assertTrue($autoconfigured[RemoteEventHandlerInterface::class]->hasTag('setono_sylius_shipmondo.remote_event_handler'));
+        self::assertTrue($autoconfigured[OrderWebhookHandlerInterface::class]->hasTag('setono_sylius_shipmondo.order_webhook_handler'));
     }
 
     /**

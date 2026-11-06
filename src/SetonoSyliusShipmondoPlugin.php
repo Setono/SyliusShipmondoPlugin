@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin;
 
 use Setono\CompositeCompilerPass\CompositeCompilerPass;
+use Setono\SyliusShipmondoPlugin\DependencyInjection\Compiler\RegisterOrderWebhookHandlersPass;
 use Sylius\Bundle\CoreBundle\Application\SyliusPluginTrait;
 use Sylius\Bundle\ResourceBundle\AbstractResourceBundle;
 use Sylius\Bundle\ResourceBundle\SyliusResourceBundle;
@@ -23,10 +24,7 @@ final class SetonoSyliusShipmondoPlugin extends AbstractResourceBundle
             'setono_sylius_shipmondo.sales_order_data_mapper',
         ));
 
-        $container->addCompilerPass(new CompositeCompilerPass(
-            'setono_sylius_shipmondo.webhook.remote_event_handler.composite',
-            'setono_sylius_shipmondo.remote_event_handler',
-        ));
+        $container->addCompilerPass(new RegisterOrderWebhookHandlersPass());
     }
 
     /**

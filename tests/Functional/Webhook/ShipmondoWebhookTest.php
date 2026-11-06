@@ -14,7 +14,7 @@ use Webmozart\Assert\Assert;
 
 /**
  * Posts signed Shipmondo webhooks (real captured payloads) to the Symfony webhook endpoint and asserts what the
- * plugin's remote event handlers persisted.
+ * plugin's webhook handlers persisted.
  */
 final class ShipmondoWebhookTest extends FunctionalTestCase
 {
@@ -39,17 +39,23 @@ final class ShipmondoWebhookTest extends FunctionalTestCase
     }
 
     /**
+     * Another shop on the same Shipmondo account numbers its orders the same way, so only the order number matches
+     *
      * @test
      */
-    public function it_finds_the_order_by_its_number_when_the_sales_order_id_is_not_linked(): void
+    public function it_ignores_a_sales_order_no_order_is_linked_to_even_when_its_order_number_matches(): void
     {
-        $order = $this->fixtures->createOrder($this->fixtures->createCustomer());
+        $order = $this->fixtures->createOrder($this->fixtures->createCustomer(), paid: false, authorized: true);
+        $before = $this->orderRow(self::id($order));
 
-        // e.g. a sales order created in Shipmondo by another integration: only order_id (the order number) matches
         $this->postWebhook('Orders', 'create_shipment', $this->payload('orders_create_shipment', $order));
-
         self::assertResponseStatusCodeSame(200);
-        self::assertSame(OrderShippingStates::STATE_SHIPPED, $this->orderRow(self::id($order))['shipping_state']);
+
+        $this->postWebhook('Orders', 'payment_captured', $this->payload('orders_payment_captured', $order));
+        self::assertResponseStatusCodeSame(200);
+
+        self::assertSame($before, $this->orderRow(self::id($order)));
+        self::assertSame(['authorized'], $this->paymentStates($order));
     }
 
     /**
@@ -172,6 +178,23 @@ final class ShipmondoWebhookTest extends FunctionalTestCase
 
         self::assertResponseStatusCodeSame(200);
         self::assertSame(OrderShippingStates::STATE_READY, $this->orderRow(self::id($order))['shipping_state']);
+    }
+
+    /**
+     * Shipmondo keeps sending the webhooks of an earlier webhook registration until the webhooks are registered again
+     *
+     * @test
+     */
+    public function it_acknowledges_a_webhook_no_webhook_handler_handles_and_changes_nothing(): void
+    {
+        $order = $this->uploadedOrder();
+        $before = $this->orderRow(self::id($order));
+
+        // a fully shipped sales order, which the handler of create_shipment would ship
+        $this->postWebhook('Orders', 'create_fulfillment', $this->payload('orders_create_shipment', $order));
+
+        self::assertResponseStatusCodeSame(200);
+        self::assertSame($before, $this->orderRow(self::id($order)));
     }
 
     /**

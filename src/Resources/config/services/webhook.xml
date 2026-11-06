@@ -13,7 +13,10 @@
 
         <service id="setono_sylius_shipmondo.webhook.webhook_consumer"
                  class="Setono\SyliusShipmondoPlugin\Webhook\WebhookConsumer">
-            <argument type="service" id="setono_sylius_shipmondo.webhook.remote_event_handler.composite"/>
+            <argument type="service" id="setono_sylius_shipmondo.webhook.order_resolver"/>
+            <argument type="service" id="setono_sylius_shipmondo.webhook.order_webhook_handlers"/>
+            <argument type="service" id="logger"/>
+            <argument type="service" id="doctrine"/>
 
             <tag name="remote_event.consumer" consumer="shipmondo"/>
         </service>

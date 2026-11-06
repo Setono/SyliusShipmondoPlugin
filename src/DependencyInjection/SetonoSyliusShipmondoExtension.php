@@ -6,7 +6,7 @@ namespace Setono\SyliusShipmondoPlugin\DependencyInjection;
 
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
 use Setono\SyliusShipmondoPlugin\Doctrine\Type\PickupPointType;
-use Setono\SyliusShipmondoPlugin\Webhook\Handler\RemoteEventHandlerInterface;
+use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlerInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Bundle\ResourceBundle\DependencyInjection\Extension\AbstractResourceExtension;
 use Sylius\Bundle\ResourceBundle\SyliusResourceBundle;
@@ -31,8 +31,8 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
         ;
 
         $container
-            ->registerForAutoconfiguration(RemoteEventHandlerInterface::class)
-            ->addTag('setono_sylius_shipmondo.remote_event_handler')
+            ->registerForAutoconfiguration(OrderWebhookHandlerInterface::class)
+            ->addTag('setono_sylius_shipmondo.order_webhook_handler')
         ;
 
         $container->setParameter('setono_sylius_shipmondo.api.username', $config['api']['username']);

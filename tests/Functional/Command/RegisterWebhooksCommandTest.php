@@ -48,18 +48,13 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
             $registered[] = sprintf('%s:%s', $body['resource_name'], $body['action']);
         }
 
+        // exactly the webhooks the plugin's webhook handlers handle
         self::assertSame([
-            'Shipments:create',
-            'Shipments:cancel',
-            'Orders:create',
             'Orders:status_update',
-            'Orders:create_fulfillment',
             'Orders:create_shipment',
             'Orders:payment_captured',
             'Orders:payment_voided',
             'Orders:delete',
-            'Shipment Monitor:latest',
-            'Shipment Monitor:delivered',
         ], $registered);
 
         self::assertSame([$this->registrar()->getVersion()], $this->registeredVersions());
@@ -78,7 +73,7 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
         $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
         $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
 
-        self::assertCount(22, $this->shipmondo->requests('POST', 'webhooks'));
+        self::assertCount(10, $this->shipmondo->requests('POST', 'webhooks'));
         self::assertSame([$this->registrar()->getVersion()], $this->registeredVersions());
     }
 
