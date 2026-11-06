@@ -160,6 +160,24 @@ final class PickupPointTest extends FunctionalTestCase
     }
 
     /**
+     * The picker treats an empty list of pickup point shipping methods as all of them, so it would request pickup points
+     * for every shipping method
+     *
+     * @test
+     */
+    public function the_shipping_step_has_no_pickup_point_picker_when_no_shipping_method_has_pickup_point_delivery(): void
+    {
+        $this->fixtures->shippingMethod->setPickupPointDelivery(false);
+        $this->entityManager()->flush();
+        $this->cartOfLoggedInCustomer();
+
+        $this->browser->request('GET', '/en_US/checkout/select-shipping');
+
+        self::assertResponseIsSuccessful();
+        self::assertStringNotContainsString('PickupPointManager', (string) $this->browser->getResponse()->getContent());
+    }
+
+    /**
      * @return iterable<string, array{?int}>
      */
     public static function failedSearches(): iterable

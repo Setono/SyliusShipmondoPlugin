@@ -219,17 +219,19 @@ final class PickupPointSelectionTest extends ShopTestCase
      */
     public function no_pickup_points_are_requested_when_no_shipping_method_has_pickup_point_delivery(): void
     {
-        // with no pickup point shipping method the page gets `allowedShippingMethods: []`, which the manager treats
-        // as "every shipping method": it requests pickup points for all of them (each request fails with HTTP 400)
-        self::skipUntilFixed(22);
-
+        // the manager treats an empty list of pickup point shipping methods as all of them, so the page has no manager
+        // when no shipping method has pickup point delivery
         $this->fixtures->shippingMethod->setPickupPointDelivery(false);
         $this->entityManager()->flush();
+        $this->recordConsoleErrors();
 
         $this->checkoutToShippingStep();
+        $this->recordPickupPointManagerEvents();
         $this->settle();
 
         self::assertSame([], $this->requestedPickupPoints());
+        self::assertSame([], $this->pickupPointManagerEvents('loading'));
+        self::assertSame([], $this->getPage()->evaluate('() => window.consoleErrors'));
     }
 
     /**

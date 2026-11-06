@@ -383,6 +383,10 @@ Also fixed:
   searching Shipmondo with its old carrier code
   ([#21](https://github.com/Setono/SyliusShipmondoPlugin/issues/21))
 - turning off pickup point delivery in the admin clears the shipping method's carrier code (#21)
+- the shipping step loads no pickup point picker when no enabled shipping method has pickup point delivery. Its empty
+  list of pickup point shipping methods meant "all of them" to the picker, which requested pickup points for every
+  shipping method ([#22](https://github.com/Setono/SyliusShipmondoPlugin/issues/22)). A picker you configure yourself
+  through `window.pickupPointManagerConfig` still reads an empty `allowedShippingMethods` as all shipping methods
 
 **Run a database migration.** The shipment's pickup point column is now mapped with the plugin's Doctrine type
 `setono_sylius_shipmondo_pickup_point`, which the bundle registers, and Doctrine names that type in the column's
