@@ -24,6 +24,7 @@ For most installations the required changes are:
 - note that a shipping method with pickup point delivery now needs a pickup point in checkout, and don't let a
   channel skip the shipping step when its only shipping method has pickup point delivery (section 8)
 - if you monitor `setono:sylius-shipmondo:register-webhooks`, note that it now fails when Shipmondo does (section 9)
+- if you override the admin Shipmondo page's template, add the hidden list of shipping methods (section 10)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -481,9 +482,27 @@ New: `Failure\ShipmondoFailure`, which `ShipmondoFailure::of(\Throwable $excepti
 `kind`, `statusCode`, `error` (Shipmondo's message) and `exception`, its `logContext()`, and its explanation (it is a
 `TranslatableInterface`). And the `Failure\ShipmondoFailureKind` enum.
 
+### 10. The admin Shipmondo page can remove a mapping
+
+In 1.x a payment gateway or shipment template mapping on the admin Shipmondo page could be set and changed, but not
+removed ([#18](https://github.com/Setono/SyliusShipmondoPlugin/issues/18)): the empty payment gateway choice was skipped
+when saving, and a shipping method whose shipment templates were all deselected wasn't submitted at all. In 2.x:
+
+- choosing no payment gateway removes the payment method's mapping (its Shipmondo id becomes `null`);
+- deselecting every shipment template of a shipping method removes them all, also when every shipping method is cleared
+  in the same save;
+- the payment gateway dropdowns are clearable: a mapped one shows a clear icon, since the dropdown shows its empty
+  choice only as placeholder text.
+
+**If you override `@SetonoSyliusShipmondoPlugin/admin/shipmondo/index.html.twig`:** next to each shipping method's
+select, add `<input type="hidden" name="mapped_shipping_methods[]" value="{{ shippingMethod.id }}">`, which tells the
+page which shipping methods the form lists. Without it, shipment templates can still be mapped, but not all removed.
+Pass `clearable: true` when you turn the selects into dropdowns.
+
 ### Unchanged
 
-Shipping-method / payment-method mapping behaves exactly as in 1.x. Everything else that changed is described
+Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
 above: the SDK types, the `sandbox` switch, webhook verification and registration, the webhook reactions, the
 cancel-deletes-in-Shipmondo behaviour, how a failed upload is handled, the `cancelled` Shipmondo state with the
-link to the sales order, the checked pickup point, and how a failed call to Shipmondo is explained.
+link to the sales order, the checked pickup point, how a failed call to Shipmondo is explained, and removing a
+mapping on the admin Shipmondo page.

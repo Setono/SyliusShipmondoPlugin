@@ -86,6 +86,8 @@
                                 <tr>
                                     <td>{{ shippingMethod.name }}</td>
                                     <td>
+                                        {# a select without a selected shipment template isn't submitted, so this says which shipping methods the form lists #}
+                                        <input type="hidden" name="mapped_shipping_methods[]" value="{{ shippingMethod.id }}">
                                         <select name="shipping_methods[{{ shippingMethod.id }}][]" class="ui fluid search dropdown" multiple>
                                             {% for shipmondoShipmentTemplate in shipmondoShipmentTemplates %}
                                                 <option value="{{ shipmondoShipmentTemplate.id }}" {% if shippingMethod.hasAllowedShipmentTemplate(shipmondoShipmentTemplate) %}selected{% endif %}>{{ shipmondoShipmentTemplate.name }}</option>
@@ -112,7 +114,9 @@
         $(() => {
             $('.ui.dropdown').dropdown({
                 fullTextSearch: true,
-                match: 'text'
+                match: 'text',
+                // a payment gateway dropdown shows its empty choice as placeholder text, so only a clear icon empties it
+                clearable: true
             });
         });
     </script>

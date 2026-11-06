@@ -184,9 +184,7 @@ final class ShipmondoPageTest extends BrowserTestCase
      */
     public function a_payment_method_mapping_can_be_removed(): void
     {
-        // an empty choice is skipped when saving (and the dropdown offers no empty choice, so the native select is emptied)
-        self::skipUntilFixed(18);
-
+        // the dropdown shows its empty choice as placeholder text, so its clear icon is the way to empty it
         $this->respondWithGatewaysAndTemplates();
         $this->fixtures->paymentMethod->setShipmondoId(self::QUICKPAY_ID);
         $this->entityManager()->flush();
@@ -194,7 +192,8 @@ final class ShipmondoPageTest extends BrowserTestCase
         $select = $this->mappingRow($this->paymentMethodsForm(), 'Bank transfer')->locator('select');
         expect($select)->toHaveValue((string) self::QUICKPAY_ID);
 
-        $select->selectOption('', ['force' => true]);
+        $this->mappingRow($this->paymentMethodsForm(), 'Bank transfer')->locator('.ui.dropdown > .dropdown.icon.clear')->click();
+        expect($select)->toHaveValue('');
         $this->clickAndFollowRedirects($this->paymentMethodsForm()->getByRole('button', ['name' => 'Save changes']));
 
         self::assertNull($this->paymentMethodMappings()['bank_transfer']);
@@ -205,9 +204,7 @@ final class ShipmondoPageTest extends BrowserTestCase
      */
     public function all_shipment_templates_can_be_removed_from_a_shipping_method(): void
     {
-        // a multi-select without any selected option is not submitted, so the last template can never be removed
-        self::skipUntilFixed(18);
-
+        // removing the last shipment template leaves a multi-select that isn't submitted
         $this->respondWithGatewaysAndTemplates();
         $this->regularShippingMethod->setAllowedShipmentTemplates([self::HOME_DELIVERY_TEMPLATE_ID]);
         $this->entityManager()->flush();

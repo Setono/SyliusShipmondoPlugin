@@ -78,7 +78,8 @@ final class ShipmondoController extends AbstractController
         // todo this should be made using Symfony forms
         if ($request->isMethod('POST') && $request->request->has('payment_methods')) {
             /**
-             * Example of posted array (the key is a Sylius payment method id, the value is a Shipmondo payment method id):
+             * Example of posted array (the key is a Sylius payment method id, the value is a Shipmondo payment method id,
+             * or empty for none):
              *
              * [
              *   1 => "1",
@@ -89,23 +90,20 @@ final class ShipmondoController extends AbstractController
              */
             $postedPaymentMethods = $request->request->all('payment_methods');
             foreach ($postedPaymentMethods as $paymentMethodId => $shipmondoPaymentMethodId) {
-                if ('' === $shipmondoPaymentMethodId) {
+                $paymentMethod = $this->paymentMethodRepository->find($paymentMethodId);
+                if (null === $paymentMethod) {
                     continue;
                 }
 
-                $shippingMethod = $this->paymentMethodRepository->find($paymentMethodId);
-                if (null === $shippingMethod) {
-                    continue;
-                }
-
-                Assert::isInstanceOf($shippingMethod, PaymentMethodInterface::class);
-                $shippingMethod->setShipmondoId((int) $shipmondoPaymentMethodId);
-                $this->paymentMethodRepository->add($shippingMethod);
+                Assert::isInstanceOf($paymentMethod, PaymentMethodInterface::class);
+                // the empty choice removes the mapping
+                $paymentMethod->setShipmondoId('' === $shipmondoPaymentMethodId ? null : (int) $shipmondoPaymentMethodId);
+                $this->paymentMethodRepository->add($paymentMethod);
             }
         }
 
         // todo this should be made using Symfony forms
-        if ($request->isMethod('POST') && $request->request->has('shipping_methods')) {
+        if ($request->isMethod('POST') && ($request->request->has('mapped_shipping_methods') || $request->request->has('shipping_methods'))) {
             /**
              * Example of posted array (the key is a Sylius shipping method id, the value is an array of Shipmondo shipment template ids):
              *
@@ -123,14 +121,23 @@ final class ShipmondoController extends AbstractController
              * @var array<int, list<string>> $postedShippingMethods
              */
             $postedShippingMethods = $request->request->all('shipping_methods');
-            foreach ($postedShippingMethods as $shippingMethodId => $shipmondoShipmentTemplateIds) {
+
+            /**
+             * A select without a selected shipment template isn't submitted, so the form also posts the ids of the shipping
+             * methods it lists. A template override without them can still map shipment templates, but not remove them all
+             *
+             * @var list<string> $mappedShippingMethods
+             */
+            $mappedShippingMethods = $request->request->all('mapped_shipping_methods');
+
+            foreach (array_unique([...$mappedShippingMethods, ...array_keys($postedShippingMethods)]) as $shippingMethodId) {
                 $shippingMethod = $this->shippingMethodRepository->find($shippingMethodId);
                 if (null === $shippingMethod) {
                     continue;
                 }
 
                 Assert::isInstanceOf($shippingMethod, ShippingMethodInterface::class);
-                $shippingMethod->setAllowedShipmentTemplates($shipmondoShipmentTemplateIds);
+                $shippingMethod->setAllowedShipmentTemplates($postedShippingMethods[$shippingMethodId] ?? []);
                 $this->shippingMethodRepository->add($shippingMethod);
             }
         }

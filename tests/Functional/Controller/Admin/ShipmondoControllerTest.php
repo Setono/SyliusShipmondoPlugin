@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Tests\Setono\SyliusShipmondoPlugin\Functional\Controller\Admin;
 
+use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
+use Tests\Setono\SyliusShipmondoPlugin\Application\Model\ShippingMethod;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
 
@@ -120,8 +122,6 @@ final class ShipmondoControllerTest extends FunctionalTestCase
      */
     public function it_removes_the_mapping_when_no_payment_gateway_is_selected(): void
     {
-        self::skipUntilFixed(18);
-
         $this->logIn();
         $this->respondWithGatewaysAndTemplates();
 
@@ -141,8 +141,6 @@ final class ShipmondoControllerTest extends FunctionalTestCase
      */
     public function it_removes_the_shipment_templates_when_none_are_selected(): void
     {
-        self::skipUntilFixed(18);
-
         $this->logIn();
         $this->fixtures->shippingMethod->setAllowedShipmentTemplates([664116]);
         $this->entityManager()->flush();
@@ -272,14 +270,17 @@ final class ShipmondoControllerTest extends FunctionalTestCase
     /**
      * @return list<int>
      */
+    /**
+     * The saved shipment templates, as the shipping method reads them: no shipment templates may be stored as null or []
+     *
+     * @return list<int>
+     */
     private function allowedShipmentTemplates(): array
     {
-        $json = $this->database()->fetchOne('SELECT allowedShipmentTemplates FROM sylius_shipping_method WHERE code = ?', [ShopFixtures::SHIPPING_METHOD_CODE]);
-        self::assertIsString($json);
+        $this->entityManager()->clear();
+        $shippingMethod = $this->entityManager()->getRepository(ShippingMethod::class)->findOneBy(['code' => ShopFixtures::SHIPPING_METHOD_CODE]);
+        self::assertInstanceOf(ShippingMethodInterface::class, $shippingMethod);
 
-        /** @var list<int> $templates */
-        $templates = json_decode($json, true, 512, \JSON_THROW_ON_ERROR);
-
-        return $templates;
+        return $shippingMethod->getAllowedShipmentTemplates();
     }
 }
