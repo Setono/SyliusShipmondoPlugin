@@ -19,6 +19,10 @@ use Symfony\Component\Workflow\WorkflowInterface;
  *
  * Deleting a sales order in Shipmondo is intentionally *not* treated as a cancellation — cancelling an
  * order is a Sylius-side decision.
+ *
+ * The consumer only hands it the order linked to the deleted sales order
+ * ({@see \Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface}), so neither a deleted duplicate of the order
+ * nor the delete echoed back after our own DeleteOrder reaches it.
  */
 final class SalesOrderDeletedHandler implements OrderWebhookHandlerInterface
 {
@@ -35,14 +39,6 @@ final class SalesOrderDeletedHandler implements OrderWebhookHandlerInterface
 
     public function handle(OrderInterface $order, RemoteEvent $webhook): void
     {
-        // Only react when the deleted sales order is the one this order is linked to. The order may have been found by
-        // its order number, so a deleted duplicate (same order_id, another id) must not unlink the order, and neither
-        // must the delete echoed back after our own DeleteOrder, which has already unlinked it.
-        $salesOrderId = $webhook->getPayload()['id'] ?? null;
-        if (!is_int($salesOrderId) || $order->getShipmondoId() !== $salesOrderId) {
-            return;
-        }
-
         if (!$this->orderWorkflow->can($order, OrderWorkflow::TRANSITION_RESET)) {
             return;
         }

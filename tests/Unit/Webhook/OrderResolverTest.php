@@ -37,38 +37,36 @@ final class OrderResolverTest extends TestCase
     }
 
     /**
+     * Another shop on the same Shipmondo account numbers its orders the same way
+     *
      * @test
      */
-    public function it_falls_back_to_the_order_number(): void
+    public function it_never_falls_back_to_the_order_number(): void
     {
-        $order = $this->prophesize(OrderInterface::class)->reveal();
         $this->orderRepository->findOneBy(['shipmondoId' => 37])->willReturn(null);
-        $this->orderRepository->findOneBy(['number' => '000000001'])->willReturn($order);
+        $this->orderRepository->findOneBy(['number' => '000000001'])->shouldNotBeCalled();
 
-        self::assertSame($order, $this->resolver()->resolveFromPayload(['id' => 37, 'order_id' => '000000001']));
+        self::assertNull($this->resolver()->resolveFromPayload(['id' => 37, 'order_id' => '000000001']));
     }
 
     /**
      * @test
      */
-    public function it_ignores_an_order_found_by_number_that_is_not_a_shipmondo_order(): void
+    public function it_ignores_a_linked_order_that_is_not_a_shipmondo_order(): void
     {
-        $this->orderRepository->findOneBy(['number' => '000000001'])->willReturn(
-            $this->prophesize(BaseOrderInterface::class)->reveal(),
-        );
+        $this->orderRepository->findOneBy(['shipmondoId' => 37])->willReturn($this->prophesize(BaseOrderInterface::class)->reveal());
 
-        self::assertNull($this->resolver()->resolveFromPayload(['order_id' => '000000001']));
+        self::assertNull($this->resolver()->resolveFromPayload(['id' => 37]));
     }
 
     /**
      * @test
      */
-    public function it_resolves_by_number_when_there_is_no_shipmondo_id(): void
+    public function it_returns_null_for_a_sales_order_id_that_is_not_an_integer(): void
     {
-        $order = $this->prophesize(OrderInterface::class)->reveal();
-        $this->orderRepository->findOneBy(['number' => '000000001'])->willReturn($order);
+        $this->orderRepository->findOneBy(Argument::any())->shouldNotBeCalled();
 
-        self::assertSame($order, $this->resolver()->resolveFromPayload(['order_id' => '000000001']));
+        self::assertNull($this->resolver()->resolveFromPayload(['id' => '37', 'order_id' => '000000001']));
     }
 
     /**
@@ -77,7 +75,6 @@ final class OrderResolverTest extends TestCase
     public function it_returns_null_when_nothing_matches(): void
     {
         $this->orderRepository->findOneBy(['shipmondoId' => 37])->willReturn(null);
-        $this->orderRepository->findOneBy(['number' => 'unknown'])->willReturn(null);
 
         self::assertNull($this->resolver()->resolveFromPayload(['id' => 37, 'order_id' => 'unknown']));
     }

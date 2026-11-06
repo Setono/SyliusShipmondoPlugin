@@ -73,7 +73,7 @@ A shipping method setting: its shipments are delivered to a pickup point the cus
 ### Webhooks
 
 **Webhook**:
-Shipmondo's message that something happened to one of its records, named by resource and action, e.g. orders/delete when a sales order is deleted. A webhook about a sales order belongs to the Sylius order linked to that sales order, or, if none is, to the order with its order number (a sales order the plugin didn't create, or a duplicate).
+Shipmondo's message that something happened to one of its records, named by resource and action, e.g. orders/delete when a sales order is deleted. A webhook about a sales order belongs to the Sylius order linked to that sales order, and to no order if none is, even when its order number matches one: another shop on the same Shipmondo account numbers its orders the same way.
 _Avoid_: remote event (Symfony's name for it), callback, notification
 
 **Webhook handler**:

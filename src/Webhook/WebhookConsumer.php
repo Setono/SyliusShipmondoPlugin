@@ -54,7 +54,7 @@ final class WebhookConsumer implements ConsumerInterface
         $payload = $event->getPayload();
         $order = $this->orderResolver->resolveFromPayload($payload);
         if (null === $order) {
-            $this->logger->info('No order matches the sales order {salesOrder} (order number {orderNumber}) of the Shipmondo webhook orders/{action}, so the webhook is ignored', [
+            $this->logger->info('No order is linked to the sales order {salesOrder} (order number {orderNumber}) of the Shipmondo webhook orders/{action}, so the webhook is ignored', [
                 'salesOrder' => $payload['id'] ?? null,
                 'orderNumber' => $payload['order_id'] ?? null,
                 'action' => $event->getAction()->value,

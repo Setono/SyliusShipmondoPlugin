@@ -117,7 +117,7 @@ final class WebhookConsumerTest extends TestCase
         self::assertSame([], $this->handled->getArrayCopy());
         self::assertSame([[
             'level' => LogLevel::INFO,
-            'message' => 'No order matches the sales order {salesOrder} (order number {orderNumber}) of the Shipmondo webhook orders/{action}, so the webhook is ignored',
+            'message' => 'No order is linked to the sales order {salesOrder} (order number {orderNumber}) of the Shipmondo webhook orders/{action}, so the webhook is ignored',
             'context' => ['salesOrder' => 37707019, 'orderNumber' => '000000011', 'action' => 'create_shipment'],
         ]], $this->logger->records);
     }

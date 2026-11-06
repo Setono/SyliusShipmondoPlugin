@@ -14,9 +14,9 @@ use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
  *
  * The actions it subscribes to are read once, when the container is built. The webhook consumer
  * ({@see \Setono\SyliusShipmondoPlugin\Webhook\WebhookConsumer}) calls it only for those actions, only once it has
- * found that order (by its link to the sales order, or else by its order number), and flushes once every handler has
- * run. Webhook registration subscribes to exactly the actions the handlers subscribe to, so run
- * `setono:sylius-shipmondo:register-webhooks` again after adding a handler for another action.
+ * found that order (the one linked to the sales order), and flushes once every handler has run. Webhook registration
+ * subscribes to exactly the actions the handlers subscribe to, so run `setono:sylius-shipmondo:register-webhooks` again
+ * after adding a handler for another action.
  *
  * Implementations are autoconfigured with the `setono_sylius_shipmondo.order_webhook_handler` tag; its priority
  * decides the order handlers subscribed to the same action run in.

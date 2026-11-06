@@ -141,9 +141,9 @@ the same action. A handler:
   instead of strings.
 
 `Webhook\WebhookConsumer` finds the order once, through `Webhook\OrderResolverInterface`: the order linked to the
-sales order, or else the one with its order number. It runs the handlers subscribed to the action and then flushes
-once. A webhook for an order the store doesn't know, such as another shop's on the same Shipmondo account, is
-logged at `info` level and acknowledged. Nothing is caught: if a handler fails, or the order changed meanwhile, the
+sales order. It never falls back to the order number, because another shop on the same Shipmondo account numbers its
+orders the same way. It runs the handlers subscribed to the action and then flushes once. A webhook about a sales
+order no order is linked to, such as another shop's, is logged at `info` level and acknowledged. Nothing is caught: if a handler fails, or the order changed meanwhile, the
 webhook fails. Handled synchronously, which is the default, it gets an error response and Shipmondo sends it again;
 if you route Symfony's `ConsumeRemoteEventMessage` to an async transport, Messenger retries it instead.
 
