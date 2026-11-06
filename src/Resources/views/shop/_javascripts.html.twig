@@ -1,7 +1,7 @@
 {% if app.current_route == 'sylius_shop_checkout_select_shipping' %}
-    {% set pickupPointShippingMethods = sss_shipping_methods_with_pickup_point_delivery() %}
-    {# the manager treats an empty list of shipping methods as all of them, so without a pickup point shipping method there is no manager #}
-    {% if pickupPointShippingMethods is not empty %}
+    {% set pickupPointShippingMethodCodes = sss_shipping_methods_with_pickup_point_delivery() %}
+    {# the picker treats an empty list of shipping methods as all of them, so without a pickup point shipping method there is no picker #}
+    {% if pickupPointShippingMethodCodes is not empty %}
         <script type="module">
             import { PickupPointManager } from '{{ asset('bundles/setonosyliusshipmondoplugin/js/pickup-point-manager.js') }}';
 
@@ -9,7 +9,7 @@
 
             const manager = new PickupPointManager(Object.assign({
                 endpoint: '{{ path('setono_sylius_shipmondo_shop_ajax_get_pickup_points') }}',
-                allowedShippingMethods: {{ pickupPointShippingMethods|json_encode|raw }},
+                allowedShippingMethods: {{ pickupPointShippingMethodCodes|json_encode|raw }},
                 loadFailedHtml: {{ include('@SetonoSyliusShipmondoPlugin/shop/pickup_points_not_loaded.html.twig')|json_encode|raw }}
             }, pickupPointManagerConfig));
             manager.init();
