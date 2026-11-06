@@ -15,7 +15,7 @@ Creating the sales order for a Sylius order in Shipmondo.
 _Avoid_: Dispatch, sync, export, push
 
 **Upload run**:
-One pass of the order upload, which uploads every pending order that qualifies for upload. It stops early after a credentials failure, a rate-limited upload, or three rejected uploads with no upload between them, and the remaining orders stay pending for the next run.
+One pass of the order upload, which uploads every pending order that qualifies for upload. It stops early after an upload that hits a credentials failure or is rate limited, or after three rejected uploads with no upload between them, and the remaining orders stay pending for the next run.
 _Avoid_: Sync, batch
 
 **Shipmondo state**:
@@ -41,25 +41,35 @@ _Avoid_: Error, broken
 **Cancelled**:
 The Sylius order was cancelled, and Shipmondo has no sales order for it: it was never uploaded, or its sales order was deleted. Nothing more happens to it. An order that is cancelled in Sylius becomes cancelled right away when it is pending or failed, once its sales order is deleted when it is uploaded, and once its upload is settled when it is uploading.
 
-### Upload failures
+**Upload outcome**:
+How one upload went: uploaded, a Shipmondo failure, the order changed while it was uploading (back to pending), or skipped because the order wasn't uploading. It decides the order's Shipmondo state: an upload that is rejected or not found, or fails unexpectedly, makes the order failed, and any other Shipmondo failure puts it back to pending.
 
 **Rejected upload**:
-An upload Shipmondo refused because of something about this order, such as invalid data. The order becomes failed.
+An upload that Shipmondo rejected or answered with not found. The order becomes failed, and the upload counts toward the upload run's stop rule.
+
+### Shipmondo failures
+
+**Shipmondo failure**:
+A call to Shipmondo that didn't succeed, sorted into one of the kinds below. Each caller decides what a kind means for it: an upload settles the order's Shipmondo state, the admin explains it, the shop's pickup point search shows that the pickup points couldn't be loaded.
 
 **Credentials failure**:
-An upload Shipmondo refused because it didn't accept the store's API credentials. It says nothing about the order, which goes back to pending.
+Shipmondo didn't accept the store's API credentials (401 or 403). It says nothing about the order or the call.
 
-**Rate-limited upload**:
-An upload Shipmondo refused with 429 Too Many Requests. Like a credentials failure, it says nothing about the order, which goes back to pending.
+**Rate limited**:
+Shipmondo refused the call with 429 Too Many Requests. Like a credentials failure, it says nothing about the call.
 
 **Temporary failure**:
-An upload that failed for a reason expected to pass, such as a Shipmondo server error or a network problem. The order goes back to pending.
+A failure expected to pass: a Shipmondo server error or a network problem.
+
+**Not found**:
+Shipmondo has no such record (404). Deleting a sales order that is not found is not a failure: the sales order is gone, as wanted.
+
+**Rejected**:
+Shipmondo refused the call because of something about it, such as invalid data (any other 4xx).
+_Avoid_: validation error
 
 **Unexpected failure**:
-An upload that failed before Shipmondo answered, or in a way nothing expects, such as order data a data mapper can't turn into a sales order. The order becomes failed.
-
-**Upload outcome**:
-How one upload went: uploaded, one of the failures above, the order changed while it was uploading (back to pending), or skipped because the order wasn't uploading. It decides the order's Shipmondo state.
+An answer nothing expects (an unreadable success, a redirect), or a failure before Shipmondo answered, such as order data a data mapper can't turn into a sales order.
 
 ### Pickup points
 

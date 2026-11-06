@@ -23,6 +23,7 @@ For most installations the required changes are:
 - run a database migration, which only adds a comment to the shipment's pickup point column (section 8)
 - note that a shipping method with pickup point delivery now needs a pickup point in checkout, and don't let a
   channel skip the shipping step when its only shipping method has pickup point delivery (section 8)
+- if you monitor `setono:sylius-shipmondo:register-webhooks`, note that it now fails when Shipmondo does (section 9)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -35,7 +36,7 @@ The renamed SDK classes and the other class changes only matter if you extend th
 composer require setono/sylius-shipmondo-plugin:^2.0
 ```
 
-This pulls in `setono/shipmondo-php-sdk:^2.0` (2.0.0-beta.2 or later).
+This pulls in `setono/shipmondo-php-sdk:^2.0` (2.0.0-beta.3 or later).
 
 ### 2. Define the `SHIPMONDO_SANDBOX` environment variable (required)
 
@@ -411,9 +412,74 @@ New: `Doctrine\Type\PickupPointType`, `Parser\PickupPointParser`, and the `Shipm
 `ServicePoint::fromPickupPoint()` turns it into a sales order's service point; both need `setono/shipmondo-php-sdk`
 2.0.0-beta.2 or later.
 
+### 9. A failed call to Shipmondo is explained, instead of ending in HTTP 500
+
+In 1.x each place that calls Shipmondo handled a failure its own way: the admin's Shipmondo page blamed the API
+credentials for every failure, registering the webhooks ended on an HTTP 500 page
+([#24](https://github.com/Setono/SyliusShipmondoPlugin/issues/24)), and the shop's pickup point endpoint answered
+HTTP 500, after which the pickup point picker waited for the pickup points for as long as the page was open
+([#23](https://github.com/Setono/SyliusShipmondoPlugin/issues/23)). In 2.x, a failed call to Shipmondo is sorted into
+one kind of Shipmondo failure (`Failure\ShipmondoFailureKind`), and each caller acts on the kind:
+
+| Kind | When |
+|---|---|
+| `credentials_failure` | Shipmondo answers 401 or 403 |
+| `rate_limited` | Shipmondo answers 429 |
+| `temporary_failure` | Shipmondo answers 5xx, or doesn't answer (a network error or a timeout) |
+| `not_found` | Shipmondo answers 404 |
+| `rejected` | Shipmondo answers any other 4xx |
+| `unexpected_failure` | anything else: a success the SDK can't read, a redirect, or a failure that isn't Shipmondo's answer, such as a data mapper that throws |
+
+- **The admin's Shipmondo page** says why it couldn't fetch the payment gateways and shipment templates, e.g. that
+  Shipmondo couldn't be reached, instead of always asking you to check the credentials, and logs it as a warning. It
+  only catches Shipmondo failures: any other exception is a bug, and ends on an error page.
+- **Registering the webhooks** with the admin's "Register webhooks" button returns to the Shipmondo page with an error
+  flash that says why, and that the webhooks may be only partly registered (registration deletes the plugin's webhooks
+  before it creates them), so register them again. `setono:sylius-shipmondo:register-webhooks` prints the same and
+  exits with a failure code. Both log the failure as an error. The success flash shows only when registration
+  succeeded.
+- **The shop's pickup point endpoint** answers HTTP 502 with `{"error": "<kind>"}`, and logs the failure: as a warning
+  for a temporary failure or a rate limit, as an error otherwise. **The pickup point picker** then stops waiting, shows
+  "The pickup points could not be loaded. Choose the shipping method again to try again, or choose another shipping
+  method." where the pickup points go, and dispatches a `pickup_point_manager:load_failed` event (its `detail` has the
+  `radio` and the `shippingMethod`, like the other events). Choosing the shipping method again loads its pickup points
+  again.
+- **An upload and a sales order deletion** log the kind next to Shipmondo's status code and message
+  (`shipmondoFailure`, `shipmondoStatusCode`, `shipmondoError` in the log context). An upload settles the order as in
+  section 6; a 404 counts as a rejected upload.
+
+The picker's message is rendered by `@SetonoSyliusShipmondoPlugin/shop/pickup_points_not_loaded.html.twig`, which you
+can override like any bundle template, and is passed to the picker as its new `loadFailedHtml` option (you can also set
+it in `window.pickupPointManagerConfig`). **If you replaced `pickup-point-manager.js` or its `insertHtmlCallback`:**
+`getHtml()` returns the `loadFailedHtml` for a shipping method whose pickup points couldn't be loaded, so a callback
+that inserts `getHtml()` shows the message without changes.
+
+New translation keys: `setono_sylius_shipmondo.shipmondo_data_not_fetched`, `setono_sylius_shipmondo.webhooks_registered`
+and `setono_sylius_shipmondo.webhooks_not_registered` in the `flashes` domain (the last one takes `%reason%`), and
+`setono_sylius_shipmondo.shipmondo_failure.<kind>` (it takes `%error%`, Shipmondo's message) and
+`setono_sylius_shipmondo.ui.pickup_points_not_loaded` in the `messages` domain. The English text of the success flash
+after registering the webhooks is unchanged.
+
+This needs `setono/shipmondo-php-sdk` 2.0.0-beta.3 or later, whose exceptions tell a 403 (`ForbiddenException`), any
+other 4xx (`UnexpectedClientErrorException`) and a call that got no answer (`ConnectionException`, which wraps the HTTP
+client's exception) apart. If your own code catches the SDK's exceptions, see the SDK's
+[UPGRADE.md](https://github.com/Setono/shipmondo-php-sdk/blob/2.x/UPGRADE.md#exceptions).
+
+Only if you extend or call the code involved:
+
+| 1.x | 2.x |
+|---|---|
+| `Controller\Admin\ShipmondoController::__construct(..., Client $client)` | `__construct(..., Client $client, Symfony\Contracts\Translation\TranslatorInterface $translator, Psr\Log\LoggerInterface $logger)` |
+| `Command\RegisterWebhooksCommand::__construct(MessageBusInterface $commandBus)` | `__construct(MessageBusInterface $commandBus, TranslatorInterface $translator, LoggerInterface $logger)`; it returns `Command::FAILURE` when Shipmondo fails |
+| `Controller\Shop\GetPickupPointsAction::__construct($shippingMethodRepository, $cartContext, $client, $twig)` | `__construct($shippingMethodRepository, $cartContext, $client, $twig, LoggerInterface $logger)` |
+
+New: `Failure\ShipmondoFailure`, which `ShipmondoFailure::of(\Throwable $exception)` sorts by the SDK exception: its
+`kind`, `statusCode`, `error` (Shipmondo's message) and `exception`, its `logContext()`, and its explanation (it is a
+`TranslatableInterface`). And the `Failure\ShipmondoFailureKind` enum.
+
 ### Unchanged
 
 Shipping-method / payment-method mapping behaves exactly as in 1.x. Everything else that changed is described
 above: the SDK types, the `sandbox` switch, webhook verification and registration, the webhook reactions, the
 cancel-deletes-in-Shipmondo behaviour, how a failed upload is handled, the `cancelled` Shipmondo state with the
-link to the sales order, and the checked pickup point.
+link to the sales order, the checked pickup point, and how a failed call to Shipmondo is explained.

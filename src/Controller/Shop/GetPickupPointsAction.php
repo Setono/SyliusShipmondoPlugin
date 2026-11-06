@@ -4,9 +4,14 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Controller\Shop;
 
+use Psr\Log\LoggerInterface;
+use Psr\Log\LogLevel;
 use Setono\Shipmondo\Client\ClientInterface;
+use Setono\Shipmondo\Exception\ShipmondoException;
 use Setono\Shipmondo\Request\PickupPointSearch;
 use Setono\Shipmondo\Response\PickupPoint\PickupPoint;
+use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
+use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailureKind;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShipmentInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
@@ -25,6 +30,7 @@ final class GetPickupPointsAction
         private readonly CartContextInterface $cartContext,
         private readonly ClientInterface $client,
         private readonly Environment $twig,
+        private readonly LoggerInterface $logger,
     ) {
     }
 
@@ -69,6 +75,8 @@ final class GetPickupPointsAction
             ));
         } catch (\InvalidArgumentException) {
             return new JsonResponse(status: Response::HTTP_BAD_REQUEST);
+        } catch (ShipmondoException $e) {
+            return $this->failed(ShipmondoFailure::of($e), $shippingMethodCode);
         }
 
         // The customer might already have chosen a pickup point,
@@ -87,6 +95,23 @@ final class GetPickupPointsAction
                 'pickupPoints' => $pickupPoints,
             ]),
         ]);
+    }
+
+    /**
+     * The shop's pickup point picker tells the customer that the pickup points couldn't be loaded
+     */
+    private function failed(ShipmondoFailure $failure, string $shippingMethodCode): JsonResponse
+    {
+        $this->logger->log(
+            match ($failure->kind) {
+                ShipmondoFailureKind::TemporaryFailure, ShipmondoFailureKind::RateLimited => LogLevel::WARNING,
+                default => LogLevel::ERROR,
+            },
+            'Could not search Shipmondo for pickup points for the shipping method {shippingMethod}, so the customer cannot choose one',
+            ['shippingMethod' => $shippingMethodCode] + $failure->logContext(),
+        );
+
+        return new JsonResponse(['error' => $failure->kind->value], Response::HTTP_BAD_GATEWAY);
     }
 
     /**

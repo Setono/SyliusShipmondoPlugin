@@ -6,7 +6,8 @@
 
         const manager = new PickupPointManager(Object.assign({
             endpoint: '{{ path('setono_sylius_shipmondo_shop_ajax_get_pickup_points') }}',
-            allowedShippingMethods: {{ sss_shipping_methods_with_pickup_point_delivery()|json_encode|raw }}
+            allowedShippingMethods: {{ sss_shipping_methods_with_pickup_point_delivery()|json_encode|raw }},
+            loadFailedHtml: {{ include('@SetonoSyliusShipmondoPlugin/shop/pickup_points_not_loaded.html.twig')|json_encode|raw }}
         }, pickupPointManagerConfig));
         manager.init();
     </script>

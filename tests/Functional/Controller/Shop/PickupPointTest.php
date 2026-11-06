@@ -7,6 +7,7 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Functional\Controller\Shop;
 use Psr\Http\Message\RequestInterface;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShipmentInterface;
+use Symfony\Component\DomCrawler\Crawler;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
 use Tests\Setono\SyliusShipmondoPlugin\Support\PickupPoints;
@@ -112,6 +113,57 @@ final class PickupPointTest extends FunctionalTestCase
 
         self::assertResponseStatusCodeSame(400);
         self::assertSame([], $this->shipmondo->requests());
+    }
+
+    /**
+     * The pickup point picker shows that the pickup points couldn't be loaded on any answer that isn't a success
+     *
+     * @test
+     *
+     * @dataProvider failedSearches
+     */
+    public function it_answers_bad_gateway_when_shipmondo_cannot_search_for_pickup_points(?int $statusCode, string $kind): void
+    {
+        $this->cartOfLoggedInCustomer();
+        if (null === $statusCode) {
+            $this->shipmondo->failToConnect('GET', 'pickup_points');
+        } else {
+            $this->shipmondo->respond('GET', 'pickup_points', $statusCode, ['error' => 'Something went wrong']);
+        }
+
+        $this->browser->request('GET', self::ENDPOINT, ['shippingMethod' => ShopFixtures::SHIPPING_METHOD_CODE]);
+
+        self::assertResponseStatusCodeSame(502);
+        self::assertSame(['error' => $kind], json_decode((string) $this->browser->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR));
+    }
+
+    /**
+     * @test
+     */
+    public function it_gives_the_pickup_point_picker_what_to_show_when_the_pickup_points_cannot_be_loaded(): void
+    {
+        $this->cartOfLoggedInCustomer();
+
+        $this->browser->request('GET', '/en_US/checkout/select-shipping');
+
+        self::assertResponseIsSuccessful();
+        $script = $this->browser->getCrawler()->filter('script[type="module"]')->reduce(
+            static fn (Crawler $script): bool => str_contains($script->text(), 'PickupPointManager'),
+        );
+        self::assertCount(1, $script);
+        self::assertStringContainsString('loadFailedHtml: "', $script->text());
+        self::assertStringContainsString('The pickup points could not be loaded. Choose the shipping method again to try again, or choose another shipping method.', $script->text());
+    }
+
+    /**
+     * @return iterable<string, array{?int, string}>
+     */
+    public static function failedSearches(): iterable
+    {
+        yield 'server error' => [500, 'temporary_failure'];
+        yield 'network problem' => [null, 'temporary_failure'];
+        yield 'credentials failure' => [401, 'credentials_failure'];
+        yield 'rejected' => [400, 'rejected'];
     }
 
     /**

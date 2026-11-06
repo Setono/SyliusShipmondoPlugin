@@ -2,3 +2,6 @@ setono_sylius_shipmondo:
     order_deleted_in_shipmondo: 'The order was deleted in Shipmondo because it was cancelled.'
     order_will_be_deleted_in_shipmondo: 'The order will be deleted in Shipmondo because it was cancelled.'
     order_not_deleted_in_shipmondo: 'The order was cancelled, but it could not be deleted in Shipmondo. Delete it in Shipmondo manually.'
+    shipmondo_data_not_fetched: 'Could not fetch the payment gateways and shipment templates from Shipmondo. %reason%'
+    webhooks_registered: 'Webhooks registered successfully'
+    webhooks_not_registered: 'The webhooks could not be registered, so Shipmondo may send only some of them, or none. Register them again once the problem is solved. %reason%'

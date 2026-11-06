@@ -1,6 +1,6 @@
 class PickupPointManager {
   /**
-   * @type {{ endpoint: string, allowedShippingMethods: Array, shippingMethodSelector: string, insertHtmlCallback: function(HTMLInputElement) }}
+   * @type {{ endpoint: string, allowedShippingMethods: Array, shippingMethodSelector: string, insertHtmlCallback: function(HTMLInputElement), loadFailedHtml: string }}
    */
   #config = {};
 
@@ -12,11 +12,26 @@ class PickupPointManager {
   #data = {};
 
   /**
+   * The shipping methods whose pickup points are being loaded
+   *
+   * @type {Set<string>}
+   */
+  #loading = new Set();
+
+  /**
+   * The shipping methods whose pickup points could not be loaded. Choosing such a shipping method loads them again
+   *
+   * @type {Set<string>}
+   */
+  #failed = new Set();
+
+  /**
    * @param {Object} config
    * @param {string} config.endpoint
    * @param {Array} config.allowedShippingMethods
    * @param {string} config.shippingMethodSelector
    * @param {function(HTMLInputElement)} config.insertHtmlCallback
+   * @param {string} config.loadFailedHtml shown instead of the pickup points when they could not be loaded
    */
   constructor(config) {
     this.#config = Object.assign({
@@ -26,6 +41,7 @@ class PickupPointManager {
       insertHtmlCallback: function (radio) {
         radio.closest('.item').insertAdjacentHTML('afterend', this.getHtml(radio.value));
       },
+      loadFailedHtml: '<div class="item pickup-points-container"><div class="content"><div class="ui negative message">The pickup points could not be loaded.</div></div></div>',
     }, config);
   }
 
@@ -60,6 +76,8 @@ class PickupPointManager {
         return;
       }
 
+      // choosing the shipping method again tries to load its pickup points again
+      this.#failed.delete(e.currentTarget.value);
       this.#insertHtml(e.currentTarget);
     });
   }
@@ -74,7 +92,19 @@ class PickupPointManager {
       return;
     }
 
+    // stop waiting, and tell the customer
+    if(this.#failed.has(radio.value)) {
+      this.#removePickupPoints();
+      this.#config.insertHtmlCallback.call(this, radio);
+
+      radio.dispatchEvent(new CustomEvent('pickup_point_manager:load_failed', { bubbles: true, detail: { radio: radio, shippingMethod: radio.value } }));
+
+      return;
+    }
+
     if(!this.hasData(radio.value)) {
+      this.#load(radio);
+
       radio.dispatchEvent(new CustomEvent('pickup_point_manager:loading', { bubbles: true, detail: { radio: radio, shippingMethod: radio.value } }));
 
       setTimeout(() => {
@@ -104,30 +134,37 @@ class PickupPointManager {
    * @param {HTMLInputElement} radio
    */
   async #load(radio) {
-    if(this.hasData(radio.value)) {
+    if(this.hasData(radio.value) || this.#loading.has(radio.value)) {
       return;
     }
 
-    let response;
+    this.#loading.add(radio.value);
 
     try {
-      response = await fetch(`${this.#config.endpoint}?shippingMethod=${radio.value}`);
+      const data = await this.#fetch(radio);
+      data.html = data.html.replaceAll('%fieldName%', radio.name.replace('[method]', '[shipmondoPickupPoint]'));
+
+      this.#data[radio.value] = data;
     } catch (e) {
       console.error('Failed to load pickup point data', e);
 
-      return;
+      this.#failed.add(radio.value);
+    } finally {
+      this.#loading.delete(radio.value);
+    }
+  }
+
+  /**
+   * @param {HTMLInputElement} radio
+   * @return {Promise<object>} rejects when the pickup points could not be loaded
+   */
+  async #fetch(radio) {
+    const response = await fetch(`${this.#config.endpoint}?shippingMethod=${radio.value}`);
+    if(!response.ok) {
+      throw new Error(`HTTP ${response.status} ${response.statusText}`);
     }
 
-    if(!response?.ok) {
-      console.error('Failed to load pickup point data', response.status, response.statusText);
-
-      return;
-    }
-
-    const data = await response.json();
-    data.html = data.html.replaceAll('%fieldName%', radio.name.replace('[method]', '[shipmondoPickupPoint]'));
-
-    this.#data[radio.value] = data;
+    return response.json();
   }
 
   /**
@@ -143,6 +180,10 @@ class PickupPointManager {
    * @return {string}
    */
   getHtml(shippingMethod) {
+    if(this.#failed.has(shippingMethod)) {
+      return this.#config.loadFailedHtml;
+    }
+
     if(!this.hasData(shippingMethod)) {
       throw new Error('No pickup point data found for shipping method ' + shippingMethod);
     }

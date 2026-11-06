@@ -94,7 +94,7 @@ final class PickupPointSelectionTest extends ShopTestCase
      */
     public function when_the_pickup_points_cannot_be_loaded_the_customer_is_asked_to_choose_another_shipping_method(): void
     {
-        // the endpoint fails with HTTP 500 when the Shipmondo API does
+        // the endpoint answers HTTP 502 when the Shipmondo API fails
         $this->shipmondo->respond('GET', 'pickup_points', 500, ['error' => 'Internal server error']);
         $this->recordConsoleErrors();
         $this->checkoutToShippingStep();
@@ -105,7 +105,8 @@ final class PickupPointSelectionTest extends ShopTestCase
             '() => window.consoleErrors.some((error) => error.startsWith("Failed to load pickup point data"))',
             'The pickup point manager did not report the failed request',
         );
-        expect($this->pickupPointList())->toHaveCount(0);
+        expect($this->pickupPointList())->toContainText('The pickup points could not be loaded. Choose the shipping method again to try again, or choose another shipping method.');
+        expect($this->pickupPointRadios())->toHaveCount(0);
 
         // a shipping method with pickup point delivery can't leave the checkout without a pickup point
         $this->clickAndFollowRedirects($this->getPage()->getByRole('button', ['name' => 'Next']));
@@ -122,18 +123,44 @@ final class PickupPointSelectionTest extends ShopTestCase
      */
     public function when_the_pickup_points_cannot_be_loaded_the_manager_stops_waiting_for_them(): void
     {
-        // after a failed request the manager dispatches a loading event and checks for the pickup points every
-        // 100 ms for as long as the page is open, and the customer gets no feedback
-        self::skipUntilFixed(23);
-
         $this->shipmondo->respond('GET', 'pickup_points', 500, ['error' => 'Internal server error']);
         $this->checkoutToShippingStep();
         $this->recordPickupPointManagerEvents();
 
         $this->selectShippingMethod(self::PICKUP_POINT_SHIPPING_METHOD_NAME);
-        $this->settle(3);
+        $this->waitUntil(
+            '() => window.pickupPointManagerEvents.load_failed.length > 0',
+            'The pickup point manager did not report that the pickup points could not be loaded',
+        );
+        $loading = count($this->pickupPointManagerEvents('loading'));
+        $this->settle(1);
 
-        self::assertLessThan(5, count($this->pickupPointManagerEvents('loading')));
+        // it no longer checks for the pickup points every 100 ms
+        self::assertCount($loading, $this->pickupPointManagerEvents('loading'));
+        self::assertSame([ShopFixtures::SHIPPING_METHOD_CODE], $this->pickupPointManagerEvents('load_failed'));
+        expect($this->pickupPointList())->toContainText('The pickup points could not be loaded.');
+    }
+
+    /**
+     * @test
+     */
+    public function choosing_the_shipping_method_again_loads_the_pickup_points_that_could_not_be_loaded(): void
+    {
+        // the first search fails, and the ones after it succeed
+        $this->shipmondo->respond('GET', 'pickup_points', 500, ['error' => 'Internal server error']);
+        $this->respondWithPickupPoints();
+        $this->recordConsoleErrors();
+        // the pickup points are requested when the step loads, while another shipping method is selected
+        $this->checkoutToShippingStep();
+        $this->waitUntil(
+            '() => window.consoleErrors.some((error) => error.startsWith("Failed to load pickup point data"))',
+            'The pickup points did not fail to load',
+        );
+
+        $this->selectShippingMethod(self::PICKUP_POINT_SHIPPING_METHOD_NAME);
+
+        expect($this->pickupPointRadios())->toHaveCount(2);
+        self::assertSame([ShopFixtures::SHIPPING_METHOD_CODE, ShopFixtures::SHIPPING_METHOD_CODE], $this->requestedPickupPoints());
     }
 
     /**
@@ -198,7 +225,7 @@ final class PickupPointSelectionTest extends ShopTestCase
     {
         $this->getPage()->evaluate(<<<'JS'
             () => {
-                window.pickupPointManagerEvents = { loading: [], inserted_html: [] };
+                window.pickupPointManagerEvents = { loading: [], inserted_html: [], load_failed: [] };
                 for (const name of Object.keys(window.pickupPointManagerEvents)) {
                     document.addEventListener(`pickup_point_manager:${name}`, (event) => window.pickupPointManagerEvents[name].push(event.detail.shippingMethod));
                 }

@@ -130,6 +130,11 @@ final class DeleteOrderHandlerTest extends TestCase
         self::assertSame('Could not delete the Shipmondo sales order {shipmondoId} of the order {order}', $record['message']);
         self::assertSame([12345, '000000042'], [$record['context']['shipmondoId'], $record['context']['order']]);
         self::assertInstanceOf(InternalServerErrorException::class, $record['context']['exception']);
+        // logged like any other Shipmondo failure
+        self::assertSame(
+            ['shipmondoFailure' => 'temporary_failure', 'shipmondoStatusCode' => 500, 'shipmondoError' => 'Internal Server Error'],
+            array_diff_key($record['context'], array_flip(['shipmondoId', 'order', 'exception'])),
+        );
     }
 
     /**

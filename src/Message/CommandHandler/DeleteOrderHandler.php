@@ -6,8 +6,9 @@ namespace Setono\SyliusShipmondoPlugin\Message\CommandHandler;
 
 use Psr\Log\LoggerInterface;
 use Setono\Shipmondo\Client\ClientInterface;
-use Setono\Shipmondo\Exception\NotFoundException;
 use Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface;
+use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
+use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailureKind;
 use Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
@@ -54,16 +55,18 @@ final class DeleteOrderHandler
 
         try {
             $this->shipmondoClient->salesOrders()->delete($shipmondoId);
-        } catch (NotFoundException) {
-            // the sales order was already deleted in Shipmondo, which is what we wanted
         } catch (\Throwable $e) {
-            $this->logger->error('Could not delete the Shipmondo sales order {shipmondoId} of the order {order}', [
-                'shipmondoId' => $shipmondoId,
-                'order' => $order->getNumber(),
-                'exception' => $e,
-            ]);
+            $failure = ShipmondoFailure::of($e);
 
-            return false;
+            // when the sales order is not found, it was already deleted in Shipmondo, which is what we wanted
+            if (ShipmondoFailureKind::NotFound !== $failure->kind) {
+                $this->logger->error('Could not delete the Shipmondo sales order {shipmondoId} of the order {order}', [
+                    'shipmondoId' => $shipmondoId,
+                    'order' => $order->getNumber(),
+                ] + $failure->logContext());
+
+                return false;
+            }
         }
 
         if ($this->orderWorkflow->can($order, OrderWorkflow::TRANSITION_RESET)) {

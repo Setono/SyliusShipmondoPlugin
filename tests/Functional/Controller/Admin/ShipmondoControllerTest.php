@@ -59,9 +59,24 @@ final class ShipmondoControllerTest extends FunctionalTestCase
         $this->browser->request('GET', '/admin/shipmondo');
 
         self::assertResponseIsSuccessful();
-        self::assertSelectorTextContains('.message.negative', 'Could not fetch data from the Shipmondo API. Please check your Shipmondo credentials.');
+        self::assertSelectorTextContains('.message.negative', 'Could not fetch the payment gateways and shipment templates from Shipmondo. Shipmondo did not accept the API credentials.');
         // the webhooks can still be registered
         self::assertSelectorExists('a[href="/admin/shipmondo/register-webhooks"]');
+    }
+
+    /**
+     * @test
+     */
+    public function it_does_not_blame_the_credentials_when_shipmondo_is_down(): void
+    {
+        $this->logIn();
+        $this->shipmondo->failToConnect('GET', 'payment_gateways');
+
+        $this->browser->request('GET', '/admin/shipmondo');
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('.message.negative', 'Could not fetch the payment gateways and shipment templates from Shipmondo. Shipmondo could not be reached, or had a server error.');
+        self::assertSelectorTextNotContains('.message.negative', 'credentials');
     }
 
     /**
@@ -181,6 +196,27 @@ final class ShipmondoControllerTest extends FunctionalTestCase
 
         self::assertSelectorTextContains('.message.positive', 'Webhooks registered successfully');
         self::assertSelectorTextContains('body', 'Webhooks were registered on');
+    }
+
+    /**
+     * @test
+     */
+    public function it_explains_why_the_webhooks_could_not_be_registered(): void
+    {
+        $this->logIn();
+        $this->shipmondo->respond('GET', 'webhooks', 401, ['error' => 'Invalid credentials']);
+
+        $this->browser->request('GET', '/admin/shipmondo/register-webhooks');
+
+        self::assertResponseRedirects('/admin/shipmondo');
+        self::assertSame(0, self::nullableInt($this->database()->fetchOne('SELECT COUNT(*) FROM setono_sylius_shipmondo__registered_webhooks')));
+
+        $this->respondWithGatewaysAndTemplates();
+        $this->browser->followRedirect();
+
+        self::assertSelectorTextContains('.message.negative', 'The webhooks could not be registered, so Shipmondo may send only some of them, or none. Register them again once the problem is solved. Shipmondo did not accept the API credentials.');
+        self::assertSelectorNotExists('.message.positive');
+        self::assertSelectorTextContains('body', 'Either you have not registered webhooks yet');
     }
 
     /**
