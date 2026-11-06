@@ -75,7 +75,7 @@ final class GetPickupPointsAction
             ));
         } catch (ShipmondoException $e) {
             // first, since the SDK's InvalidUrlException is an \InvalidArgumentException too
-            return $this->answerFailedSearch(ShipmondoFailure::of($e), $shippingMethodCode);
+            return $this->logAndAnswerBadGateway(ShipmondoFailure::of($e), $shippingMethodCode);
         } catch (\InvalidArgumentException) {
             // the shipping address lacks what the search needs
             return new JsonResponse(status: Response::HTTP_BAD_REQUEST);
@@ -104,7 +104,7 @@ final class GetPickupPointsAction
      * picker tells the customer that the pickup points couldn't be loaded. The answer doesn't say why: that is for the
      * log, not for the shop's visitors
      */
-    private function answerFailedSearch(ShipmondoFailure $failure, string $shippingMethodCode): JsonResponse
+    private function logAndAnswerBadGateway(ShipmondoFailure $failure, string $shippingMethodCode): JsonResponse
     {
         $this->logger->log(
             match ($failure->kind) {

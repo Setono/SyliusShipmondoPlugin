@@ -171,6 +171,30 @@ final class PickupPointSelectionTest extends ShopTestCase
     /**
      * @test
      */
+    public function try_again_loads_the_pickup_points_when_the_only_shipping_method_has_pickup_point_delivery(): void
+    {
+        // the only shipping method is selected when the step loads, so it can't be chosen again
+        $this->regularShippingMethod->setEnabled(false);
+        $this->entityManager()->flush();
+        $this->shipmondo->respond('GET', 'pickup_points', 500, ['error' => 'Internal server error']);
+        $this->respondWithPickupPoints();
+        $this->checkoutToShippingStep();
+
+        expect($this->shippingMethodRadio(ShopFixtures::SHIPPING_METHOD_CODE))->toBeChecked();
+        expect($this->pickupPointList())->toContainText('The pickup points could not be loaded.');
+
+        // the button loads them on the page, without submitting the shipping step
+        $this->getPage()->evaluate('() => { window.shippingStepNotReloaded = true; }');
+        $this->pickupPointList()->getByRole('button', ['name' => 'Try again'])->click();
+
+        expect($this->pickupPointRadios())->toHaveCount(2);
+        self::assertTrue($this->getPage()->evaluate('() => window.shippingStepNotReloaded === true'));
+        self::assertSame([ShopFixtures::SHIPPING_METHOD_CODE, ShopFixtures::SHIPPING_METHOD_CODE], $this->requestedPickupPoints());
+    }
+
+    /**
+     * @test
+     */
     public function choosing_the_shipping_method_again_loads_the_pickup_points_that_could_not_be_loaded(): void
     {
         // the first search fails, and the ones after it succeed

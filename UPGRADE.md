@@ -451,11 +451,11 @@ one kind of Shipmondo failure (`Failure\ShipmondoFailureKind`), and each caller 
 
 The picker's message is rendered by `@SetonoSyliusShipmondoPlugin/shop/pickup_points_not_loaded.html.twig`, which you
 can override like any bundle template, and is passed to the picker as its new `loadFailedHtml` option (you can also set
-it in `window.pickupPointManagerConfig`). Clicking an element in it with the `data-pickup-point-manager-retry`
-attribute, such as the template's button, loads the pickup points again, so keep the attribute if you override the
-template. **If you replaced `pickup-point-manager.js` or its `insertHtmlCallback`:** `getHtml()` returns the
-`loadFailedHtml` for a shipping method whose pickup points couldn't be loaded, so a callback that inserts `getHtml()`
-shows the message and its button without changes.
+it in `window.pickupPointManagerConfig`). Clicking an element with the `data-pickup-point-manager-load-again` attribute
+inside its `.pickup-points-container`, such as the template's button, loads the pickup points again, so keep both the
+class and the attribute if you override the template. **If you replaced `pickup-point-manager.js` or its
+`insertHtmlCallback`:** `getHtml()` returns the `loadFailedHtml` for a shipping method whose pickup points couldn't be
+loaded, so a callback that inserts `getHtml()` shows the message and its button without changes.
 
 New translation keys: `setono_sylius_shipmondo.shipmondo_data_not_fetched`, `setono_sylius_shipmondo.webhooks_registered`
 and `setono_sylius_shipmondo.webhooks_not_registered` in the `flashes` domain (the last one takes `%reason%`), and

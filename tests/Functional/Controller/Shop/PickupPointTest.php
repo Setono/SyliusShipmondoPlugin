@@ -155,7 +155,7 @@ final class PickupPointTest extends FunctionalTestCase
         self::assertStringContainsString('loadFailedHtml: "', $script->text());
         self::assertStringContainsString('The pickup points could not be loaded. Try again, or choose another shipping method.', $script->text());
         // the button the picker loads the pickup points again with
-        self::assertStringContainsString('data-pickup-point-manager-retry', $script->text());
+        self::assertStringContainsString('data-pickup-point-manager-load-again', $script->text());
         self::assertStringContainsString('Try again', $script->text());
     }
 
