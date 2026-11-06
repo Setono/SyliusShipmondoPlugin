@@ -6,7 +6,6 @@ namespace Setono\SyliusShipmondoPlugin\DataMapper;
 
 use Setono\Shipmondo\Request\SalesOrder\PaymentDetails;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
-use function Setono\SyliusShipmondoPlugin\formatAmount;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\PaymentMethodInterface;
 use Webmozart\Assert\Assert;
@@ -17,14 +16,14 @@ final class PaymentDetailsSalesOrderDataMapper implements SalesOrderDataMapperIn
     {
         $paymentMethod = self::getPaymentMethod($order);
 
-        $amount = AmountWithVat::includingVat($order->getTotal(), $order->getTaxTotal());
+        $amount = AmountWithVat::fromAmountIncludingVat($order->getTotal(), $order->getTaxTotal());
 
         $salesOrder->paymentDetails = new PaymentDetails(
-            amountExcludingVat: formatAmount($amount->excludingVat),
-            amountIncludingVat: formatAmount($order->getTotal()),
-            authorizedAmount: formatAmount($order->getTotal()),
+            amountExcludingVat: $amount->amountExcludingVat(),
+            amountIncludingVat: $amount->amountIncludingVat(),
+            authorizedAmount: $amount->amountIncludingVat(),
             currencyCode: $order->getCurrencyCode(),
-            vatAmount: formatAmount($amount->vat),
+            vatAmount: $amount->vatAmount(),
             vatPercent: $amount->vatPercent(),
             paymentMethod: $paymentMethod?->getName(),
             paymentGatewayId: null === $paymentMethod ? null : (string) $paymentMethod->getShipmondoId(),
