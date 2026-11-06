@@ -171,7 +171,7 @@ final class ShipmondoControllerTest extends FunctionalTestCase
 
         self::assertResponseIsSuccessful();
         self::assertSelectorTextContains('body', 'There are no configured payment gateways inside Shipmondo.');
-        self::assertSelectorTextContains('body', 'There are no shipment templates inside Shipmondo. Create your first shipment template there, and it is listed here.');
+        self::assertSelectorTextContains('body', 'There are no shipment templates inside Shipmondo. Go to Shipmondo and create your first shipment template.');
         self::assertSelectorTextNotContains('body', 'setono_sylius_shipmondo.ui.');
     }
 

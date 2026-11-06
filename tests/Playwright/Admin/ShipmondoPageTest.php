@@ -175,7 +175,8 @@ final class ShipmondoPageTest extends BrowserTestCase
 
         $segment = $page->locator('.ui.segment')->filter(['has' => $page->getByRole('heading', ['name' => 'Map shipping methods'])]);
         expect($segment)->not()->toContainText('setono_sylius_shipmondo.ui.');
-        expect($segment)->toContainText('shipment template');
+        expect($segment)->toContainText('There are no shipment templates inside Shipmondo. Go to Shipmondo and create your first shipment template.');
+        expect($segment->getByRole('link', ['name' => 'Shipmondo', 'exact' => true]))->toHaveAttribute('href', 'https://app.shipmondo.com/');
     }
 
     /**
