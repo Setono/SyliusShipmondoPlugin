@@ -494,8 +494,11 @@ when saving, and a shipping method whose shipment templates were all deselected 
 - the payment gateway dropdowns are clearable: a mapped one shows a clear icon, since the dropdown shows its empty
   choice only as placeholder text.
 
+Saving the form stores what it shows. So a mapping to a payment gateway or shipment template that Shipmondo no longer
+lists, which the page shows as empty, is removed the next time that form is saved; in 1.x it was kept.
+
 **If you override `@SetonoSyliusShipmondoPlugin/admin/shipmondo/index.html.twig`:** next to each shipping method's
-select, add `<input type="hidden" name="mapped_shipping_methods[]" value="{{ shippingMethod.id }}">`, which tells the
+select, add `<input type="hidden" name="listed_shipping_methods[]" value="{{ shippingMethod.id }}">`, which tells the
 page which shipping methods the form lists. Without it, shipment templates can still be mapped, but not all removed.
 Pass `clearable: true` when you turn the selects into dropdowns.
 

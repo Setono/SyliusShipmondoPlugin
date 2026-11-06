@@ -189,10 +189,11 @@ final class ShipmondoPageTest extends BrowserTestCase
         $this->fixtures->paymentMethod->setShipmondoId(self::QUICKPAY_ID);
         $this->entityManager()->flush();
         $this->visit('/admin/shipmondo');
-        $select = $this->mappingRow($this->paymentMethodsForm(), 'Bank transfer')->locator('select');
+        $row = $this->mappingRow($this->paymentMethodsForm(), 'Bank transfer');
+        $select = $row->locator('select');
         expect($select)->toHaveValue((string) self::QUICKPAY_ID);
 
-        $this->mappingRow($this->paymentMethodsForm(), 'Bank transfer')->locator('.ui.dropdown > .dropdown.icon.clear')->click();
+        $row->locator('.ui.dropdown > .dropdown.icon.clear')->click();
         expect($select)->toHaveValue('');
         $this->clickAndFollowRedirects($this->paymentMethodsForm()->getByRole('button', ['name' => 'Save changes']));
 
