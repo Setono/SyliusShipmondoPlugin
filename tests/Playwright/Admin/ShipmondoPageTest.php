@@ -168,8 +168,6 @@ final class ShipmondoPageTest extends BrowserTestCase
      */
     public function the_page_tells_the_admin_to_create_a_shipment_template_when_shipmondo_has_none(): void
     {
-        self::skipUntilFixed(19);
-
         $this->respondWithList('payment_gateways', []);
         $this->respondWithList('shipment_templates', []);
 
