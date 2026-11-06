@@ -10,6 +10,7 @@ use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
 use Psr\Http\Client\ClientInterface as HttpClientInterface;
 use Psr\Http\Message\RequestInterface;
+use Psr\Log\LogLevel;
 use Setono\Shipmondo\Response\PickupPoint\PickupPoint;
 use Setono\SyliusShipmondoPlugin\Controller\Shop\GetPickupPointsAction;
 use Sylius\Component\Core\Model\Address;
@@ -25,6 +26,7 @@ use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Shipment;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\ShippingMethod;
 use Tests\Setono\SyliusShipmondoPlugin\Support\PickupPoints;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\RecordingLogger;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ShipmondoApi;
 use Twig\Environment;
 
@@ -44,12 +46,15 @@ final class GetPickupPointsActionTest extends TestCase
     /** @var ObjectProphecy<Environment> */
     private ObjectProphecy $twig;
 
+    private RecordingLogger $logger;
+
     protected function setUp(): void
     {
         $this->shippingMethodRepository = $this->prophesize(ShippingMethodRepositoryInterface::class);
         $this->cartContext = $this->prophesize(CartContextInterface::class);
         $this->httpClient = $this->prophesize(HttpClientInterface::class);
         $this->twig = $this->prophesize(Environment::class);
+        $this->logger = new RecordingLogger();
     }
 
     /**
@@ -227,6 +232,48 @@ final class GetPickupPointsActionTest extends TestCase
     }
 
     /**
+     * The shop's pickup point picker tells the customer that the pickup points couldn't be loaded
+     *
+     * @test
+     *
+     * @dataProvider failedSearches
+     */
+    public function it_answers_bad_gateway_when_shipmondo_fails(int $statusCode, string $failure, string $level): void
+    {
+        $this->givenShippingMethod();
+        $this->cartContext->getCart()->willReturn(self::cart());
+        $this->httpClient->sendRequest(Argument::any())->willReturn(ShipmondoApi::json(['error' => 'Something is wrong'], $statusCode));
+        $this->twig->render(Argument::cetera())->shouldNotBeCalled();
+
+        $response = $this->invoke();
+
+        self::assertSame(Response::HTTP_BAD_GATEWAY, $response->getStatusCode());
+        self::assertSame(['error' => $failure], self::json($response));
+
+        self::assertCount(1, $this->logger->records);
+        ['level' => $loggedLevel, 'message' => $message, 'context' => $context] = $this->logger->records[0];
+        self::assertSame($level, $loggedLevel);
+        self::assertSame('Could not search Shipmondo for pickup points for the shipping method {shippingMethod}, so the customer cannot choose one', $message);
+        self::assertSame('gls_pickup', $context['shippingMethod']);
+        self::assertSame($failure, $context['shipmondoFailure']);
+        self::assertSame($statusCode, $context['shipmondoStatusCode']);
+        self::assertSame('Something is wrong', $context['shipmondoError']);
+    }
+
+    /**
+     * @return iterable<string, array{int, string, string}>
+     */
+    public static function failedSearches(): iterable
+    {
+        // expected to pass, so a warning
+        yield 'server error' => [500, 'temporary_failure', LogLevel::WARNING];
+        yield 'rate limited' => [429, 'rate_limited', LogLevel::WARNING];
+        // the shop has to fix something
+        yield 'credentials failure' => [401, 'credentials_failure', LogLevel::ERROR];
+        yield 'rejected' => [400, 'rejected', LogLevel::ERROR];
+    }
+
+    /**
      * @return \Generator<string, array{string|null, string|null, string|null, string|null}>
      */
     public function provideIncompleteSearches(): \Generator
@@ -329,6 +376,7 @@ final class GetPickupPointsActionTest extends TestCase
             $this->cartContext->reveal(),
             ShipmondoApi::client($this->httpClient->reveal()),
             $this->twig->reveal(),
+            $this->logger,
         );
 
         return $action($request ?? new Request(['shippingMethod' => 'gls_pickup']));

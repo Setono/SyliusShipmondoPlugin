@@ -9,6 +9,8 @@ use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
 use Psr\Http\Client\ClientInterface as HttpClientInterface;
+use Psr\Log\LogLevel;
+use Setono\Shipmondo\Exception\UnauthorizedException;
 use Setono\Shipmondo\Response\PaymentGateway\PaymentGateway;
 use Setono\Shipmondo\Response\ShipmentTemplate\ShipmentTemplate;
 use Setono\SyliusShipmondoPlugin\Controller\Admin\ShipmondoController;
@@ -27,12 +29,15 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
 use Symfony\Component\Messenger\Envelope;
+use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Routing\RouterInterface;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\PaymentMethod;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\ShippingMethod;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\RecordingLogger;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ShipmondoApi;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\Translations;
 use Twig\Environment;
 
 final class ShipmondoControllerTest extends TestCase
@@ -67,6 +72,8 @@ final class ShipmondoControllerTest extends TestCase
 
     private Session $session;
 
+    private RecordingLogger $logger;
+
     private RegisteredWebhooks $registeredWebhooks;
 
     /** @var list<PaymentMethod> */
@@ -86,6 +93,7 @@ final class ShipmondoControllerTest extends TestCase
         $this->twig = $this->prophesize(Environment::class);
         $this->router = $this->prophesize(RouterInterface::class);
         $this->session = new Session(new MockArraySessionStorage());
+        $this->logger = new RecordingLogger();
 
         $this->paymentMethods = [new PaymentMethod()];
         $this->shippingMethods = [new ShippingMethod()];
@@ -141,11 +149,27 @@ final class ShipmondoControllerTest extends TestCase
 
         self::assertSame(Response::HTTP_OK, $response->getStatusCode());
 
-        $errors = $this->session->getFlashBag()->peek('error');
-        self::assertCount(1, $errors);
-        self::assertIsString($errors[0]);
-        self::assertStringStartsWith('Could not fetch data from the Shipmondo API. Please check your Shipmondo credentials. Error: ', $errors[0]);
-        self::assertStringContainsString('401', $errors[0]);
+        self::assertSame([[
+            'message' => 'setono_sylius_shipmondo.shipmondo_data_not_fetched',
+            'parameters' => ['%reason%' => 'Shipmondo did not accept the API credentials. Check SHIPMONDO_USERNAME and SHIPMONDO_KEY, and that SHIPMONDO_SANDBOX matches the Shipmondo account they belong to.'],
+        ]], $this->session->getFlashBag()->peek('error'));
+        self::assertCount(1, $this->logger->records);
+        self::assertSame(LogLevel::WARNING, $this->logger->records[0]['level']);
+        self::assertSame('Could not fetch the payment gateways and shipment templates from Shipmondo for the Shipmondo page', $this->logger->records[0]['message']);
+        self::assertSame('credentials_failure', $this->logger->records[0]['context']['shipmondoFailure']);
+    }
+
+    /**
+     * @test
+     */
+    public function it_leaves_a_failure_that_is_not_shipmondos_to_fail_loudly(): void
+    {
+        $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'payment_gateways'))->willThrow(new \LogicException('A bug'));
+        $this->twig->render(Argument::cetera())->shouldNotBeCalled();
+
+        $this->expectExceptionObject(new \LogicException('A bug'));
+
+        $this->controller()->index(new Request());
     }
 
     /**
@@ -248,7 +272,59 @@ final class ShipmondoControllerTest extends TestCase
         $response = $this->controller()->registerWebhooks();
 
         self::assertSame('/admin/shipmondo', $response->getTargetUrl());
-        self::assertSame(['Webhooks registered successfully'], $this->session->getFlashBag()->peek('success'));
+        self::assertSame(['setono_sylius_shipmondo.webhooks_registered'], $this->session->getFlashBag()->peek('success'));
+        self::assertSame([], $this->session->getFlashBag()->peek('error'));
+    }
+
+    /**
+     * @test
+     */
+    public function it_explains_why_the_webhooks_could_not_be_registered(): void
+    {
+        $exception = new UnauthorizedException(ShipmondoApi::json(['error' => 'Invalid credentials'], 401));
+        $this->commandBus->dispatch(Argument::type(RegisterWebhooks::class))
+            ->willThrow(new HandlerFailedException(new Envelope(new RegisterWebhooks()), ['RegisterWebhooksHandler::__invoke' => $exception]))
+        ;
+        $this->router->generate('setono_sylius_shipmondo_admin_shipmondo_index', [], UrlGeneratorInterface::ABSOLUTE_PATH)
+            ->willReturn('/admin/shipmondo')
+        ;
+
+        $response = $this->controller()->registerWebhooks();
+
+        self::assertSame('/admin/shipmondo', $response->getTargetUrl());
+        self::assertSame([], $this->session->getFlashBag()->peek('success'));
+        self::assertSame([[
+            'message' => 'setono_sylius_shipmondo.webhooks_not_registered',
+            'parameters' => ['%reason%' => 'Shipmondo did not accept the API credentials. Check SHIPMONDO_USERNAME and SHIPMONDO_KEY, and that SHIPMONDO_SANDBOX matches the Shipmondo account they belong to.'],
+        ]], $this->session->getFlashBag()->peek('error'));
+        self::assertSame([[
+            'level' => LogLevel::ERROR,
+            'message' => 'The webhooks could not be registered in Shipmondo',
+            'context' => [
+                'exception' => $exception,
+                'shipmondoFailure' => 'credentials_failure',
+                'shipmondoStatusCode' => 401,
+                'shipmondoError' => 'Invalid credentials',
+            ],
+        ]], $this->logger->records);
+    }
+
+    /**
+     * @test
+     */
+    public function it_leaves_a_registration_failure_that_is_not_shipmondos_to_fail_loudly(): void
+    {
+        $failure = new HandlerFailedException(new Envelope(new RegisterWebhooks()), ['RegisterWebhooksHandler::__invoke' => new \LogicException('A bug')]);
+        $this->commandBus->dispatch(Argument::type(RegisterWebhooks::class))->willThrow($failure);
+
+        try {
+            $this->controller()->registerWebhooks();
+            self::fail('The failure was not let through');
+        } catch (HandlerFailedException $e) {
+            self::assertSame($failure, $e);
+        }
+
+        self::assertSame([], $this->session->getFlashBag()->peekAll());
     }
 
     private function givenShipmondoApi(): void
@@ -318,6 +394,8 @@ final class ShipmondoControllerTest extends TestCase
             $this->paymentMethodRepository->reveal(),
             $this->shippingMethodRepository->reveal(),
             ShipmondoApi::client($this->httpClient->reveal()),
+            Translations::translator(),
+            $this->logger,
         );
         $controller->setContainer($container);
 

@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Controller\Admin;
 
+use Psr\Log\LoggerInterface;
 use Setono\Shipmondo\Client\Client;
+use Setono\Shipmondo\Exception\ShipmondoException;
 use Setono\Shipmondo\Response\PaymentGateway\PaymentGateway;
 use Setono\Shipmondo\Response\ShipmentTemplate\ShipmentTemplate;
+use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
 use Setono\SyliusShipmondoPlugin\Message\Command\RegisterWebhooks;
 use Setono\SyliusShipmondoPlugin\Model\PaymentMethodInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
@@ -18,7 +21,9 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\Messenger\Exception\HandlerFailedException;
 use Symfony\Component\Messenger\MessageBusInterface;
+use Symfony\Contracts\Translation\TranslatorInterface;
 use Webmozart\Assert\Assert;
 
 final class ShipmondoController extends AbstractController
@@ -30,6 +35,8 @@ final class ShipmondoController extends AbstractController
         private readonly PaymentMethodRepositoryInterface $paymentMethodRepository,
         private readonly ShippingMethodRepositoryInterface $shippingMethodRepository,
         private readonly Client $client,
+        private readonly TranslatorInterface $translator,
+        private readonly LoggerInterface $logger,
     ) {
     }
 
@@ -51,9 +58,8 @@ final class ShipmondoController extends AbstractController
          */
         $shipmondoShipmentTemplates = [];
 
-        // The data below is fetched from the Shipmondo API. If the API is unreachable or the credentials are
-        // missing/invalid we still want to render the page (e.g. so the webhooks can be registered), so we
-        // degrade gracefully and surface the error as a flash message instead of letting it become an HTTP 500.
+        // The page is still rendered when Shipmondo fails (e.g. so the webhooks can be registered), with a flash message
+        // that explains why. Anything else is a bug, and is left to fail loudly
         try {
             foreach ($this->client->paymentGateways()->paginate() as $item) {
                 $shipmondoPaymentMethods[] = $item;
@@ -62,11 +68,11 @@ final class ShipmondoController extends AbstractController
             foreach ($this->client->shipmentTemplates()->paginate() as $item) {
                 $shipmondoShipmentTemplates[] = $item;
             }
-        } catch (\Throwable $e) {
-            $this->addFlash('error', sprintf(
-                'Could not fetch data from the Shipmondo API. Please check your Shipmondo credentials. Error: %s',
-                $e->getMessage(),
-            ));
+        } catch (ShipmondoException $e) {
+            $failure = ShipmondoFailure::of($e);
+
+            $this->logger->warning('Could not fetch the payment gateways and shipment templates from Shipmondo for the Shipmondo page', $failure->logContext());
+            $this->addFailureFlash('setono_sylius_shipmondo.shipmondo_data_not_fetched', $failure);
         }
 
         // todo this should be made using Symfony forms
@@ -140,10 +146,28 @@ final class ShipmondoController extends AbstractController
 
     public function registerWebhooks(): RedirectResponse
     {
-        $this->commandBus->dispatch(new RegisterWebhooks());
+        try {
+            $this->commandBus->dispatch(new RegisterWebhooks());
 
-        $this->addFlash('success', 'Webhooks registered successfully');
+            $this->addFlash('success', 'setono_sylius_shipmondo.webhooks_registered');
+        } catch (HandlerFailedException $e) {
+            $failure = ShipmondoFailure::of(array_values($e->getWrappedExceptions(ShipmondoException::class))[0] ?? throw $e);
+
+            $this->logger->error('The webhooks could not be registered in Shipmondo', $failure->logContext());
+            $this->addFailureFlash('setono_sylius_shipmondo.webhooks_not_registered', $failure);
+        }
 
         return $this->redirectToRoute('setono_sylius_shipmondo_admin_shipmondo_index');
+    }
+
+    /**
+     * Flashes an error that says what failed, followed by the failure's explanation as its %reason%
+     */
+    private function addFailureFlash(string $message, ShipmondoFailure $failure): void
+    {
+        $this->addFlash('error', [
+            'message' => $message,
+            'parameters' => ['%reason%' => $failure->trans($this->translator)],
+        ]);
     }
 }

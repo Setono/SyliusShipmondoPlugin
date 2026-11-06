@@ -12,16 +12,20 @@ use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
 use Psr\Log\LogLevel;
+use Setono\Shipmondo\Exception\ConnectionException;
+use Setono\Shipmondo\Exception\ForbiddenException;
 use Setono\Shipmondo\Exception\InternalServerErrorException;
 use Setono\Shipmondo\Exception\MalformedResponseException;
 use Setono\Shipmondo\Exception\NotFoundException;
 use Setono\Shipmondo\Exception\TooManyRequestsException;
 use Setono\Shipmondo\Exception\UnauthorizedException;
+use Setono\Shipmondo\Exception\UnexpectedClientErrorException;
 use Setono\Shipmondo\Exception\UnexpectedStatusCodeException;
 use Setono\Shipmondo\Exception\ValidationException;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\Canceller\OrderCanceller;
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
+use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailureKind;
 use Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder;
 use Setono\SyliusShipmondoPlugin\Message\Command\UploadOrder;
 use Setono\SyliusShipmondoPlugin\Message\CommandHandler\DeleteOrderHandler;
@@ -44,7 +48,6 @@ use Symfony\Component\Messenger\Middleware\HandleMessageMiddleware;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Workflow\Event\GuardEvent;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
-use Tests\Setono\SyliusShipmondoPlugin\Support\NetworkException;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\Orders;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\RecordingLogger;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ScriptedHttpClient;
@@ -175,6 +178,7 @@ final class OrderUploaderTest extends TestCase
     public function it_settles_the_order_by_how_shipmondo_answered_a_failed_upload(
         int $statusCode,
         string $exception,
+        ShipmondoFailureKind $failure,
         UploadOutcome $outcome,
         string $state,
         string $level,
@@ -198,6 +202,7 @@ final class OrderUploaderTest extends TestCase
                 'state' => $state,
                 'salesOrder' => null,
                 'exception' => $exception,
+                'shipmondoFailure' => $failure->value,
                 'shipmondoStatusCode' => $statusCode,
                 'shipmondoError' => 'The payment gateway does not exist',
             ],
@@ -205,28 +210,26 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{int, string, UploadOutcome, string, string, string}>
+     * One row per way a Shipmondo failure settles the order. Which status codes make which Shipmondo failure is
+     * {@see \Tests\Setono\SyliusShipmondoPlugin\Unit\Failure\ShipmondoFailureTest}'s concern
+     *
+     * @return iterable<string, array{int, string, ShipmondoFailureKind, UploadOutcome, string, string, string}>
      */
     public static function failedUploads(): iterable
     {
-        $rejected = static fn (int $statusCode, string $exception): array => [
-            $statusCode, $exception, UploadOutcome::Rejected, self::FAILED, LogLevel::ERROR, self::REJECTED_MESSAGE,
+        $rejected = static fn (int $statusCode, string $exception, ShipmondoFailureKind $failure = ShipmondoFailureKind::Rejected): array => [
+            $statusCode, $exception, $failure, UploadOutcome::Rejected, self::FAILED, LogLevel::ERROR, self::REJECTED_MESSAGE,
         ];
 
-        yield '302 Found' => [302, UnexpectedStatusCodeException::class, UploadOutcome::UnexpectedFailure, self::FAILED, LogLevel::ERROR, self::UNEXPECTED_FAILURE_MESSAGE];
-        yield '399' => [399, UnexpectedStatusCodeException::class, UploadOutcome::UnexpectedFailure, self::FAILED, LogLevel::ERROR, self::UNEXPECTED_FAILURE_MESSAGE];
-        yield '400 Bad Request' => $rejected(400, UnexpectedStatusCodeException::class);
-        yield '401 Unauthorized' => [401, UnauthorizedException::class, UploadOutcome::CredentialsFailure, self::PENDING, LogLevel::ERROR, self::CREDENTIALS_FAILURE_MESSAGE];
-        yield '402 Payment Required' => $rejected(402, UnexpectedStatusCodeException::class);
-        yield '403 Forbidden' => [403, UnexpectedStatusCodeException::class, UploadOutcome::CredentialsFailure, self::PENDING, LogLevel::ERROR, self::CREDENTIALS_FAILURE_MESSAGE];
-        yield '404 Not Found' => $rejected(404, NotFoundException::class);
+        yield '302 Found' => [302, UnexpectedStatusCodeException::class, ShipmondoFailureKind::UnexpectedFailure, UploadOutcome::UnexpectedFailure, self::FAILED, LogLevel::ERROR, self::UNEXPECTED_FAILURE_MESSAGE];
+        yield '400 Bad Request' => $rejected(400, UnexpectedClientErrorException::class);
+        yield '401 Unauthorized' => [401, UnauthorizedException::class, ShipmondoFailureKind::CredentialsFailure, UploadOutcome::CredentialsFailure, self::PENDING, LogLevel::ERROR, self::CREDENTIALS_FAILURE_MESSAGE];
+        yield '403 Forbidden' => [403, ForbiddenException::class, ShipmondoFailureKind::CredentialsFailure, UploadOutcome::CredentialsFailure, self::PENDING, LogLevel::ERROR, self::CREDENTIALS_FAILURE_MESSAGE];
+        // most likely something shop-wide, such as a wrong API URL, which the upload run's stop rule catches
+        yield '404 Not Found' => $rejected(404, NotFoundException::class, ShipmondoFailureKind::NotFound);
         yield '422 Unprocessable Entity' => $rejected(422, ValidationException::class);
-        yield '428 Precondition Required' => $rejected(428, UnexpectedStatusCodeException::class);
-        yield '429 Too Many Requests' => [429, TooManyRequestsException::class, UploadOutcome::RateLimited, self::PENDING, LogLevel::WARNING, self::RATE_LIMITED_MESSAGE];
-        yield '430' => $rejected(430, UnexpectedStatusCodeException::class);
-        yield '499' => $rejected(499, UnexpectedStatusCodeException::class);
-        yield '500 Internal Server Error' => [500, InternalServerErrorException::class, UploadOutcome::TemporaryFailure, self::PENDING, LogLevel::WARNING, self::TEMPORARY_FAILURE_MESSAGE];
-        yield '503 Service Unavailable' => [503, InternalServerErrorException::class, UploadOutcome::TemporaryFailure, self::PENDING, LogLevel::WARNING, self::TEMPORARY_FAILURE_MESSAGE];
+        yield '429 Too Many Requests' => [429, TooManyRequestsException::class, ShipmondoFailureKind::RateLimited, UploadOutcome::RateLimited, self::PENDING, LogLevel::WARNING, self::RATE_LIMITED_MESSAGE];
+        yield '500 Internal Server Error' => [500, InternalServerErrorException::class, ShipmondoFailureKind::TemporaryFailure, UploadOutcome::TemporaryFailure, self::PENDING, LogLevel::WARNING, self::TEMPORARY_FAILURE_MESSAGE];
     }
 
     /**
@@ -248,7 +251,10 @@ final class OrderUploaderTest extends TestCase
                 'outcome' => 'temporary_failure',
                 'state' => self::PENDING,
                 'salesOrder' => null,
-                'exception' => NetworkException::class,
+                'exception' => ConnectionException::class,
+                'shipmondoFailure' => 'temporary_failure',
+                'shipmondoStatusCode' => null,
+                'shipmondoError' => null,
             ],
         ]], $this->logRecords());
     }
@@ -270,7 +276,16 @@ final class OrderUploaderTest extends TestCase
         self::assertSame([[
             'level' => LogLevel::ERROR,
             'message' => self::UNEXPECTED_FAILURE_MESSAGE,
-            'context' => ['order' => '#001', 'outcome' => 'unexpected_failure', 'state' => self::FAILED, 'salesOrder' => null, 'exception' => $error],
+            'context' => [
+                'order' => '#001',
+                'outcome' => 'unexpected_failure',
+                'state' => self::FAILED,
+                'salesOrder' => null,
+                'exception' => $error,
+                'shipmondoFailure' => 'unexpected_failure',
+                'shipmondoStatusCode' => null,
+                'shipmondoError' => null,
+            ],
         ]], $this->logger->records);
     }
 
@@ -294,6 +309,7 @@ final class OrderUploaderTest extends TestCase
                 'state' => self::FAILED,
                 'salesOrder' => null,
                 'exception' => MalformedResponseException::class,
+                'shipmondoFailure' => 'unexpected_failure',
                 'shipmondoStatusCode' => 201,
                 'shipmondoError' => null,
             ],

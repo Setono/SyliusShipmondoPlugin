@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Setono\SyliusShipmondoPlugin\Functional\Command;
 
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
+use Symfony\Component\Console\Command\Command;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
 use Webmozart\Assert\Assert;
@@ -75,6 +76,22 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
 
         self::assertCount(10, $this->shipmondo->requests('POST', 'webhooks'));
         self::assertSame([$this->registrar()->getVersion()], $this->registeredVersions());
+    }
+
+    /**
+     * @test
+     */
+    public function it_fails_and_explains_why_when_the_webhooks_cannot_be_registered(): void
+    {
+        $this->shipmondo->respond('GET', 'webhooks', 401, ['error' => 'Invalid credentials']);
+
+        $tester = $this->executeCommand(self::COMMAND);
+
+        self::assertSame(Command::FAILURE, $tester->getStatusCode());
+        $display = (string) preg_replace('/\s+/', ' ', $tester->getDisplay());
+        self::assertStringContainsString('The webhooks could not be registered', $display);
+        self::assertStringContainsString('Shipmondo did not accept the API credentials', $display);
+        self::assertSame([], $this->registeredVersions());
     }
 
     /**

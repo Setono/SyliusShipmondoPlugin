@@ -4,6 +4,14 @@ setono_sylius_shipmondo:
             carrier_code_placeholder: Select carrier...
             pickup_point_delivery: Pickup point delivery
     
+    shipmondo_failure:
+        credentials_failure: Shipmondo did not accept the API credentials. Check SHIPMONDO_USERNAME and SHIPMONDO_KEY, and that SHIPMONDO_SANDBOX matches the Shipmondo account they belong to.
+        rate_limited: Shipmondo is limiting how often the store may call it. Try again in a minute.
+        temporary_failure: Shipmondo could not be reached, or had a server error. Try again later.
+        not_found: 'Shipmondo could not find what was asked for: %error%'
+        rejected: 'Shipmondo refused the request: %error%'
+        unexpected_failure: 'Something unexpected went wrong when calling Shipmondo: %error%'
+    
     ui:
         cancelled: Cancelled
         failed: Failed
@@ -16,6 +24,7 @@ setono_sylius_shipmondo:
         payment_method_in_sylius: Payment method in Sylius
         pending: Pending
         pickup_point_delivery: Pickup point delivery
+        pickup_points_not_loaded: The pickup points could not be loaded. Choose the shipping method again to try again, or choose another shipping method.
         register_webhooks: Register webhooks
         register_webhooks_information: Either you have not registered webhooks yet or you need to re-register them because of changes in the configuration. Either way, please click the "Register webhooks" button below.
         select_shipmondo_payment_method: Select payment method...

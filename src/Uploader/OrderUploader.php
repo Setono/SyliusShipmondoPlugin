@@ -6,15 +6,15 @@ namespace Setono\SyliusShipmondoPlugin\Uploader;
 
 use Doctrine\DBAL\LockMode;
 use Doctrine\Persistence\ManagerRegistry;
-use Psr\Http\Client\ClientExceptionInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
 use Setono\Doctrine\ORMTrait;
 use Setono\Shipmondo\Client\ClientInterface;
-use Setono\Shipmondo\Exception\ResponseAwareException;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface;
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
+use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
+use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailureKind;
 use Setono\SyliusShipmondoPlugin\Message\Command\UploadOrder;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface;
@@ -103,7 +103,9 @@ final class OrderUploader implements OrderUploaderInterface
 
             $response = $this->shipmondoClient->salesOrders()->create($salesOrder);
         } catch (\Throwable $e) {
-            return $this->settle($order, self::classify($e), failure: $e);
+            $failure = ShipmondoFailure::of($e);
+
+            return $this->settle($order, self::outcomeOf($failure), failure: $failure);
         }
 
         return $this->settle($order, UploadOutcome::Uploaded, salesOrderId: $response->id);
@@ -177,7 +179,7 @@ final class OrderUploader implements OrderUploaderInterface
         OrderInterface $order,
         UploadOutcome $outcome,
         ?int $salesOrderId = null,
-        ?\Throwable $failure = null,
+        ?ShipmondoFailure $failure = null,
     ): UploadOutcome {
         $manager = $this->getManager($order);
 
@@ -209,32 +211,22 @@ final class OrderUploader implements OrderUploaderInterface
         return $outcome;
     }
 
-    private static function classify(\Throwable $failure): UploadOutcome
+    /**
+     * A failure that says nothing about the order puts it back to pending. A 404 counts as rejected: on creating a
+     * sales order, it most likely means something shop-wide is wrong, which the upload run's stop rule catches
+     */
+    private static function outcomeOf(ShipmondoFailure $failure): UploadOutcome
     {
-        // PSR-18: Shipmondo couldn't be reached, e.g. a network problem or a timeout
-        if ($failure instanceof ClientExceptionInterface) {
-            return UploadOutcome::TemporaryFailure;
-        }
-
-        // not Shipmondo's answer
-        if (!$failure instanceof ResponseAwareException) {
-            return UploadOutcome::UnexpectedFailure;
-        }
-
-        $statusCode = $failure->getResponse()->getStatusCode();
-
-        return match (true) {
-            401 === $statusCode, 403 === $statusCode => UploadOutcome::CredentialsFailure,
-            429 === $statusCode => UploadOutcome::RateLimited,
-            $statusCode >= 500 => UploadOutcome::TemporaryFailure,
-            $statusCode >= 400 => UploadOutcome::Rejected,
-            // not an error status: a successful answer the SDK couldn't read, so the sales order may exist, or a redirect
-            // the HTTP client didn't follow
-            default => UploadOutcome::UnexpectedFailure,
+        return match ($failure->kind) {
+            ShipmondoFailureKind::CredentialsFailure => UploadOutcome::CredentialsFailure,
+            ShipmondoFailureKind::RateLimited => UploadOutcome::RateLimited,
+            ShipmondoFailureKind::TemporaryFailure => UploadOutcome::TemporaryFailure,
+            ShipmondoFailureKind::NotFound, ShipmondoFailureKind::Rejected => UploadOutcome::Rejected,
+            ShipmondoFailureKind::UnexpectedFailure => UploadOutcome::UnexpectedFailure,
         };
     }
 
-    private function log(OrderInterface $order, UploadOutcome $outcome, ?\Throwable $failure = null): void
+    private function log(OrderInterface $order, UploadOutcome $outcome, ?ShipmondoFailure $failure = null): void
     {
         [$level, $message] = match ($outcome) {
             UploadOutcome::Uploaded => [LogLevel::INFO, 'The order {order} was uploaded to Shipmondo as the sales order {salesOrder}'],
@@ -255,12 +247,7 @@ final class OrderUploader implements OrderUploaderInterface
         ];
 
         if (null !== $failure) {
-            $context['exception'] = $failure;
-
-            if ($failure instanceof ResponseAwareException) {
-                $context['shipmondoStatusCode'] = $failure->getResponse()->getStatusCode();
-                $context['shipmondoError'] = $failure->getError();
-            }
+            $context += $failure->logContext();
         }
 
         $this->logger->log($level, $message, $context);

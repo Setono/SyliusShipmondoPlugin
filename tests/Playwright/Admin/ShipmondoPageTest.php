@@ -17,7 +17,7 @@ use Tests\Setono\SyliusShipmondoPlugin\Playwright\BrowserTestCase;
  */
 final class ShipmondoPageTest extends BrowserTestCase
 {
-    private const API_ERROR = 'Could not fetch data from the Shipmondo API. Please check your Shipmondo credentials.';
+    private const API_ERROR = 'Could not fetch the payment gateways and shipment templates from Shipmondo. Shipmondo did not accept the API credentials.';
 
     private const NO_PAYMENT_GATEWAYS = 'There are no configured payment gateways inside Shipmondo.';
 
@@ -227,9 +227,6 @@ final class ShipmondoPageTest extends BrowserTestCase
      */
     public function registering_the_webhooks_explains_the_problem_when_shipmondo_rejects_the_credentials(): void
     {
-        // registering the webhooks while the Shipmondo API fails ends in an HTTP 500 error page
-        self::skipUntilFixed(24);
-
         $this->shipmondo->respond('GET', 'payment_gateways', 401, ['error' => 'Invalid API credentials']);
         $this->shipmondo->respond('GET', 'webhooks', 401, ['error' => 'Invalid API credentials']);
         $page = $this->visit('/admin/shipmondo');
@@ -238,7 +235,10 @@ final class ShipmondoPageTest extends BrowserTestCase
 
         self::assertLessThan(500, $this->getLastResponse()?->getStatusCode() ?? 500);
         expect($page)->toHaveURL('http://localhost/admin/shipmondo');
-        expect($this->flash('error'))->toBeVisible();
+        // the page itself can't fetch from Shipmondo either, so it flashes that too
+        expect($this->flash('error'))->toHaveCount(2);
+        expect($page->getByText('The webhooks could not be registered, so Shipmondo may send only some of them, or none. Register them again once the problem is solved. Shipmondo did not accept the API credentials.'))->toBeVisible();
+        expect($this->flash('success'))->toHaveCount(0);
     }
 
     /**
