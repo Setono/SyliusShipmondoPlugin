@@ -24,7 +24,7 @@ setono_sylius_shipmondo:
         payment_method_in_sylius: Payment method in Sylius
         pending: Pending
         pickup_point_delivery: Pickup point delivery
-        pickup_points_not_loaded: The pickup points could not be loaded. Choose the shipping method again to try again, or choose another shipping method.
+        pickup_points_not_loaded: The pickup points could not be loaded. Try again, or choose another shipping method.
         register_webhooks: Register webhooks
         register_webhooks_information: Either you have not registered webhooks yet or you need to re-register them because of changes in the configuration. Either way, please click the "Register webhooks" button below.
         select_shipmondo_payment_method: Select payment method...
@@ -33,6 +33,7 @@ setono_sylius_shipmondo:
         shipmondo_index: Manage your Shipmondo settings
         shipmondo_state: Shipmondo state
         shipping_method_in_sylius: Shipping method in Sylius
+        try_again: Try again
         uploaded_to_shipmondo: Uploaded to Shipmondo
         uploading_to_shipmondo: Uploading to Shipmondo
         webhooks: Webhooks

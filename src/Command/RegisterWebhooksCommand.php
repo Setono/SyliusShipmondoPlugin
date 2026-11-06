@@ -42,7 +42,7 @@ final class RegisterWebhooksCommand extends Command
             $failure = ShipmondoFailure::of(array_values($e->getWrappedExceptions(ShipmondoException::class))[0] ?? throw $e);
 
             $this->logger->error('The webhooks could not be registered in Shipmondo', $failure->logContext());
-            (new SymfonyStyle($input, $output))->error($this->translator->trans(
+            (new SymfonyStyle($input, $output))->getErrorStyle()->error($this->translator->trans(
                 'setono_sylius_shipmondo.webhooks_not_registered',
                 ['%reason%' => $failure->trans($this->translator)],
                 'flashes',

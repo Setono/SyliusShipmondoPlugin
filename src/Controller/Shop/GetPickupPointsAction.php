@@ -73,10 +73,12 @@ final class GetPickupPointsAction
                 zipCode: (string) $shippingAddress->getPostcode(),
                 address: (string) $shippingAddress->getStreet(),
             ));
-        } catch (\InvalidArgumentException) {
-            return new JsonResponse(status: Response::HTTP_BAD_REQUEST);
         } catch (ShipmondoException $e) {
-            return $this->failed(ShipmondoFailure::of($e), $shippingMethodCode);
+            // first, since the SDK's InvalidUrlException is an \InvalidArgumentException too
+            return $this->logAndAnswerBadGateway(ShipmondoFailure::of($e), $shippingMethodCode);
+        } catch (\InvalidArgumentException) {
+            // the shipping address lacks what the search needs
+            return new JsonResponse(status: Response::HTTP_BAD_REQUEST);
         }
 
         // The customer might already have chosen a pickup point,
@@ -98,9 +100,11 @@ final class GetPickupPointsAction
     }
 
     /**
-     * The shop's pickup point picker tells the customer that the pickup points couldn't be loaded
+     * Logs why Shipmondo couldn't search for pickup points, and answers 502 Bad Gateway, on which the shop's pickup point
+     * picker tells the customer that the pickup points couldn't be loaded. The answer doesn't say why: that is for the
+     * log, not for the shop's visitors
      */
-    private function failed(ShipmondoFailure $failure, string $shippingMethodCode): JsonResponse
+    private function logAndAnswerBadGateway(ShipmondoFailure $failure, string $shippingMethodCode): JsonResponse
     {
         $this->logger->log(
             match ($failure->kind) {
@@ -111,7 +115,7 @@ final class GetPickupPointsAction
             ['shippingMethod' => $shippingMethodCode] + $failure->logContext(),
         );
 
-        return new JsonResponse(['error' => $failure->kind->value], Response::HTTP_BAD_GATEWAY);
+        return new JsonResponse(status: Response::HTTP_BAD_GATEWAY);
     }
 
     /**

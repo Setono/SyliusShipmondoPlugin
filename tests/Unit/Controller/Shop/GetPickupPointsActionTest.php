@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Controller\Shop;
 
+use CuyZ\Valinor\MapperBuilder;
 use PHPUnit\Framework\TestCase;
 use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
@@ -11,6 +12,9 @@ use Prophecy\Prophecy\ObjectProphecy;
 use Psr\Http\Client\ClientInterface as HttpClientInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Log\LogLevel;
+use Setono\Shipmondo\Client\ClientInterface as ShipmondoClientInterface;
+use Setono\Shipmondo\Client\Endpoint\PickupPointsEndpoint;
+use Setono\Shipmondo\Exception\InvalidUrlException;
 use Setono\Shipmondo\Response\PickupPoint\PickupPoint;
 use Setono\SyliusShipmondoPlugin\Controller\Shop\GetPickupPointsAction;
 use Sylius\Component\Core\Model\Address;
@@ -248,7 +252,7 @@ final class GetPickupPointsActionTest extends TestCase
         $response = $this->invoke();
 
         self::assertSame(Response::HTTP_BAD_GATEWAY, $response->getStatusCode());
-        self::assertSame(['error' => $failure], self::json($response));
+        self::assertSame('{}', $response->getContent());
 
         self::assertCount(1, $this->logger->records);
         ['level' => $loggedLevel, 'message' => $message, 'context' => $context] = $this->logger->records[0];
@@ -258,6 +262,28 @@ final class GetPickupPointsActionTest extends TestCase
         self::assertSame($failure, $context['shipmondoFailure']);
         self::assertSame($statusCode, $context['shipmondoStatusCode']);
         self::assertSame('Something is wrong', $context['shipmondoError']);
+    }
+
+    /**
+     * The SDK's InvalidUrlException is an \InvalidArgumentException too, like the search's own complaints about the
+     * shipping address, which answer 400. It is a Shipmondo failure, so it is logged and answered 502
+     *
+     * @test
+     */
+    public function it_answers_bad_gateway_when_the_sdk_refuses_the_url_of_the_search(): void
+    {
+        $this->givenShippingMethod();
+        $this->cartContext->getCart()->willReturn(self::cart());
+        $client = $this->prophesize(ShipmondoClientInterface::class);
+        $client->get('pickup_points', Argument::any())->willThrow(new InvalidUrlException('Refusing to send the credentials to another host'));
+        $client->pickupPoints()->willReturn(new PickupPointsEndpoint($client->reveal(), new MapperBuilder()));
+        $this->twig->render(Argument::cetera())->shouldNotBeCalled();
+
+        $response = $this->invoke(client: $client->reveal());
+
+        self::assertSame(Response::HTTP_BAD_GATEWAY, $response->getStatusCode());
+        self::assertCount(1, $this->logger->records);
+        self::assertSame('unexpected_failure', $this->logger->records[0]['context']['shipmondoFailure']);
     }
 
     /**
@@ -369,12 +395,12 @@ final class GetPickupPointsActionTest extends TestCase
         return $order;
     }
 
-    private function invoke(?Request $request = null): Response
+    private function invoke(?Request $request = null, ?ShipmondoClientInterface $client = null): Response
     {
         $action = new GetPickupPointsAction(
             $this->shippingMethodRepository->reveal(),
             $this->cartContext->reveal(),
-            ShipmondoApi::client($this->httpClient->reveal()),
+            $client ?? ShipmondoApi::client($this->httpClient->reveal()),
             $this->twig->reveal(),
             $this->logger,
         );

@@ -105,7 +105,7 @@ final class PickupPointSelectionTest extends ShopTestCase
             '() => window.consoleErrors.some((error) => error.startsWith("Failed to load pickup point data"))',
             'The pickup point manager did not report the failed request',
         );
-        expect($this->pickupPointList())->toContainText('The pickup points could not be loaded. Choose the shipping method again to try again, or choose another shipping method.');
+        expect($this->pickupPointList())->toContainText('The pickup points could not be loaded. Try again, or choose another shipping method.');
         expect($this->pickupPointRadios())->toHaveCount(0);
 
         // a shipping method with pickup point delivery can't leave the checkout without a pickup point
@@ -139,6 +139,57 @@ final class PickupPointSelectionTest extends ShopTestCase
         self::assertCount($loading, $this->pickupPointManagerEvents('loading'));
         self::assertSame([ShopFixtures::SHIPPING_METHOD_CODE], $this->pickupPointManagerEvents('load_failed'));
         expect($this->pickupPointList())->toContainText('The pickup points could not be loaded.');
+    }
+
+    /**
+     * @test
+     */
+    public function try_again_loads_the_pickup_points_of_the_selected_shipping_method_again(): void
+    {
+        // the searches when the step loads and when the shipping method is selected fail, and the ones after succeed
+        $this->shipmondo->respond('GET', 'pickup_points', 500, ['error' => 'Internal server error']);
+        $this->shipmondo->respond('GET', 'pickup_points', 500, ['error' => 'Internal server error']);
+        $this->respondWithPickupPoints();
+        $this->recordConsoleErrors();
+        $this->checkoutToShippingStep();
+        $this->waitUntil(
+            '() => window.consoleErrors.some((error) => error.startsWith("Failed to load pickup point data"))',
+            'The pickup points did not fail to load',
+        );
+
+        $this->selectShippingMethod(self::PICKUP_POINT_SHIPPING_METHOD_NAME);
+        expect($this->pickupPointList())->toContainText('The pickup points could not be loaded.');
+
+        // a selected radio can't be chosen again, e.g. when it is the channel's only shipping method
+        $this->pickupPointList()->getByRole('button', ['name' => 'Try again'])->click();
+
+        expect($this->pickupPointRadios())->toHaveCount(2);
+        expect($this->shippingMethodRadio(ShopFixtures::SHIPPING_METHOD_CODE))->toBeChecked();
+        self::assertSame(array_fill(0, 3, ShopFixtures::SHIPPING_METHOD_CODE), $this->requestedPickupPoints());
+    }
+
+    /**
+     * @test
+     */
+    public function try_again_loads_the_pickup_points_when_the_only_shipping_method_has_pickup_point_delivery(): void
+    {
+        // the only shipping method is selected when the step loads, so it can't be chosen again
+        $this->regularShippingMethod->setEnabled(false);
+        $this->entityManager()->flush();
+        $this->shipmondo->respond('GET', 'pickup_points', 500, ['error' => 'Internal server error']);
+        $this->respondWithPickupPoints();
+        $this->checkoutToShippingStep();
+
+        expect($this->shippingMethodRadio(ShopFixtures::SHIPPING_METHOD_CODE))->toBeChecked();
+        expect($this->pickupPointList())->toContainText('The pickup points could not be loaded.');
+
+        // the button loads them on the page, without submitting the shipping step
+        $this->getPage()->evaluate('() => { window.shippingStepNotReloaded = true; }');
+        $this->pickupPointList()->getByRole('button', ['name' => 'Try again'])->click();
+
+        expect($this->pickupPointRadios())->toHaveCount(2);
+        self::assertTrue($this->getPage()->evaluate('() => window.shippingStepNotReloaded === true'));
+        self::assertSame([ShopFixtures::SHIPPING_METHOD_CODE, ShopFixtures::SHIPPING_METHOD_CODE], $this->requestedPickupPoints());
     }
 
     /**

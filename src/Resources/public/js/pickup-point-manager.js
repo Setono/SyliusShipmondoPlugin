@@ -19,7 +19,8 @@ class PickupPointManager {
   #loading = new Set();
 
   /**
-   * The shipping methods whose pickup points could not be loaded. Choosing such a shipping method loads them again
+   * The shipping methods whose pickup points could not be loaded. Choosing such a shipping method again, or the Try again
+   * button of the message shown instead of its pickup points, loads them again
    *
    * @type {Set<string>}
    */
@@ -31,7 +32,9 @@ class PickupPointManager {
    * @param {Array} config.allowedShippingMethods
    * @param {string} config.shippingMethodSelector
    * @param {function(HTMLInputElement)} config.insertHtmlCallback
-   * @param {string} config.loadFailedHtml shown instead of the pickup points when they could not be loaded
+   * @param {string} config.loadFailedHtml shown instead of the pickup points when they could not be loaded. Like the
+   *   pickup points, it is a .pickup-points-container, and clicking an element in it with the
+   *   data-pickup-point-manager-load-again attribute loads them again
    */
   constructor(config) {
     this.#config = Object.assign({
@@ -41,7 +44,7 @@ class PickupPointManager {
       insertHtmlCallback: function (radio) {
         radio.closest('.item').insertAdjacentHTML('afterend', this.getHtml(radio.value));
       },
-      loadFailedHtml: '<div class="item pickup-points-container"><div class="content"><div class="ui negative message">The pickup points could not be loaded.</div></div></div>',
+      loadFailedHtml: '<div class="item pickup-points-container"><div class="content"><div class="ui negative message"><p>The pickup points could not be loaded.</p><button type="button" class="ui small button" data-pickup-point-manager-load-again>Try again</button></div></div></div>',
     }, config);
   }
 
@@ -76,10 +79,20 @@ class PickupPointManager {
         return;
       }
 
-      // choosing the shipping method again tries to load its pickup points again
-      this.#failed.delete(e.currentTarget.value);
-      this.#insertHtml(e.currentTarget);
+      this.#loadAgain(e.currentTarget);
     });
+  }
+
+  /**
+   * Loads the shipping method's pickup points again if they could not be loaded, and shows them, or that they could
+   * not be loaded. The customer chose the shipping method, or clicked Try again
+   *
+   * @param {HTMLInputElement} radio
+   */
+  #loadAgain(radio) {
+    this.#failed.delete(radio.value);
+    this.#removePickupPoints();
+    this.#insertHtml(radio);
   }
 
   /**
@@ -96,6 +109,11 @@ class PickupPointManager {
     if(this.#failed.has(radio.value)) {
       this.#removePickupPoints();
       this.#config.insertHtmlCallback.call(this, radio);
+
+      // a selected shipping method can't be chosen again, e.g. when it is the only one, so the message offers to try again
+      document.querySelectorAll('.pickup-points-container [data-pickup-point-manager-load-again]').forEach((button) => {
+        button.addEventListener('click', () => this.#loadAgain(radio));
+      });
 
       radio.dispatchEvent(new CustomEvent('pickup_point_manager:load_failed', { bubbles: true, detail: { radio: radio, shippingMethod: radio.value } }));
 
