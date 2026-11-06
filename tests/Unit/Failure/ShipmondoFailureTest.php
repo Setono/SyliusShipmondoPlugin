@@ -6,7 +6,6 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Failure;
 
 use PHPUnit\Framework\TestCase;
 use Setono\Shipmondo\Exception\ConnectionException;
-use Setono\Shipmondo\Exception\ValidationException;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailureKind;
 use Symfony\Component\Translation\Loader\ArrayLoader;
@@ -161,7 +160,7 @@ final class ShipmondoFailureTest extends TestCase
         $translator->addLoader('array', new ArrayLoader());
         $translator->addResource('array', ['setono_sylius_shipmondo.shipmondo_failure.rejected' => 'Shipmondo afviste kaldet: %error%'], 'da', 'messages');
 
-        $failure = ShipmondoFailure::of(new ValidationException(ShipmondoApi::json(['error' => 'Ugyldig'], 422)));
+        $failure = ShipmondoFailure::of(self::failedCall((new ScriptedHttpClient())->respond(422, ['error' => 'Ugyldig'])));
 
         self::assertSame('Shipmondo afviste kaldet: Ugyldig', $failure->trans($translator, 'da'));
     }

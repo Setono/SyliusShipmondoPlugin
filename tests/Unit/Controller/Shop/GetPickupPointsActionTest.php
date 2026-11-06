@@ -248,7 +248,7 @@ final class GetPickupPointsActionTest extends TestCase
         $response = $this->invoke();
 
         self::assertSame(Response::HTTP_BAD_GATEWAY, $response->getStatusCode());
-        self::assertSame(['error' => $failure], self::json($response));
+        self::assertSame('{}', $response->getContent());
 
         self::assertCount(1, $this->logger->records);
         ['level' => $loggedLevel, 'message' => $message, 'context' => $context] = $this->logger->records[0];

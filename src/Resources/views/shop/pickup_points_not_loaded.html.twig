@@ -1,7 +1,10 @@
-{# Shown by the pickup point picker instead of the pickup points when they could not be loaded #}
+{# Shown by the pickup point picker instead of the pickup points when they could not be loaded. The picker loads them again when the button with data-pickup-point-manager-retry is clicked #}
 <div class="item pickup-points-container">
     <div class="field" style="width: 17px">&nbsp;</div>
     <div class="content">
-        <div class="ui negative message">{{ 'setono_sylius_shipmondo.ui.pickup_points_not_loaded'|trans }}</div>
+        <div class="ui negative message">
+            <p>{{ 'setono_sylius_shipmondo.ui.pickup_points_not_loaded'|trans }}</p>
+            <button type="button" class="ui small button" data-pickup-point-manager-retry>{{ 'setono_sylius_shipmondo.ui.try_again'|trans }}</button>
+        </div>
     </div>
 </div>

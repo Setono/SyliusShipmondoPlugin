@@ -122,7 +122,7 @@ final class PickupPointTest extends FunctionalTestCase
      *
      * @dataProvider failedSearches
      */
-    public function it_answers_bad_gateway_when_shipmondo_cannot_search_for_pickup_points(?int $statusCode, string $kind): void
+    public function it_answers_bad_gateway_when_shipmondo_cannot_search_for_pickup_points(?int $statusCode): void
     {
         $this->cartOfLoggedInCustomer();
         if (null === $statusCode) {
@@ -134,7 +134,8 @@ final class PickupPointTest extends FunctionalTestCase
         $this->browser->request('GET', self::ENDPOINT, ['shippingMethod' => ShopFixtures::SHIPPING_METHOD_CODE]);
 
         self::assertResponseStatusCodeSame(502);
-        self::assertSame(['error' => $kind], json_decode((string) $this->browser->getResponse()->getContent(), true, 512, \JSON_THROW_ON_ERROR));
+        // the failure is logged, and the shop's visitors aren't told what went wrong
+        self::assertSame('{}', $this->browser->getResponse()->getContent());
     }
 
     /**
@@ -152,18 +153,21 @@ final class PickupPointTest extends FunctionalTestCase
         );
         self::assertCount(1, $script);
         self::assertStringContainsString('loadFailedHtml: "', $script->text());
-        self::assertStringContainsString('The pickup points could not be loaded. Choose the shipping method again to try again, or choose another shipping method.', $script->text());
+        self::assertStringContainsString('The pickup points could not be loaded. Try again, or choose another shipping method.', $script->text());
+        // the button the picker loads the pickup points again with
+        self::assertStringContainsString('data-pickup-point-manager-retry', $script->text());
+        self::assertStringContainsString('Try again', $script->text());
     }
 
     /**
-     * @return iterable<string, array{?int, string}>
+     * @return iterable<string, array{?int}>
      */
     public static function failedSearches(): iterable
     {
-        yield 'server error' => [500, 'temporary_failure'];
-        yield 'network problem' => [null, 'temporary_failure'];
-        yield 'credentials failure' => [401, 'credentials_failure'];
-        yield 'rejected' => [400, 'rejected'];
+        yield 'server error' => [500];
+        yield 'network problem' => [null];
+        yield 'credentials failure' => [401];
+        yield 'rejected' => [400];
     }
 
     /**

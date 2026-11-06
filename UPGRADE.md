@@ -229,8 +229,8 @@ for good. In 2.x, `Uploader\OrderUploader` settles every failure on the order:
   Shipmondo answers 422 for shop-wide problems too, such as a mapped payment gateway that was deleted in Shipmondo.
 - **When the upload run stops early, the command prints why and exits with a failure code**, and the remaining orders
   stay `pending` for the next run. Otherwise the command stays silent and succeeds, also when single uploads failed:
-  each failure is logged with the order number and Shipmondo's status code and error message, and a `failed` order
-  stays `failed` until an admin steps in.
+  each failure is logged with the order number, its kind of Shipmondo failure (section 9) and Shipmondo's status code
+  and error message, and a `failed` order stays `failed` until an admin steps in.
 - Going back to pending uses the new `retry` transition (`OrderWorkflow::TRANSITION_RETRY`,
   `uploading_to_shipmondo` → `pending`) of the `setono_sylius_shipmondo__order` workflow. `reset` is unchanged.
 - Retrying after a temporary failure can create a duplicate sales order, when Shipmondo created the sales order but
@@ -438,26 +438,30 @@ one kind of Shipmondo failure (`Failure\ShipmondoFailureKind`), and each caller 
   before it creates them), so register them again. `setono:sylius-shipmondo:register-webhooks` prints the same and
   exits with a failure code. Both log the failure as an error. The success flash shows only when registration
   succeeded.
-- **The shop's pickup point endpoint** answers HTTP 502 with `{"error": "<kind>"}`, and logs the failure: as a warning
-  for a temporary failure or a rate limit, as an error otherwise. **The pickup point picker** then stops waiting, shows
-  "The pickup points could not be loaded. Choose the shipping method again to try again, or choose another shipping
-  method." where the pickup points go, and dispatches a `pickup_point_manager:load_failed` event (its `detail` has the
-  `radio` and the `shippingMethod`, like the other events). Choosing the shipping method again loads its pickup points
-  again.
+- **The shop's pickup point endpoint** answers HTTP 502, and logs the failure: as a warning for a temporary failure or
+  a rate limit, as an error otherwise. The answer doesn't say why, so the shop's visitors aren't told. **The pickup
+  point picker** then stops waiting, shows "The pickup points could not be loaded. Try again, or choose another shipping
+  method." with a "Try again" button where the pickup points go, and dispatches a `pickup_point_manager:load_failed`
+  event (its `detail` has the `radio` and the `shippingMethod`, like the other events). The button, or choosing the
+  shipping method again, loads its pickup points again. The button also works when the shipping method can't be chosen
+  again, e.g. when it is the channel's only one.
 - **An upload and a sales order deletion** log the kind next to Shipmondo's status code and message
   (`shipmondoFailure`, `shipmondoStatusCode`, `shipmondoError` in the log context). An upload settles the order as in
   section 6; a 404 counts as a rejected upload.
 
 The picker's message is rendered by `@SetonoSyliusShipmondoPlugin/shop/pickup_points_not_loaded.html.twig`, which you
 can override like any bundle template, and is passed to the picker as its new `loadFailedHtml` option (you can also set
-it in `window.pickupPointManagerConfig`). **If you replaced `pickup-point-manager.js` or its `insertHtmlCallback`:**
-`getHtml()` returns the `loadFailedHtml` for a shipping method whose pickup points couldn't be loaded, so a callback
-that inserts `getHtml()` shows the message without changes.
+it in `window.pickupPointManagerConfig`). Clicking an element in it with the `data-pickup-point-manager-retry`
+attribute, such as the template's button, loads the pickup points again, so keep the attribute if you override the
+template. **If you replaced `pickup-point-manager.js` or its `insertHtmlCallback`:** `getHtml()` returns the
+`loadFailedHtml` for a shipping method whose pickup points couldn't be loaded, so a callback that inserts `getHtml()`
+shows the message and its button without changes.
 
 New translation keys: `setono_sylius_shipmondo.shipmondo_data_not_fetched`, `setono_sylius_shipmondo.webhooks_registered`
 and `setono_sylius_shipmondo.webhooks_not_registered` in the `flashes` domain (the last one takes `%reason%`), and
-`setono_sylius_shipmondo.shipmondo_failure.<kind>` (it takes `%error%`, Shipmondo's message) and
-`setono_sylius_shipmondo.ui.pickup_points_not_loaded` in the `messages` domain. The English text of the success flash
+`setono_sylius_shipmondo.shipmondo_failure.<kind>` (it takes `%error%`, Shipmondo's message),
+`setono_sylius_shipmondo.ui.pickup_points_not_loaded` and `setono_sylius_shipmondo.ui.try_again` in the `messages`
+domain. The English text of the success flash
 after registering the webhooks is unchanged.
 
 This needs `setono/shipmondo-php-sdk` 2.0.0-beta.3 or later, whose exceptions tell a 403 (`ForbiddenException`), any

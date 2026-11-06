@@ -67,10 +67,11 @@ final class RegisterWebhooksCommandTest extends TestCase
 
         $commandTester = new CommandTester($this->command());
 
-        self::assertSame(Command::FAILURE, $commandTester->execute([]));
+        self::assertSame(Command::FAILURE, $commandTester->execute([], ['capture_stderr_separately' => true]));
+        self::assertSame('', $commandTester->getDisplay());
         self::assertStringContainsString(
             '[ERROR] The webhooks could not be registered, so Shipmondo may send only some of them, or none. Register them again once the problem is solved. Shipmondo did not accept the API credentials.',
-            (string) preg_replace('/\s+/', ' ', $commandTester->getDisplay()),
+            (string) preg_replace('/\s+/', ' ', $commandTester->getErrorOutput()),
         );
         self::assertSame([[
             'level' => LogLevel::ERROR,
