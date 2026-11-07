@@ -14,14 +14,15 @@ use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
 use Symfony\Contracts\Service\ResetInterface;
 
 /**
- * Chooses the sales order's shipment template among the shipping method's allowed shipment templates: the one that ships
- * from the store's country to the shipping address's country and fits the order's weight best
+ * Chooses the sales order's shipment template among the shipping method's allowed shipment templates that ship to the
+ * shipping address's country: the one that ships from the store's country and fits the order's weight best
  */
 final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapperInterface, ResetInterface
 {
     /**
-     * Every shipment template in Shipmondo, fetched once until the mapper is reset: once per upload run, and once per
-     * request or message, since the container resets services tagged kernel.reset between them
+     * Every shipment template in Shipmondo, fetched once until the mapper is reset. The container resets services tagged
+     * kernel.reset between requests, and a Messenger worker after each message, so an upload run on the command line
+     * fetches them once, and an UploadOrder command handled by a worker once per order
      *
      * @var list<ShipmentTemplate>|null
      */
@@ -63,8 +64,9 @@ final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapper
         /** @var list<ShipmentTemplate> $shipmentTemplates */
         $shipmentTemplates = [];
 
+        // the shipping method allows them, and they ship to the shipping address's country
         foreach ($this->shipmentTemplates() as $shipmentTemplate) {
-            if (!in_array($shipmentTemplate->id, $allowedShipmentTemplates, true)) {
+            if (!in_array($shipmentTemplate->id, $allowedShipmentTemplates, true) || $shipmentTemplate->receiver->countryCode !== $receiverCountry) {
                 continue;
             }
 
@@ -112,11 +114,12 @@ final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapper
     }
 
     /**
-     * The country the order ships from. The admin chose the shipping method's shipment templates, so when they all ship
-     * from one country, the order ships from there, also when the store's company is registered in another country. When
-     * they ship from several countries, the channel's shop billing data tells which; without it, none is chosen
+     * The country the order ships from. The admin chose the shipping method's shipment templates, so when the ones that
+     * ship to the shipping address's country all ship from one country, the order ships from there, also when the store's
+     * company is registered in another country. When they ship from several countries, the channel's shop billing data
+     * tells which; without it, none is chosen
      *
-     * @param non-empty-list<ShipmentTemplate> $shipmentTemplates
+     * @param non-empty-list<ShipmentTemplate> $shipmentTemplates the allowed ones that ship to the shipping address's country
      */
     private static function getSenderCountry(OrderInterface $order, array $shipmentTemplates): ?string
     {

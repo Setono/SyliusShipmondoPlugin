@@ -26,8 +26,8 @@ For most installations the required changes are:
 - if you monitor `setono:sylius-shipmondo:register-webhooks`, note that it now fails when Shipmondo does (section 9)
 - if you override the admin Shipmondo page's template, add the hidden list of shipping methods (section 10)
 - note that an order with a free item now uploads (section 11)
-- if a shipping method allows shipment templates that ship from several countries, set the channels' shop billing data
-  country (section 12)
+- if a shipping method allows shipment templates to one country from several countries, set the channels' shop billing
+  data country (section 12)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -527,17 +527,18 @@ New: `DataMapper\AmountWithVat` (`fromAmountIncludingVat()`, `fromAmountExcludin
 In 1.x a sales order's shipment template was only chosen among templates that ship from Denmark: the sender country was
 hard-coded to `DK`, so a store that ships from any other country got none
 ([#35](https://github.com/Setono/SyliusShipmondoPlugin/issues/35)). In 2.x it is chosen among the shipping method's
-allowed shipment templates that ship from the store's country:
+allowed shipment templates that ship to the shipping address's country, from the store's country:
 
-- when the allowed templates all ship from one country, from that country, also when the store's company is registered
-  in another one;
-- when they ship from several countries, from the country of the channel's shop billing data. **Set it** if your
-  shipping methods allow shipment templates from several countries; without it, no shipment template is chosen.
+- when those templates all ship from one country, from that country, also when the store's company is registered in
+  another one;
+- when they ship from several countries, from the country of the channel's shop billing data. **Set it** if a shipping
+  method allows shipment templates to one country from several countries; without it, no shipment template is chosen.
 
-The shipment templates are also fetched from Shipmondo once per upload run, and once per request or message, instead of
-for every order: `DataMapper\ShipmentTemplateSalesOrderDataMapper` keeps them until it is reset, and it is tagged
-`kernel.reset` (it implements `Symfony\Contracts\Service\ResetInterface`, so `symfony/service-contracts` is now
-required).
+The shipment templates are also fetched from Shipmondo once until `DataMapper\ShipmentTemplateSalesOrderDataMapper` is
+reset, instead of for every order: once per upload run on the command line, and once per request or message, since the
+mapper is tagged `kernel.reset` (it implements `Symfony\Contracts\Service\ResetInterface`, so `symfony/service-contracts`
+is now required). A worker started with `messenger:consume --no-reset` keeps them until it stops, so restart it after
+changing the shipment templates in Shipmondo.
 
 ### Unchanged
 

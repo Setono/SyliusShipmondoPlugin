@@ -101,48 +101,61 @@ final class ShipmentTemplateSalesOrderDataMapperTest extends TestCase
     }
 
     /**
+     * Only the templates that ship to the shipping address's country decide where the order ships from
+     *
      * @test
+     *
+     * @dataProvider shippingCountries
      */
-    public function it_chooses_among_the_shipment_templates_that_ship_from_the_channels_shop_billing_country_when_they_ship_from_several_countries(): void
+    public function it_decides_the_sender_country_among_the_shipment_templates_that_ship_to_the_shipping_country(string $shippingCountry, int $shipmentTemplate): void
     {
         $this->givenShipmentTemplates([
             self::template(1, 'DK', 'DK', 5),
-            self::template(2, 'SE', 'DK', 5),
+            self::template(2, 'SE', 'SE', 5),
         ]);
 
-        $order = $this->order('DK', self::shippingMethod('GLS', [1, 2]), [self::item(1.0, 1)], shopBillingCountry: 'SE');
+        $order = $this->order($shippingCountry, self::shippingMethod('GLS', [1, 2]), [self::item(1.0, 1)]);
 
-        self::assertSame(2, $this->map($order)->shipmentTemplateId);
+        self::assertSame($shipmentTemplate, $this->map($order)->shipmentTemplateId);
     }
 
     /**
-     * @test
+     * @return iterable<string, array{string, int}>
      */
-    public function it_does_not_map_a_shipment_template_when_the_shipment_templates_ship_from_several_countries_and_the_channel_has_no_shop_billing_country(): void
+    public static function shippingCountries(): iterable
     {
-        $this->givenShipmentTemplates([
-            self::template(1, 'DK', 'DK', 5),
-            self::template(2, 'SE', 'DK', 5),
-        ]);
-
-        $order = $this->order('DK', self::shippingMethod('GLS', [1, 2]), [self::item(1.0, 1)]);
-
-        self::assertNull($this->map($order)->shipmentTemplateId);
+        yield 'to Denmark' => ['DK', 1];
+        yield 'to Sweden' => ['SE', 2];
     }
 
     /**
+     * Shipment templates that ship to the shipping country from several countries: the channel's shop billing data tells
+     * where the order ships from
+     *
      * @test
+     *
+     * @dataProvider channels
      */
-    public function it_does_not_map_a_shipment_template_when_the_shipment_templates_ship_from_several_countries_and_the_order_has_no_channel(): void
+    public function it_chooses_by_the_channels_shop_billing_country_when_the_shipment_templates_ship_from_several_countries(?string $shopBillingCountry, bool $inChannel, ?int $shipmentTemplate): void
     {
         $this->givenShipmentTemplates([
             self::template(1, 'DK', 'DK', 5),
             self::template(2, 'SE', 'DK', 5),
         ]);
 
-        $order = $this->order('DK', self::shippingMethod('GLS', [1, 2]), [self::item(1.0, 1)], inChannel: false);
+        $order = $this->order('DK', self::shippingMethod('GLS', [1, 2]), [self::item(1.0, 1)], $shopBillingCountry, $inChannel);
 
-        self::assertNull($this->map($order)->shipmentTemplateId);
+        self::assertSame($shipmentTemplate, $this->map($order)->shipmentTemplateId);
+    }
+
+    /**
+     * @return iterable<string, array{?string, bool, ?int}>
+     */
+    public static function channels(): iterable
+    {
+        yield 'a channel billed in Sweden' => ['SE', true, 2];
+        yield 'a channel without shop billing data' => [null, true, null];
+        yield 'no channel' => [null, false, null];
     }
 
     /**
@@ -160,10 +173,10 @@ final class ShipmentTemplateSalesOrderDataMapperTest extends TestCase
         $mapper = new ShipmentTemplateSalesOrderDataMapper(ShipmondoApi::client($this->httpClient->reveal()));
         $order = $this->order('DK', self::shippingMethod('GLS', [1]), [self::item(1.0, 1)]);
 
-        foreach ([1, 2] as $upload) {
-            $mapper->map($order, $salesOrder = new SalesOrderRequest());
-            self::assertSame(1, $salesOrder->shipmentTemplateId);
-        }
+        $mapper->map($order, $salesOrder = new SalesOrderRequest());
+        self::assertSame(1, $salesOrder->shipmentTemplateId);
+        $mapper->map($order, $salesOrder = new SalesOrderRequest());
+        self::assertSame(1, $salesOrder->shipmentTemplateId);
 
         $mapper->reset();
         $mapper->map($order, $salesOrder = new SalesOrderRequest());
@@ -184,6 +197,19 @@ final class ShipmentTemplateSalesOrderDataMapperTest extends TestCase
         self::assertNull($this->map($order)->shipmentTemplateId);
     }
 
+    /**
+     * @test
+     */
+    public function it_does_not_map_a_shipment_template_when_no_allowed_template_can_carry_the_order(): void
+    {
+        $this->givenShipmentTemplates([
+            self::template(1, 'DK', 'DK', 2),
+        ]);
+
+        $order = $this->order('DK', self::shippingMethod('GLS', [1]), [self::item(5.0, 1)]);
+
+        self::assertNull($this->map($order)->shipmentTemplateId);
+    }
     /**
      * @test
      */
