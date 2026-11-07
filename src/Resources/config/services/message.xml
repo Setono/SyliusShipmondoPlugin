@@ -16,9 +16,20 @@
             <argument type="service" id="setono_sylius_shipmondo.client"/>
             <argument type="service" id="state_machine.setono_sylius_shipmondo__order"/>
             <argument type="service" id="setono_sylius_shipmondo.canceller.order"/>
-            <argument type="service" id="logger"/>
 
             <tag name="messenger.message_handler"/>
+        </service>
+
+        <!-- on the command bus right inside doctrine_transaction, see the extension's prepend() -->
+        <service id="setono_sylius_shipmondo.message.middleware.absorb_delete_order_failure"
+                 class="Setono\SyliusShipmondoPlugin\Message\Middleware\AbsorbDeleteOrderFailureMiddleware">
+            <!-- the default entity manager's connection, the one doctrine_transaction begins its transaction on -->
+            <argument type="service">
+                <service class="Doctrine\DBAL\Connection">
+                    <factory service="doctrine.orm.entity_manager" method="getConnection"/>
+                </service>
+            </argument>
+            <argument type="service" id="logger"/>
         </service>
 
         <service id="setono_sylius_shipmondo.message.command_handler.register_webhooks"

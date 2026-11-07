@@ -8,8 +8,10 @@ use PHPUnit\Framework\TestCase;
 use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
-use Psr\Log\LogLevel;
 use Setono\Shipmondo\Exception\InternalServerErrorException;
+use Setono\Shipmondo\Exception\TooManyRequestsException;
+use Setono\Shipmondo\Exception\UnauthorizedException;
+use Setono\Shipmondo\Exception\ValidationException;
 use Setono\SyliusShipmondoPlugin\Canceller\OrderCanceller;
 use Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder;
 use Setono\SyliusShipmondoPlugin\Message\CommandHandler\DeleteOrderHandler;
@@ -23,7 +25,6 @@ use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Workflow\Event\GuardEvent;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\Orders;
-use Tests\Setono\SyliusShipmondoPlugin\Unit\RecordingLogger;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ScriptedHttpClient;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ShipmondoApi;
 
@@ -40,8 +41,6 @@ final class DeleteOrderHandlerTest extends TestCase
 
     private ScriptedHttpClient $shipmondo;
 
-    private RecordingLogger $logger;
-
     /**
      * The order state machine's event dispatcher, for guards a store adds
      */
@@ -51,7 +50,6 @@ final class DeleteOrderHandlerTest extends TestCase
     {
         $this->orderRepository = $this->prophesize(OrderRepositoryInterface::class);
         $this->shipmondo = new ScriptedHttpClient();
-        $this->logger = new RecordingLogger();
         $this->eventDispatcher = new EventDispatcher();
     }
 
@@ -69,7 +67,6 @@ final class DeleteOrderHandlerTest extends TestCase
 
         self::assertSame([OrderInterface::SHIPMONDO_STATE_CANCELLED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
         self::assertSame(['DELETE sales_orders/12345'], $this->shipmondo->requestLines());
-        self::assertSame([], $this->logger->records);
     }
 
     /**
@@ -113,28 +110,72 @@ final class DeleteOrderHandlerTest extends TestCase
     }
 
     /**
+     * Messenger retries a failure expected to pass, with the transport's retry strategy, when a worker handles the
+     * command; handled synchronously, AbsorbDeleteOrderFailureMiddleware absorbs it
+     *
      * @test
+     *
+     * @dataProvider failuresTryingAgainMayFix
+     *
+     * @param class-string<\Throwable> $exception
      */
-    public function it_logs_instead_of_throwing_when_shipmondo_fails_so_the_cancellation_is_not_blocked(): void
+    public function it_throws_a_failure_expected_to_pass_as_it_is(int $statusCode, string $exception): void
     {
         $order = $this->uploadedOrder(cancelled: true);
-        $this->shipmondo->respond(500, ['error' => 'Internal Server Error']);
+        $this->shipmondo->respond($statusCode, ['error' => 'Try again']);
 
-        self::assertFalse($this->handle(new DeleteOrder(42)));
+        try {
+            $this->handle(new DeleteOrder(42));
+            self::fail('The failure was not thrown');
+        } catch (\Throwable $e) {
+            self::assertInstanceOf($exception, $e);
+        }
 
         // the sales order still exists in Shipmondo, so the order stays uploaded and linked to it
         self::assertSame([OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, 12345], [$order->getShipmondoState(), $order->getShipmondoId()]);
-        self::assertCount(1, $this->logger->records);
-        $record = $this->logger->records[0];
-        self::assertSame(LogLevel::ERROR, $record['level']);
-        self::assertSame('Could not delete the Shipmondo sales order {shipmondoId} of the order {order}', $record['message']);
-        self::assertSame([12345, '000000042'], [$record['context']['shipmondoId'], $record['context']['order']]);
-        self::assertInstanceOf(InternalServerErrorException::class, $record['context']['exception']);
-        // logged like any other Shipmondo failure
-        self::assertSame(
-            ['shipmondoFailure' => 'temporary_failure', 'shipmondoStatusCode' => 500, 'shipmondoError' => 'Internal Server Error'],
-            array_diff_key($record['context'], array_flip(['shipmondoId', 'order', 'exception'])),
-        );
+    }
+
+    /**
+     * @return iterable<string, array{int, class-string<\Throwable>}>
+     */
+    public static function failuresTryingAgainMayFix(): iterable
+    {
+        yield 'temporary failure' => [500, InternalServerErrorException::class];
+        yield 'rate limited' => [429, TooManyRequestsException::class];
+    }
+
+    /**
+     * Trying again won't change these, so Messenger sends the command straight to the failure transport
+     *
+     * @test
+     *
+     * @dataProvider failuresTryingAgainWontFix
+     *
+     * @param class-string<\Throwable> $exception
+     */
+    public function it_throws_any_other_failure_as_unrecoverable(int $statusCode, string $exception): void
+    {
+        $order = $this->uploadedOrder(cancelled: true);
+        $this->shipmondo->respond($statusCode, ['error' => 'No']);
+
+        try {
+            $this->handle(new DeleteOrder(42));
+            self::fail('The failure was not thrown');
+        } catch (UnrecoverableMessageHandlingException $e) {
+            self::assertSame('Shipmondo did not delete the sales order 12345 of the order 000000042, and trying again will not change that', $e->getMessage());
+            self::assertInstanceOf($exception, $e->getPrevious());
+        }
+
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, 12345], [$order->getShipmondoState(), $order->getShipmondoId()]);
+    }
+
+    /**
+     * @return iterable<string, array{int, class-string<\Throwable>}>
+     */
+    public static function failuresTryingAgainWontFix(): iterable
+    {
+        yield 'credentials failure' => [401, UnauthorizedException::class];
+        yield 'rejected' => [422, ValidationException::class];
     }
 
     /**
@@ -210,7 +251,6 @@ final class DeleteOrderHandlerTest extends TestCase
             ShipmondoApi::client($this->shipmondo),
             $orderWorkflow,
             new OrderCanceller($commandBus->reveal(), $orderWorkflow),
-            $this->logger,
         );
 
         return $handler($message);
