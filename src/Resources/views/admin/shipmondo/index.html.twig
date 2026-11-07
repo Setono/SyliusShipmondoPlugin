@@ -29,6 +29,7 @@
                             </tr>
                             </thead>
                             <tbody>
+                            {% set listedPaymentGatewayIds = shipmondoPaymentMethods|map(paymentGateway => paymentGateway.id) %}
                             {% for paymentMethod in paymentMethods %}
                                 <tr>
                                     <td>{{ paymentMethod.name }}</td>
@@ -38,6 +39,10 @@
                                             {% for shipmondoPaymentMethod in shipmondoPaymentMethods %}
                                                 <option value="{{ shipmondoPaymentMethod.id }}" {% if shipmondoPaymentMethod.id == paymentMethod.shipmondoId %}selected{% endif %}>{{ shipmondoPaymentMethod.name }}</option>
                                             {% endfor %}
+                                            {# a mapping to a payment gateway Shipmondo doesn't list is kept until the admin removes it #}
+                                            {% if paymentMethod.shipmondoId is not null and paymentMethod.shipmondoId not in listedPaymentGatewayIds %}
+                                                <option value="{{ paymentMethod.shipmondoId }}" selected>{{ 'setono_sylius_shipmondo.ui.not_in_shipmondo'|trans({'%id%': paymentMethod.shipmondoId}) }}</option>
+                                            {% endif %}
                                         </select>
                                     </td>
                                 </tr>
@@ -82,13 +87,20 @@
                             </tr>
                             </thead>
                             <tbody>
+                            {% set listedShipmentTemplateIds = shipmondoShipmentTemplates|map(shipmentTemplate => shipmentTemplate.id) %}
                             {% for shippingMethod in shippingMethods %}
                                 <tr>
                                     <td>{{ shippingMethod.name }}</td>
                                     <td>
+                                        {# a select without a selected shipment template isn't submitted, so this says which shipping methods the form lists #}
+                                        <input type="hidden" name="listed_shipping_methods[]" value="{{ shippingMethod.id }}">
                                         <select name="shipping_methods[{{ shippingMethod.id }}][]" class="ui fluid search dropdown" multiple>
                                             {% for shipmondoShipmentTemplate in shipmondoShipmentTemplates %}
                                                 <option value="{{ shipmondoShipmentTemplate.id }}" {% if shippingMethod.hasAllowedShipmentTemplate(shipmondoShipmentTemplate) %}selected{% endif %}>{{ shipmondoShipmentTemplate.name }}</option>
+                                            {% endfor %}
+                                            {# an allowed shipment template Shipmondo doesn't list is kept until the admin removes it #}
+                                            {% for allowedShipmentTemplate in shippingMethod.allowedShipmentTemplates|filter(id => id not in listedShipmentTemplateIds) %}
+                                                <option value="{{ allowedShipmentTemplate }}" selected>{{ 'setono_sylius_shipmondo.ui.not_in_shipmondo'|trans({'%id%': allowedShipmentTemplate}) }}</option>
                                             {% endfor %}
                                         </select>
                                     </td>
@@ -112,7 +124,10 @@
         $(() => {
             $('.ui.dropdown').dropdown({
                 fullTextSearch: true,
-                match: 'text'
+                match: 'text',
+                // a single dropdown shows its empty choice only as placeholder text, so a clear icon empties it (a
+                // multiple one removes its labels instead)
+                clearable: true
             });
         });
     </script>
