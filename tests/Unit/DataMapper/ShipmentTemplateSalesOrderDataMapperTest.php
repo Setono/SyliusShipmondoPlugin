@@ -210,6 +210,7 @@ final class ShipmentTemplateSalesOrderDataMapperTest extends TestCase
 
         self::assertNull($this->map($order)->shipmentTemplateId);
     }
+
     /**
      * @test
      */

@@ -208,11 +208,29 @@ you don't want the Shipmondo API call inside the cancellation request. Once the 
 Shipmondo state becomes `cancelled` (section 7). (Conversely, deleting a sales order *in Shipmondo* puts an order
 that isn't cancelled back to `pending` so it is re-uploaded — see above — it is not treated as a cancellation.)
 
-A failing Shipmondo call never blocks the cancellation. A sales order that is already gone in Shipmondo
-(404) counts as deleted. Any other failure is logged, the order stays `uploaded_to_shipmondo` and keeps its
-`shipmondoId`, and, when the command is handled synchronously, the admin sees an error telling them to delete the order in Shipmondo
-manually. **When `DeleteOrder` is routed to an async transport, a failure is only logged and is not
-retried** (see [#16](https://github.com/Setono/SyliusShipmondoPlugin/issues/16)), so watch the logs.
+A failing Shipmondo call never blocks the cancellation. A sales order that is already gone in Shipmondo (404) counts as
+deleted. On any other failure the order stays `uploaded_to_shipmondo` and keeps its `shipmondoId`, and:
+
+- **handled synchronously**, the failure is logged and the admin sees an error telling them to delete the order in
+  Shipmondo manually;
+- **routed to an async transport**, the worker retries a failure expected to pass (a Shipmondo server error, a network
+  problem, a rate limit) with the transport's own retry strategy, and sends any other failure (e.g. Shipmondo doesn't
+  accept the credentials) straight to the failure transport, where a deletion that runs out of retries ends too. Watch
+  it with `bin/console messenger:failed:show` ([#16](https://github.com/Setono/SyliusShipmondoPlugin/issues/16)).
+
+`DeleteOrderHandler` throws its failures, and `Message\Middleware\AbsorbDeleteOrderFailureMiddleware`, which the plugin
+puts on its command bus right inside `doctrine_transaction`, absorbs them where failing isn't safe: when the command
+wasn't received from a transport, or a transaction is open around the bus's own. Two setups therefore get no retries
+the README describes: `DeleteOrder` routed to `sync://` while an order is cancelled outside any transaction (a Shipmondo
+failure then fails the cancellation), and a worker that wraps message handling in a transaction of its own (its failures
+are absorbed and logged).
+
+Only if you extend or call the deletion:
+
+| 1.x | 2.x |
+|---|---|
+| | `Message\CommandHandler\DeleteOrderHandler::__construct($orderRepository, $shipmondoClient, $orderWorkflow, Canceller\OrderCancellerInterface $orderCanceller)`; `__invoke()` returns `true` once the sales order is gone and throws on any other failure: as it is when trying again may help, as an `UnrecoverableMessageHandlingException` otherwise |
+| | new `Message\Middleware\AbsorbDeleteOrderFailureMiddleware` on the `setono_sylius_shipmondo.command_bus` bus. If you configure that bus's middleware yourself, keep it right after `doctrine_transaction` |
 
 ### 6. A failed upload settles the order instead of crashing the upload run
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Uploader;
 
+use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\LockMode;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
@@ -30,6 +31,7 @@ use Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder;
 use Setono\SyliusShipmondoPlugin\Message\Command\UploadOrder;
 use Setono\SyliusShipmondoPlugin\Message\CommandHandler\DeleteOrderHandler;
 use Setono\SyliusShipmondoPlugin\Message\CommandHandler\UploadOrderHandler;
+use Setono\SyliusShipmondoPlugin\Message\Middleware\AbsorbDeleteOrderFailureMiddleware;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface;
 use Setono\SyliusShipmondoPlugin\Uploader\OrderUploader;
@@ -45,6 +47,8 @@ use Symfony\Component\Messenger\MessageBus;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Middleware\DispatchAfterCurrentBusMiddleware;
 use Symfony\Component\Messenger\Middleware\HandleMessageMiddleware;
+use Symfony\Component\Messenger\Middleware\MiddlewareInterface;
+use Symfony\Component\Messenger\Middleware\StackInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Workflow\Event\GuardEvent;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
@@ -427,7 +431,7 @@ final class OrderUploaderTest extends TestCase
         // the sales order still exists in Shipmondo, so the order stays linked to it
         self::assertSame([self::UPLOADED, 1001], [$order->getShipmondoState(), $order->getShipmondoId()]);
         self::assertSame(
-            ['The order {order} was uploaded to Shipmondo as the sales order {salesOrder}', self::CANCELLED_WHILE_UPLOADING_MESSAGE, 'Could not delete the Shipmondo sales order {shipmondoId} of the order {order}'],
+            ['The order {order} was uploaded to Shipmondo as the sales order {salesOrder}', self::CANCELLED_WHILE_UPLOADING_MESSAGE, 'Could not delete the Shipmondo sales order of the order {order}, so the order stays uploaded and linked to it. Delete the sales order in Shipmondo'],
             array_column($this->logger->records, 'message'),
         );
     }
@@ -793,22 +797,38 @@ final class OrderUploaderTest extends TestCase
         /** @var DeleteOrderHandler|null $deleteOrderHandler */
         $deleteOrderHandler = null;
         $deleteOrderFails = $this->deleteOrderFails;
-        $commandBus = $this->commandBus ?? new MessageBus([new DispatchAfterCurrentBusMiddleware(), new HandleMessageMiddleware(new HandlersLocator([
-            UploadOrder::class => [static function (UploadOrder $message) use (&$handler): UploadOutcome {
-                Assert::isInstanceOf($handler, UploadOrderHandler::class);
-
-                return $handler($message);
-            }],
-            DeleteOrder::class => [static function (DeleteOrder $message) use (&$deleteOrderHandler, $deleteOrderFails): bool {
-                if ($deleteOrderFails) {
-                    throw new TransportException('The transport is down');
+        $commandBus = $this->commandBus ?? new MessageBus([
+            new DispatchAfterCurrentBusMiddleware(),
+            // the command isn't received from a transport, so the middleware absorbs its failure without asking the connection
+            new AbsorbDeleteOrderFailureMiddleware($this->prophesize(Connection::class)->reveal(), $this->logger),
+            // stands in for the send_message middleware, which fails to send a DeleteOrder command to its transport
+            new class($deleteOrderFails) implements MiddlewareInterface {
+                public function __construct(private readonly bool $fails)
+                {
                 }
 
-                Assert::isInstanceOf($deleteOrderHandler, DeleteOrderHandler::class);
+                public function handle(Envelope $envelope, StackInterface $stack): Envelope
+                {
+                    if ($this->fails && $envelope->getMessage() instanceof DeleteOrder) {
+                        throw new TransportException('The transport is down');
+                    }
 
-                return $deleteOrderHandler($message);
-            }],
-        ]))]);
+                    return $stack->next()->handle($envelope, $stack);
+                }
+            },
+            new HandleMessageMiddleware(new HandlersLocator([
+                UploadOrder::class => [static function (UploadOrder $message) use (&$handler): UploadOutcome {
+                    Assert::isInstanceOf($handler, UploadOrderHandler::class);
+
+                    return $handler($message);
+                }],
+                DeleteOrder::class => [static function (DeleteOrder $message) use (&$deleteOrderHandler): bool {
+                    Assert::isInstanceOf($deleteOrderHandler, DeleteOrderHandler::class);
+
+                    return $deleteOrderHandler($message);
+                }],
+            ])),
+        ]);
 
         $orderCanceller = new OrderCanceller($commandBus, $orderWorkflow);
         $uploader = new OrderUploader(
@@ -822,7 +842,7 @@ final class OrderUploaderTest extends TestCase
             $managerRegistry->reveal(),
         );
         $handler = new UploadOrderHandler($orderRepository->reveal(), $uploader);
-        $deleteOrderHandler = new DeleteOrderHandler($orderRepository->reveal(), $shipmondoClient, $orderWorkflow, $orderCanceller, $this->logger);
+        $deleteOrderHandler = new DeleteOrderHandler($orderRepository->reveal(), $shipmondoClient, $orderWorkflow, $orderCanceller);
 
         return $uploader;
     }
