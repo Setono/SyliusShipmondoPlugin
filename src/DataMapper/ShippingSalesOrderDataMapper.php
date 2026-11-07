@@ -9,7 +9,6 @@ use Setono\Shipmondo\Enum\OrderLineType;
 use Setono\Shipmondo\Request\SalesOrder\OrderLine;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\Event\ShippingOrderLineMappedEvent;
-use function Setono\SyliusShipmondoPlugin\formatAmount;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Sylius\Component\Core\Model\AdjustmentInterface;
 use Webmozart\Assert\Assert;
@@ -34,37 +33,24 @@ final class ShippingSalesOrderDataMapper implements SalesOrderDataMapperInterfac
             $shippingAdjustment = $shippingAdjustments->first();
             Assert::isInstanceOf($shippingAdjustment, AdjustmentInterface::class);
 
-            // Because of the way shipping and shipping taxes are done in Sylius, we need to do some gymnastics to calculate the correct unit price.
-            // If the tax adjustment is neutral we know that the tax is included in the shipping adjustment's amount and hence we subtract the tax.
-            // If the tax adjustment is not neutral we know that the tax is not included and hence we don't subtract the tax.
-            // The tax is still the same though, and we need that to calculate the vat percentage
-            $vatPercentage = 0.0;
-            $unitPriceExcludingVat = $shippingAdjustment->getAmount();
+            // Sylius adds the shipping tax as its own adjustment. A neutral one is included in the shipping adjustment's
+            // amount, any other comes on top of it
+            $taxAdjustments = $shipment->getAdjustments(AdjustmentInterface::TAX_ADJUSTMENT);
+            Assert::lessThanEq($taxAdjustments->count(), 1);
 
-            if ($unitPriceExcludingVat > 0) {
-                $taxAdjustments = $shipment->getAdjustments(AdjustmentInterface::TAX_ADJUSTMENT);
-                Assert::lessThanEq($taxAdjustments->count(), 1);
-
-                $tax = 0;
-
-                $taxAdjustment = $taxAdjustments->first();
-                if (false !== $taxAdjustment) {
-                    $tax = $taxAdjustment->getAmount();
-
-                    if ($taxAdjustment->isNeutral()) {
-                        $unitPriceExcludingVat -= $tax;
-                    }
-                }
-
-                $vatPercentage = $tax / $unitPriceExcludingVat;
-            }
+            $taxAdjustment = $taxAdjustments->first();
+            $tax = false === $taxAdjustment ? 0 : $taxAdjustment->getAmount();
+            $unitPrice = false !== $taxAdjustment && $taxAdjustment->isNeutral()
+                ? AmountWithVat::fromAmountIncludingVat($shippingAdjustment->getAmount(), $tax)
+                : AmountWithVat::fromAmountExcludingVat($shippingAdjustment->getAmount(), $tax)
+            ;
 
             $orderLine = new OrderLine(
                 lineType: OrderLineType::Shipping,
                 itemName: $shippingAdjustment->getLabel(),
                 quantity: 1,
-                unitPriceExcludingVat: formatAmount($unitPriceExcludingVat),
-                vatPercent: (string) $vatPercentage,
+                unitPriceExcludingVat: $unitPrice->amountExcludingVat(),
+                vatPercent: $unitPrice->vatPercent(),
                 currencyCode: $order->getCurrencyCode(),
             );
 

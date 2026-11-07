@@ -25,6 +25,7 @@ For most installations the required changes are:
   channel skip the shipping step when its only shipping method has pickup point delivery (section 8)
 - if you monitor `setono:sylius-shipmondo:register-webhooks`, note that it now fails when Shipmondo does (section 9)
 - if you override the admin Shipmondo page's template, add the hidden list of shipping methods (section 10)
+- note that an order with a free item now uploads (section 11)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -509,10 +510,21 @@ page which shipping methods the form lists. Without it, shipment templates can s
 Pass `clearable: true` when you turn the selects into dropdowns. And show a mapping Shipmondo doesn't list as a selected
 option (`setono_sylius_shipmondo.ui.not_in_shipmondo`, which takes `%id%`), or saving the form removes it.
 
+### 11. A sales order's amounts are worked out by one rule, so an order with a free item uploads
+
+In 1.x the order lines, shipping and payment details mappers each divided the VAT by the amount excluding VAT, and the
+order lines mapper didn't guard 0: an order with a free item, such as a gift or an item with a 100 % discount, failed
+to upload with a division by zero ([#33](https://github.com/Setono/SyliusShipmondoPlugin/issues/33)). In 2.x all three
+use `DataMapper\AmountWithVat`, whose VAT percent is `0` when there is no amount excluding VAT. Every other amount is
+sent as before.
+
+New: `DataMapper\AmountWithVat` (`fromAmountIncludingVat()`, `fromAmountExcludingVat()`, and the formatted
+`amountExcludingVat()`, `vatAmount()`, `amountIncludingVat()` and `vatPercent()`), for a data mapper of your own.
+
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
 above: the SDK types, the `sandbox` switch, webhook verification and registration, the webhook reactions, the
 cancel-deletes-in-Shipmondo behaviour, how a failed upload is handled, the `cancelled` Shipmondo state with the
-link to the sales order, the checked pickup point, how a failed call to Shipmondo is explained, and removing a
-mapping on the admin Shipmondo page.
+link to the sales order, the checked pickup point, how a failed call to Shipmondo is explained, removing a mapping on
+the admin Shipmondo page, and the one rule for a sales order's amounts.

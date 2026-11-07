@@ -156,6 +156,7 @@ The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires
   - `ShipmentTemplateSalesOrderDataMapper`: Shipment templates
   - `ServicePointDataMapper`: The chosen pickup point, as the sales order's service point
 - New mappers can be added by implementing `SalesOrderDataMapperInterface` and will be auto-registered via the `setono_sylius_shipmondo.sales_order_data_mapper` tag
+- `DataMapper\AmountWithVat` is the one rule for an amount and its VAT, formatted as Shipmondo reads them (`fromAmountIncludingVat()` / `fromAmountExcludingVat()`, `amountExcludingVat()`, `vatAmount()`, `amountIncludingVat()`, `vatPercent()`): the order lines, shipping and payment details mappers all use it, and its VAT percent is `0` when there is no amount excluding VAT (e.g. a free item)
 
 **Order Workflow**
 - Defined in `src/Workflow/OrderWorkflow.php`
