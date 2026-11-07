@@ -159,7 +159,7 @@ final class ShipmondoPageTest extends BrowserTestCase
 
         expect($this->flash('error'))->toHaveCount(0);
         expect($page->getByText(self::NO_PAYMENT_GATEWAYS))->toBeVisible();
-        expect($page->getByRole('link', ['name' => 'Shipmondo', 'exact' => true])->last())->toHaveAttribute('href', 'https://app.shipmondo.com/main/app/#/setting/integration/payment-gateway');
+        expect($page->locator('.ui.segment:has-text("Map payment methods")')->getByRole('link', ['name' => 'Shipmondo', 'exact' => true]))->toHaveAttribute('href', 'https://app.shipmondo.com/main/app/#/setting/integration/payment-gateway');
         expect($page->locator('select[name^="payment_methods"]'))->toHaveCount(0);
     }
 
@@ -173,7 +173,7 @@ final class ShipmondoPageTest extends BrowserTestCase
 
         $page = $this->visit('/admin/shipmondo');
 
-        $segment = $page->locator('.ui.segment')->filter(['has' => $page->getByRole('heading', ['name' => 'Map shipping methods'])]);
+        $segment = $page->locator('.ui.segment:has-text("Map shipping methods")');
         expect($segment)->not()->toContainText('setono_sylius_shipmondo.ui.');
         expect($segment)->toContainText('There are no shipment templates inside Shipmondo. Go to Shipmondo and create your first shipment template.');
         expect($segment->getByRole('link', ['name' => 'Shipmondo', 'exact' => true]))->toHaveAttribute('href', 'https://app.shipmondo.com/');
