@@ -153,7 +153,7 @@ The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires
   - `OrderLinesSalesOrderDataMapper`: Order line items
   - `ShippingSalesOrderDataMapper`: Shipping information
   - `PaymentDetailsSalesOrderDataMapper`: Payment details
-  - `ShipmentTemplateSalesOrderDataMapper`: Shipment templates
+  - `ShipmentTemplateSalesOrderDataMapper`: The shipment template, among the shipping method's allowed ones that ship from the store's country: the country they all ship from, or else the channel's shop billing data's country, both decided among the allowed ones that ship to the shipping address's country. It fetches the shipment templates once until it is reset (`kernel.reset`): once per upload run on the command line, once per order when a worker handles `UploadOrder` (Messenger resets services after each message)
   - `ServicePointDataMapper`: The chosen pickup point, as the sales order's service point
 - New mappers can be added by implementing `SalesOrderDataMapperInterface` and will be auto-registered via the `setono_sylius_shipmondo.sales_order_data_mapper` tag
 - `DataMapper\AmountWithVat` is the one rule for an amount and its VAT, formatted as Shipmondo reads them (`fromAmountIncludingVat()` / `fromAmountExcludingVat()`, `amountExcludingVat()`, `vatAmount()`, `amountIncludingVat()`, `vatPercent()`): the order lines, shipping and payment details mappers all use it, and its VAT percent is `0` when there is no amount excluding VAT (e.g. a free item)
