@@ -431,7 +431,7 @@ final class OrderUploaderTest extends TestCase
         // the sales order still exists in Shipmondo, so the order stays linked to it
         self::assertSame([self::UPLOADED, 1001], [$order->getShipmondoState(), $order->getShipmondoId()]);
         self::assertSame(
-            ['The order {order} was uploaded to Shipmondo as the sales order {salesOrder}', self::CANCELLED_WHILE_UPLOADING_MESSAGE, 'Could not delete the Shipmondo sales order of the order {order}, so the order stays uploaded and linked to it. Delete the sales order in Shipmondo'],
+            ['The order {order} was uploaded to Shipmondo as the sales order {salesOrder}', self::CANCELLED_WHILE_UPLOADING_MESSAGE, 'Could not delete the Shipmondo sales order of the order with the id {orderId}, so the order stays uploaded and linked to it. Delete the sales order in Shipmondo'],
             array_column($this->logger->records, 'message'),
         );
     }

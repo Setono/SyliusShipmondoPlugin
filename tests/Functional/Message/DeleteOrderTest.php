@@ -50,7 +50,7 @@ final class DeleteOrderTest extends FunctionalTestCase
     /**
      * @test
      *
-     * @dataProvider lastingFailures
+     * @dataProvider failuresTryingAgainWontFix
      */
     public function a_worker_sends_a_failure_that_trying_again_will_not_change_to_the_failure_transport(int $statusCode): void
     {
@@ -68,7 +68,7 @@ final class DeleteOrderTest extends FunctionalTestCase
     /**
      * @return iterable<string, array{int}>
      */
-    public static function lastingFailures(): iterable
+    public static function failuresTryingAgainWontFix(): iterable
     {
         yield 'credentials failure' => [401];
         yield 'rejected' => [422];

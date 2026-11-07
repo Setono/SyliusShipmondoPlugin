@@ -115,7 +115,7 @@ final class DeleteOrderHandlerTest extends TestCase
      *
      * @test
      *
-     * @dataProvider temporaryFailures
+     * @dataProvider failuresTryingAgainMayFix
      *
      * @param class-string<\Throwable> $exception
      */
@@ -138,9 +138,9 @@ final class DeleteOrderHandlerTest extends TestCase
     /**
      * @return iterable<string, array{int, class-string<\Throwable>}>
      */
-    public static function temporaryFailures(): iterable
+    public static function failuresTryingAgainMayFix(): iterable
     {
-        yield 'server error' => [500, InternalServerErrorException::class];
+        yield 'temporary failure' => [500, InternalServerErrorException::class];
         yield 'rate limited' => [429, TooManyRequestsException::class];
     }
 
@@ -149,7 +149,7 @@ final class DeleteOrderHandlerTest extends TestCase
      *
      * @test
      *
-     * @dataProvider lastingFailures
+     * @dataProvider failuresTryingAgainWontFix
      *
      * @param class-string<\Throwable> $exception
      */
@@ -172,7 +172,7 @@ final class DeleteOrderHandlerTest extends TestCase
     /**
      * @return iterable<string, array{int, class-string<\Throwable>}>
      */
-    public static function lastingFailures(): iterable
+    public static function failuresTryingAgainWontFix(): iterable
     {
         yield 'credentials failure' => [401, UnauthorizedException::class];
         yield 'rejected' => [422, ValidationException::class];

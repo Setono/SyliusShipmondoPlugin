@@ -214,17 +214,18 @@ framework:
             'Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder': async
 ```
 
-A worker retries a deletion that fails for a reason expected to pass (a Shipmondo server error, a network problem, a
-rate limit) with the transport's own retry strategy; the plugin configures none. A deletion that trying again won't
-change (e.g. Shipmondo doesn't accept the credentials) goes straight to the failure transport, as does one that runs out
-of retries, so watch it: `bin/console messenger:failed:show`.
+A worker retries a deletion that fails temporarily (a Shipmondo server error or a network problem) or is rate limited,
+with the transport's own retry strategy; the plugin configures none. A deletion that trying again won't change (e.g.
+Shipmondo doesn't accept the credentials) goes straight to the failure transport, as does one that runs out of
+retries, so watch the failure transport:
 
-Two setups don't get this:
+```shell
+php bin/console messenger:failed:show
+```
 
-- `DeleteOrder` routed to `sync://` while an order is cancelled outside any transaction (e.g. by a command applying the
-  cancel transition and flushing): a Shipmondo failure then fails the cancellation;
-- a worker that wraps message handling in a transaction of its own: its failures are absorbed like synchronous ones,
-  logged and never retried.
+A failed deletion is not retried, only logged, when it is handled inside a database transaction other than the command
+bus's own: when `DeleteOrder` is routed to `sync://`, and when a worker wraps the handling of messages in a transaction
+of its own.
 
 ## Development
 

@@ -182,7 +182,7 @@ The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires
 - Commands: `UploadOrder`, `DeleteOrder`, `RegisterWebhooks` in `src/Message/Command/`
 - Handlers: Located in `src/Message/CommandHandler/`
 - Uses dedicated command bus: `setono_sylius_shipmondo.command_bus`
-- Bus middleware: doctrine_transaction, router_context
+- Bus middleware: doctrine_transaction, `AbsorbDeleteOrderFailureMiddleware` (see Order Cancellation), router_context
 
 **Webhook Handling**
 - Symfony webhook component integration

@@ -211,19 +211,18 @@ that isn't cancelled back to `pending` so it is re-uploaded — see above — it
 A failing Shipmondo call never blocks the cancellation. A sales order that is already gone in Shipmondo (404) counts as
 deleted. On any other failure the order stays `uploaded_to_shipmondo` and keeps its `shipmondoId`, and:
 
-- **handled synchronously**, the failure is logged and the admin sees an error telling them to delete the order in
-  Shipmondo manually;
-- **routed to an async transport**, the worker retries a failure expected to pass (a Shipmondo server error, a network
-  problem, a rate limit) with the transport's own retry strategy, and sends any other failure (e.g. Shipmondo doesn't
+- **handled synchronously**, the failure is logged and the admin sees an error telling them to delete the sales order
+  in Shipmondo manually;
+- **routed to an async transport**, the worker retries a temporary failure (a Shipmondo server error or a network
+  problem) or a rate limit with the transport's own retry strategy, and sends any other failure (e.g. Shipmondo doesn't
   accept the credentials) straight to the failure transport, where a deletion that runs out of retries ends too. Watch
   it with `bin/console messenger:failed:show` ([#16](https://github.com/Setono/SyliusShipmondoPlugin/issues/16)).
 
 `DeleteOrderHandler` throws its failures, and `Message\Middleware\AbsorbDeleteOrderFailureMiddleware`, which the plugin
 puts on its command bus right inside `doctrine_transaction`, absorbs them where failing isn't safe: when the command
-wasn't received from a transport, or a transaction is open around the bus's own. Two setups therefore get no retries
-the README describes: `DeleteOrder` routed to `sync://` while an order is cancelled outside any transaction (a Shipmondo
-failure then fails the cancellation), and a worker that wraps message handling in a transaction of its own (its failures
-are absorbed and logged).
+wasn't received from a transport, or a transaction is open around the bus's own. So a failure is only logged, not
+retried, when `DeleteOrder` is routed to `sync://` (the first pass's transaction is still open) and when a worker wraps
+the handling of messages in a transaction of its own.
 
 Only if you extend or call the deletion:
 
@@ -364,7 +363,7 @@ Only if you extend or call the code involved:
 | `Model\OrderInterface::setShipmondoState(string $shipmondoState)` | `setShipmondoState(string $shipmondoState, array $context = [])`, which throws an `\InvalidArgumentException` for `uploaded_to_shipmondo` without an integer under `OrderWorkflow::CONTEXT_SALES_ORDER_ID`. Implement the same rule if your order doesn't use `OrderTrait` |
 | `Workflow\OrderWorkflow::getWorkflow(Symfony\Contracts\EventDispatcher\EventDispatcherInterface $eventDispatcher)` | `getWorkflow(Symfony\Component\EventDispatcher\EventDispatcherInterface $eventDispatcher)`, which adds the `OrderCancellationGuard` to the event dispatcher |
 | | `EventListener\OrderCancellationListener::__construct(Canceller\OrderCancellerInterface $orderCanceller, $requestStack)` |
-| | `Message\CommandHandler\DeleteOrderHandler::__construct($orderRepository, $shipmondoClient, Symfony\Component\Workflow\WorkflowInterface $orderWorkflow, Canceller\OrderCancellerInterface $orderCanceller, $logger)` |
+| | `Message\CommandHandler\DeleteOrderHandler::__construct($orderRepository, $shipmondoClient, Symfony\Component\Workflow\WorkflowInterface $orderWorkflow, Canceller\OrderCancellerInterface $orderCanceller)` |
 
 New: `Canceller\OrderCancellerInterface` and `Canceller\OrderCanceller` (service `setono_sylius_shipmondo.canceller.order`),
 which make the Shipmondo state of an order that is cancelled in Sylius cancelled too, and the `Canceller\Cancellation`

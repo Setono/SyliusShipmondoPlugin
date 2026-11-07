@@ -6,10 +6,12 @@ namespace Setono\SyliusShipmondoPlugin\Message\Middleware;
 
 use Doctrine\DBAL\Connection;
 use Psr\Log\LoggerInterface;
+use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
 use Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder;
 use Setono\SyliusShipmondoPlugin\Message\CommandHandler\DeleteOrderHandler;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Exception\HandlerFailedException;
+use Symfony\Component\Messenger\Exception\UnrecoverableMessageHandlingException;
 use Symfony\Component\Messenger\Middleware\MiddlewareInterface;
 use Symfony\Component\Messenger\Middleware\StackInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
@@ -50,10 +52,15 @@ final class AbsorbDeleteOrderFailureMiddleware implements MiddlewareInterface
                 throw $e;
             }
 
-            $this->logger->error('Could not delete the Shipmondo sales order of the order {order}, so the order stays uploaded and linked to it. Delete the sales order in Shipmondo', [
-                'order' => $message->order,
-                'exception' => array_values($e->getWrappedExceptions())[0] ?? $e,
-            ]);
+            $failure = array_values($e->getWrappedExceptions())[0] ?? $e;
+            if ($failure instanceof UnrecoverableMessageHandlingException) {
+                // the handler wraps a failure trying again won't change
+                $failure = $failure->getPrevious() ?? $failure;
+            }
+
+            $this->logger->error('Could not delete the Shipmondo sales order of the order with the id {orderId}, so the order stays uploaded and linked to it. Delete the sales order in Shipmondo', [
+                'orderId' => $message->order,
+            ] + ShipmondoFailure::of($failure)->logContext());
 
             return $e->getEnvelope()->with(new HandledStamp(false, DeleteOrderHandler::class . '::__invoke'));
         }
