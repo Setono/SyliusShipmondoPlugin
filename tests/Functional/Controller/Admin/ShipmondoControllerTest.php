@@ -203,6 +203,7 @@ final class ShipmondoControllerTest extends FunctionalTestCase
         self::assertResponseIsSuccessful();
         self::assertSame([664116, 999], $this->allowedShipmentTemplates());
     }
+
     /**
      * @test
      */
