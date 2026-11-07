@@ -163,8 +163,6 @@ final class ShipmondoControllerTest extends FunctionalTestCase
      */
     public function it_explains_that_there_are_no_shipment_templates_in_shipmondo(): void
     {
-        self::skipUntilFixed(19);
-
         $this->logIn();
         $this->shipmondo->respond('GET', 'payment_gateways', 200, [], ['X-Total-Pages' => '1']);
         $this->shipmondo->respond('GET', 'shipment_templates', 200, [], ['X-Total-Pages' => '1']);
@@ -173,6 +171,7 @@ final class ShipmondoControllerTest extends FunctionalTestCase
 
         self::assertResponseIsSuccessful();
         self::assertSelectorTextContains('body', 'There are no configured payment gateways inside Shipmondo.');
+        self::assertSelectorTextContains('body', 'There are no shipment templates inside Shipmondo. Go to Shipmondo and create your first shipment template.');
         self::assertSelectorTextNotContains('body', 'setono_sylius_shipmondo.ui.');
     }
 
