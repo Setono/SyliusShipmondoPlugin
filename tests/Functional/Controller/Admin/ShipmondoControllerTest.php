@@ -120,8 +120,6 @@ final class ShipmondoControllerTest extends FunctionalTestCase
      */
     public function it_removes_the_mapping_when_no_payment_gateway_is_selected(): void
     {
-        self::skipUntilFixed(18);
-
         $this->logIn();
         $this->respondWithGatewaysAndTemplates();
 
@@ -141,8 +139,6 @@ final class ShipmondoControllerTest extends FunctionalTestCase
      */
     public function it_removes_the_shipment_templates_when_none_are_selected(): void
     {
-        self::skipUntilFixed(18);
-
         $this->logIn();
         $this->fixtures->shippingMethod->setAllowedShipmentTemplates([664116]);
         $this->entityManager()->flush();
@@ -156,6 +152,56 @@ final class ShipmondoControllerTest extends FunctionalTestCase
 
         self::assertResponseIsSuccessful();
         self::assertSame([], $this->allowedShipmentTemplates());
+    }
+
+    /**
+     * Saving one payment method's mapping keeps another's to a payment gateway Shipmondo doesn't list, e.g. one deleted
+     * in Shipmondo: the page shows it as such, selected
+     *
+     * @test
+     */
+    public function it_keeps_a_mapping_to_a_payment_gateway_shipmondo_does_not_list(): void
+    {
+        $this->logIn();
+        $this->shipmondo->respond('GET', 'payment_gateways', 200, [
+            ['id' => 4712, 'name' => 'Quickpay', 'provider' => 'quickpay', 'merchant_number' => '12345'],
+        ], ['X-Total-Pages' => '1']);
+        $this->shipmondo->respond('GET', 'shipment_templates', 200, [], ['X-Total-Pages' => '1']);
+
+        $crawler = $this->browser->request('GET', '/admin/shipmondo');
+        $option = $crawler->filter(sprintf('select[name="payment_methods[%d]"] option[selected]', self::id($this->fixtures->paymentMethod)));
+        self::assertSame(['4711'], $option->extract(['value']));
+        self::assertSame('Not in Shipmondo (id 4711)', $option->text());
+
+        $form = $crawler->filter('select[name^="payment_methods"]')->closest('form')?->form();
+        self::assertNotNull($form);
+        $this->browser->submit($form);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame(ShopFixtures::PAYMENT_METHOD_SHIPMONDO_ID, $this->paymentMethodShipmondoId());
+    }
+
+    /**
+     * @test
+     */
+    public function it_keeps_an_allowed_shipment_template_shipmondo_does_not_list(): void
+    {
+        $this->logIn();
+        $this->fixtures->shippingMethod->setAllowedShipmentTemplates([999, 664116]);
+        $this->entityManager()->flush();
+        $this->respondWithGatewaysAndTemplates();
+
+        $crawler = $this->browser->request('GET', '/admin/shipmondo');
+        $selected = $crawler->filter(sprintf('select[name="shipping_methods[%d][]"] option[selected]', self::id($this->fixtures->shippingMethod)));
+        self::assertSame(['664116', '999'], $selected->extract(['value']));
+        self::assertSame('Not in Shipmondo (id 999)', $selected->last()->text());
+
+        $form = $crawler->filter('select[name^="shipping_methods"]')->closest('form')?->form();
+        self::assertNotNull($form);
+        $this->browser->submit($form);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame([664116, 999], $this->allowedShipmentTemplates());
     }
 
     /**

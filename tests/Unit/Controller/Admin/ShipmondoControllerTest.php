@@ -180,15 +180,19 @@ final class ShipmondoControllerTest extends TestCase
         $this->givenShipmondoApi();
         $this->givenRendered();
 
+        $unmapped = new PaymentMethod();
+        $unmapped->setShipmondoId(12);
         $paymentMethod = new PaymentMethod();
-        $this->paymentMethodRepository->find(1)->shouldNotBeCalled();
+        $this->paymentMethodRepository->find(1)->willReturn($unmapped);
         $this->paymentMethodRepository->find(2)->willReturn(null);
         $this->paymentMethodRepository->find(3)->willReturn($paymentMethod);
+        $this->paymentMethodRepository->add($unmapped)->shouldBeCalledOnce();
         $this->paymentMethodRepository->add($paymentMethod)->shouldBeCalledOnce();
 
-        // an unmapped payment method and an unknown payment method must not stop the mapping of the following ones
+        // the empty choice removes a mapping, and an unknown payment method must not stop the mapping of the following ones
         $this->controller()->index(self::post(['payment_methods' => [1 => '', 2 => '12', 3 => '11']]));
 
+        self::assertNull($unmapped->getShipmondoId());
         self::assertSame(11, $paymentMethod->getShipmondoId());
     }
 
@@ -220,9 +224,75 @@ final class ShipmondoControllerTest extends TestCase
         $this->shippingMethodRepository->add($shippingMethod)->shouldBeCalledOnce();
 
         // an unknown shipping method must not stop the mapping of the following ones
-        $this->controller()->index(self::post(['shipping_methods' => [99 => ['21'], 1 => ['664116', '664115']]]));
+        $this->controller()->index(self::post([
+            'listed_shipping_methods' => ['99', '1'],
+            'shipping_methods' => [99 => ['21'], 1 => ['664116', '664115']],
+        ]));
 
         self::assertSame([664116, 664115], $shippingMethod->getAllowedShipmentTemplates());
+    }
+
+    /**
+     * A select without a selected shipment template isn't submitted, so only the list of the form's shipping methods
+     * names them
+     *
+     * @test
+     */
+    public function it_removes_the_shipment_templates_of_a_listed_shipping_method_without_a_selection(): void
+    {
+        $this->givenShipmondoApi();
+        $this->givenRendered();
+
+        $cleared = new ShippingMethod();
+        $cleared->setAllowedShipmentTemplates([21]);
+        $mapped = new ShippingMethod();
+        $this->shippingMethodRepository->find('1')->willReturn($cleared);
+        $this->shippingMethodRepository->find('2')->willReturn($mapped);
+        $this->shippingMethodRepository->add($cleared)->shouldBeCalledOnce();
+        $this->shippingMethodRepository->add($mapped)->shouldBeCalledOnce();
+
+        $this->controller()->index(self::post(['listed_shipping_methods' => ['1', '2'], 'shipping_methods' => [2 => ['664116']]]));
+
+        self::assertSame([], $cleared->getAllowedShipmentTemplates());
+        self::assertSame([664116], $mapped->getAllowedShipmentTemplates());
+    }
+
+    /**
+     * @test
+     */
+    public function it_removes_the_shipment_templates_of_every_shipping_method_when_none_has_a_selection(): void
+    {
+        $this->givenShipmondoApi();
+        $this->givenRendered();
+
+        $shippingMethod = new ShippingMethod();
+        $shippingMethod->setAllowedShipmentTemplates([21]);
+        $this->shippingMethodRepository->find('1')->willReturn($shippingMethod);
+        $this->shippingMethodRepository->add($shippingMethod)->shouldBeCalledOnce();
+
+        // no shipping_methods at all
+        $this->controller()->index(self::post(['listed_shipping_methods' => ['1']]));
+
+        self::assertSame([], $shippingMethod->getAllowedShipmentTemplates());
+    }
+
+    /**
+     * A template override that doesn't list its shipping methods can still map shipment templates
+     *
+     * @test
+     */
+    public function it_maps_the_posted_shipment_templates_without_the_list_of_shipping_methods(): void
+    {
+        $this->givenShipmondoApi();
+        $this->givenRendered();
+
+        $shippingMethod = new ShippingMethod();
+        $this->shippingMethodRepository->find(1)->willReturn($shippingMethod);
+        $this->shippingMethodRepository->add($shippingMethod)->shouldBeCalledOnce();
+
+        $this->controller()->index(self::post(['shipping_methods' => [1 => ['664116']]]));
+
+        self::assertSame([664116], $shippingMethod->getAllowedShipmentTemplates());
     }
 
     /**

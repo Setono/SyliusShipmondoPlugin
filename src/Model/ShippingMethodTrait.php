@@ -55,11 +55,14 @@ trait ShippingMethodTrait
 
     public function setAllowedShipmentTemplates(?array $allowedShipmentTemplates): void
     {
-        $this->allowedShipmentTemplates = null;
-
         if (null === $allowedShipmentTemplates) {
+            $this->allowedShipmentTemplates = null;
+
             return;
         }
+
+        // an empty list is stored as one, like the allowed shipment templates of a new shipping method
+        $this->allowedShipmentTemplates = [];
 
         foreach ($allowedShipmentTemplates as $allowedShipmentTemplate) {
             $this->addAllowedShipmentTemplate($allowedShipmentTemplate instanceof ShipmentTemplate ? $allowedShipmentTemplate->id : (int) $allowedShipmentTemplate);
