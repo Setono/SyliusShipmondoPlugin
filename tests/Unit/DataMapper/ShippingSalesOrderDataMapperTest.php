@@ -30,7 +30,11 @@ final class ShippingSalesOrderDataMapperTest extends TestCase
     public function it_maps_shipping_with_tax_included_in_price(): void
     {
         $order = self::getOrder();
-        self::addShipment($order, 100, 20, true);
+        self::addShipmentWith(
+            $order,
+            self::adjustment(AdjustmentInterface::SHIPPING_ADJUSTMENT, 100),
+            self::adjustment(AdjustmentInterface::TAX_ADJUSTMENT, 20, true),
+        );
 
         $salesOrder = new SalesOrderRequest();
 
@@ -51,7 +55,11 @@ final class ShippingSalesOrderDataMapperTest extends TestCase
     public function it_maps_shipping_with_tax_not_included_in_price(): void
     {
         $order = self::getOrder();
-        self::addShipment($order, 100, 20, false);
+        self::addShipmentWith(
+            $order,
+            self::adjustment(AdjustmentInterface::SHIPPING_ADJUSTMENT, 100),
+            self::adjustment(AdjustmentInterface::TAX_ADJUSTMENT, 20, false),
+        );
 
         $salesOrder = new SalesOrderRequest();
 
@@ -64,6 +72,66 @@ final class ShippingSalesOrderDataMapperTest extends TestCase
         self::assertSame('1', $salesOrder->orderLines[0]->unitPriceExcludingVat);
         self::assertSame(1, $salesOrder->orderLines[0]->quantity);
         self::assertSame('0.2', $salesOrder->orderLines[0]->vatPercent);
+    }
+
+    /**
+     * @test
+     */
+    public function it_maps_shipping_with_a_shipping_promotion_and_tax_included_in_price(): void
+    {
+        $order = self::getOrder();
+        // Sylius taxes the shipping after its promotions: 25 % included in 50.00 - 10.00 is 8.00
+        self::addShipmentWith(
+            $order,
+            self::adjustment(AdjustmentInterface::SHIPPING_ADJUSTMENT, 5000),
+            self::adjustment(AdjustmentInterface::ORDER_SHIPPING_PROMOTION_ADJUSTMENT, -1000),
+            self::adjustment(AdjustmentInterface::TAX_ADJUSTMENT, 800, true),
+        );
+
+        $salesOrder = $this->map($order);
+
+        self::assertCount(1, $salesOrder->orderLines);
+        self::assertSame('32', $salesOrder->orderLines[0]->unitPriceExcludingVat);
+        self::assertSame('0.25', $salesOrder->orderLines[0]->vatPercent);
+    }
+
+    /**
+     * @test
+     */
+    public function it_maps_shipping_with_a_shipping_promotion_and_tax_not_included_in_price(): void
+    {
+        $order = self::getOrder();
+        // 25 % on top of 50.00 - 10.00 is 10.00
+        self::addShipmentWith(
+            $order,
+            self::adjustment(AdjustmentInterface::SHIPPING_ADJUSTMENT, 5000),
+            self::adjustment(AdjustmentInterface::ORDER_SHIPPING_PROMOTION_ADJUSTMENT, -1000),
+            self::adjustment(AdjustmentInterface::TAX_ADJUSTMENT, 1000),
+        );
+
+        $salesOrder = $this->map($order);
+
+        self::assertSame('40', $salesOrder->orderLines[0]->unitPriceExcludingVat);
+        self::assertSame('0.25', $salesOrder->orderLines[0]->vatPercent);
+    }
+
+    /**
+     * @test
+     */
+    public function it_maps_shipping_made_free_by_a_shipping_promotion_as_free(): void
+    {
+        $order = self::getOrder();
+        // Sylius adds no tax to shipping that costs nothing
+        self::addShipmentWith(
+            $order,
+            self::adjustment(AdjustmentInterface::SHIPPING_ADJUSTMENT, 5000),
+            self::adjustment(AdjustmentInterface::ORDER_SHIPPING_PROMOTION_ADJUSTMENT, -5000),
+        );
+
+        $salesOrder = $this->map($order);
+
+        self::assertSame('0', $salesOrder->orderLines[0]->unitPriceExcludingVat);
+        self::assertSame('0', $salesOrder->orderLines[0]->vatPercent);
     }
 
     /**
@@ -116,7 +184,11 @@ final class ShippingSalesOrderDataMapperTest extends TestCase
     public function it_dispatches_an_event_for_the_shipping_line(): void
     {
         $order = self::getOrder();
-        self::addShipment($order, 100, 20, false);
+        self::addShipmentWith(
+            $order,
+            self::adjustment(AdjustmentInterface::SHIPPING_ADJUSTMENT, 100),
+            self::adjustment(AdjustmentInterface::TAX_ADJUSTMENT, 20, false),
+        );
 
         $eventDispatcher = $this->prophesize(EventDispatcherInterface::class);
         $eventDispatcher->dispatch(Argument::type(ShippingOrderLineMappedEvent::class))->willReturnArgument(0)->shouldBeCalledOnce();
@@ -198,12 +270,12 @@ final class ShippingSalesOrderDataMapperTest extends TestCase
         }
     }
 
-    private static function adjustment(string $type, int $amount): Adjustment
+    private static function adjustment(string $type, int $amount, bool $neutral = false): Adjustment
     {
         $adjustment = new Adjustment();
         $adjustment->setType($type);
         $adjustment->setAmount($amount);
-        $adjustment->setNeutral(false);
+        $adjustment->setNeutral($neutral);
 
         return $adjustment;
     }
@@ -214,24 +286,5 @@ final class ShippingSalesOrderDataMapperTest extends TestCase
         $order->setCurrencyCode('USD');
 
         return $order;
-    }
-
-    private static function addShipment(OrderInterface $order, int $shippingAmount, int $taxAmount, bool $taxNeutral): void
-    {
-        $shipment = new Shipment();
-        $order->addShipment($shipment);
-
-        $taxAdjustment = new Adjustment();
-        $taxAdjustment->setAmount($taxAmount);
-        $taxAdjustment->setNeutral($taxNeutral);
-        $taxAdjustment->setType(AdjustmentInterface::TAX_ADJUSTMENT);
-
-        $shippingAdjustment = new Adjustment();
-        $shippingAdjustment->setAmount($shippingAmount);
-        $shippingAdjustment->setNeutral(false);
-        $shippingAdjustment->setType(AdjustmentInterface::SHIPPING_ADJUSTMENT);
-
-        $shipment->addAdjustment($shippingAdjustment);
-        $shipment->addAdjustment($taxAdjustment);
     }
 }

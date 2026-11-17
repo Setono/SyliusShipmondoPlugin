@@ -152,7 +152,7 @@ The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires
 - Individual mappers (registered via `SalesOrderDataMapperInterface` tag) handle specific aspects:
   - `SalesOrderDataMapper`: Basic order data and addresses
   - `OrderLinesSalesOrderDataMapper`: Order line items
-  - `ShippingSalesOrderDataMapper`: Shipping information
+  - `ShippingSalesOrderDataMapper`: The shipping line, per shipment: the shipping adjustment plus the shipment's shipping promotion adjustments (`order_shipping_promotion`), which is the amount Sylius taxes, with the VAT included (a neutral tax adjustment) or on top
   - `PaymentDetailsSalesOrderDataMapper`: Payment details, with the payment gateway the payment method is mapped to (none when unmapped). It logs an error for a stale mapping (see Stale Mappings) and sends it anyway
   - `ShipmentTemplateSalesOrderDataMapper`: The shipment template, among the shipping method's allowed ones that ship from the store's country: the country they all ship from, or else the channel's shop billing data's country, both decided among the allowed ones that ship to the shipping address's country. It logs a warning per order for stale mappings, and asks Shipmondo nothing when the shipping method allows no shipment template
   - `ServicePointDataMapper`: The chosen pickup point, as the sales order's service point

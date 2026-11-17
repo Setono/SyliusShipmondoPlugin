@@ -33,16 +33,20 @@ final class ShippingSalesOrderDataMapper implements SalesOrderDataMapperInterfac
             $shippingAdjustment = $shippingAdjustments->first();
             Assert::isInstanceOf($shippingAdjustment, AdjustmentInterface::class);
 
-            // Sylius adds the shipping tax as its own adjustment. A neutral one is included in the shipping adjustment's
-            // amount, any other comes on top of it
+            // The customer pays for the shipping after its shipping promotions, which Sylius adds to the shipment as
+            // their own adjustments
+            $shippingAfterPromotions = $shippingAdjustment->getAmount() + $shipment->getAdjustmentsTotal(AdjustmentInterface::ORDER_SHIPPING_PROMOTION_ADJUSTMENT);
+
+            // Sylius taxes that amount and adds the tax as its own adjustment. A neutral one is included in the amount,
+            // any other comes on top of it
             $taxAdjustments = $shipment->getAdjustments(AdjustmentInterface::TAX_ADJUSTMENT);
             Assert::lessThanEq($taxAdjustments->count(), 1);
 
             $taxAdjustment = $taxAdjustments->first();
             $tax = false === $taxAdjustment ? 0 : $taxAdjustment->getAmount();
             $unitPrice = false !== $taxAdjustment && $taxAdjustment->isNeutral()
-                ? AmountWithVat::fromAmountIncludingVat($shippingAdjustment->getAmount(), $tax)
-                : AmountWithVat::fromAmountExcludingVat($shippingAdjustment->getAmount(), $tax)
+                ? AmountWithVat::fromAmountIncludingVat($shippingAfterPromotions, $tax)
+                : AmountWithVat::fromAmountExcludingVat($shippingAfterPromotions, $tax)
             ;
 
             $orderLine = new OrderLine(

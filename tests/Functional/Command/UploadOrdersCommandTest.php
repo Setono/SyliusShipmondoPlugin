@@ -112,13 +112,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
             'country_code' => 'DK',
         ], $body['service_point']);
 
-        self::assertIsArray($body['order_lines']);
-        $lines = [];
-        foreach ($body['order_lines'] as $line) {
-            self::assertIsArray($line);
-            self::assertIsString($line['line_type']);
-            $lines[$line['line_type']] = $line;
-        }
+        $lines = self::orderLines($body);
         self::assertSame(['shipping', 'item'], array_keys($lines));
 
         self::assertSame('T-shirt (Blue)', $lines['item']['item_name']);
@@ -136,6 +130,34 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         self::assertSame(ShopFixtures::CURRENCY_CODE, $body['payment_details']['currency_code']);
         self::assertSame('Bank transfer', $body['payment_details']['payment_method']);
         self::assertSame((string) ShopFixtures::PAYMENT_METHOD_SHIPMONDO_ID, $body['payment_details']['payment_gateway_id']);
+    }
+
+    /**
+     * Sylius takes a shipping promotion off the shipping and taxes what is left, which is what the customer pays for the
+     * shipping
+     *
+     * @test
+     */
+    public function it_maps_the_shipping_after_its_shipping_promotion(): void
+    {
+        $this->fixtures->taxShipping(0.25);
+        $this->fixtures->createShippingPromotion(0.2);
+        $this->fixtures->createOrder($this->fixtures->createCustomer());
+
+        $this->respondWithThePaymentGateway();
+        $this->shipmondo->respond('POST', 'sales_orders', 201, ['id' => 1001]);
+
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+
+        $body = ShipmondoApiStub::jsonBody($this->shipmondo->requests('POST', 'sales_orders')[0]);
+        $shipping = self::orderLines($body)['shipping'];
+
+        // 5.00 less 20 % is 4.00, of which 0.80 is the 25 % VAT
+        self::assertSame('3.2', $shipping['unit_price_excluding_vat']);
+        self::assertSame('0.25', $shipping['vat_percent']);
+        // what the customer pays: the two t-shirts (2 × 25.00) and the shipping
+        self::assertIsArray($body['payment_details']);
+        self::assertSame('54', $body['payment_details']['amount_including_vat']);
     }
 
     /**
@@ -446,5 +468,26 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
             $template(664115, 'GLS pickup point (SE)', 'SE'),
             $template(664114, 'PostNord (DK)', 'DK'),
         ], ['X-Total-Pages' => '1']);
+    }
+
+    /**
+     * The sales order's order lines by their line type, in the order they were sent
+     *
+     * @param array<array-key, mixed> $salesOrder
+     *
+     * @return array<string, array<array-key, mixed>>
+     */
+    private static function orderLines(array $salesOrder): array
+    {
+        self::assertIsArray($salesOrder['order_lines']);
+
+        $lines = [];
+        foreach ($salesOrder['order_lines'] as $line) {
+            self::assertIsArray($line);
+            self::assertIsString($line['line_type']);
+            $lines[$line['line_type']] = $line;
+        }
+
+        return $lines;
     }
 }
