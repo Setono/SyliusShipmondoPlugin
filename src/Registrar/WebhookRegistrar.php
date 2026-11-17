@@ -33,10 +33,11 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
      */
     public function register(): void
     {
+        $namePrefixWithShopId = $this->namePrefixWithShopId();
         $endpoint = $this->endpoint();
 
         $this->client->webhooks()->deleteAll(
-            fn (WebhookResponse $webhook) => str_starts_with($webhook->name, $this->shopsNamePrefix()) ||
+            fn (WebhookResponse $webhook) => str_starts_with($webhook->name, $namePrefixWithShopId) ||
                 (str_starts_with($webhook->name, $this->namePrefix) && $webhook->endpoint === $endpoint),
         );
 
@@ -70,7 +71,7 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
 
         foreach ($this->handlers->subscribedActions() as $action) {
             yield new Webhook(
-                sprintf('%s - [%s:%s]', $this->shopsNamePrefix(), u($resource->value)->snake()->toString(), $action->value),
+                sprintf('%s - [%s:%s]', $this->namePrefixWithShopId(), u($resource->value)->snake()->toString(), $action->value),
                 $this->endpoint(),
                 $this->webhooksKey,
                 $action,
@@ -80,11 +81,11 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
     }
 
     /**
-     * The name prefix and this shop's id, which identifies the shop among the shops that share its Shipmondo account.
-     * The id is derived from the shop's webhooks key, so it stays the same when the shop's address changes, and it gives
-     * nothing of the key away
+     * The name prefix and this shop's id, e.g. "Setono Sylius Shipmondo Plugin [3fd02dbf]". The id tells the shop apart
+     * from the other shops on its Shipmondo account: the first 8 hexadecimal characters of an HMAC with the shop's
+     * webhooks key, so it stays the same when the shop's address changes, and it gives nothing of the key away
      */
-    private function shopsNamePrefix(): string
+    private function namePrefixWithShopId(): string
     {
         return sprintf('%s [%s]', $this->namePrefix, substr(hash_hmac('sha256', 'shop id', $this->webhooksKey), 0, 8));
     }

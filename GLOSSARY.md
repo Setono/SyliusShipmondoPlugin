@@ -104,5 +104,8 @@ _Avoid_: remote event (Symfony's name for it), callback, notification
 What the plugin does to a Sylius order when a webhook about its sales order arrives, such as shipping the order's shipments when Shipmondo reports the sales order shipped.
 
 **Webhook registration**:
-The set of webhooks the store has asked Shipmondo to send it: exactly the ones a webhook handler handles. Shipmondo sends the webhooks of the latest registration, so a change to that set takes effect only once the webhooks are registered again. Registering replaces only the store's own webhooks, the ones named with its shop id (derived from its webhooks key) or sent to its endpoint: another shop on the same Shipmondo account keeps its own.
+The set of webhooks the store has asked Shipmondo to send it: exactly the ones a webhook handler handles. Shipmondo sends the webhooks of the latest registration, so a change to that set takes effect only once the webhooks are registered again. Registering replaces only the store's own webhooks: the ones named with its shop id or sent to its endpoint. Another store on the same Shipmondo account keeps its own.
 _Avoid_: subscription sync
+
+**Shop id**:
+What tells a store's webhooks apart from those of the other stores on the same Shipmondo account: 8 hexadecimal characters in each webhook's name, derived from the store's webhooks key. Stores with the same webhooks key get the same shop id.

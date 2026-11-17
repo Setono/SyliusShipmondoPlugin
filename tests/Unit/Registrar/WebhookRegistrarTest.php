@@ -140,34 +140,42 @@ final class WebhookRegistrarTest extends TestCase
         $endpoint = 'https://shop.example.com/webhook/shipmondo';
         $anotherShopsEndpoint = 'https://another-shop.example.com/webhook/shipmondo';
 
-        $httpClient = $this->prophesize(HttpClientInterface::class);
-
-        $httpClient->sendRequest(ShipmondoApi::request('GET', 'webhooks'))->willReturn(ShipmondoApi::json([
-            // this shop's (ab9f9937 is its id), registered before the shop moved to its current address
-            self::webhook(1, 'Shop [ab9f9937] - [orders:delete]', 'https://old-address.example.com/webhook/shipmondo'),
-            // this shop's, registered before webhooks carried the shop's id
-            self::webhook(2, 'Shop - [orders:delete]', $endpoint),
-            // this shop's, registered with an earlier webhooks key
-            self::webhook(3, 'Shop [0badc0de] - [orders:delete]', $endpoint),
-            // another shop's, with and without its id
-            self::webhook(4, 'Shop [c10d3f55] - [orders:delete]', $anotherShopsEndpoint),
-            self::webhook(5, 'Shop - [orders:delete]', $anotherShopsEndpoint),
-            // another integration's
-            self::webhook(6, 'Another integration - [orders:delete]', $endpoint),
-        ]))->shouldBeCalledOnce();
-
-        $httpClient->sendRequest(ShipmondoApi::request('DELETE', 'webhooks/1'))->willReturn(ShipmondoApi::empty())->shouldBeCalledOnce();
-        $httpClient->sendRequest(ShipmondoApi::request('DELETE', 'webhooks/2'))->willReturn(ShipmondoApi::empty())->shouldBeCalledOnce();
-        $httpClient->sendRequest(ShipmondoApi::request('DELETE', 'webhooks/3'))->willReturn(ShipmondoApi::empty())->shouldBeCalledOnce();
-        $httpClient->sendRequest(ShipmondoApi::request('DELETE', 'webhooks/4'))->willReturn(ShipmondoApi::empty())->shouldNotBeCalled();
-        $httpClient->sendRequest(ShipmondoApi::request('DELETE', 'webhooks/5'))->willReturn(ShipmondoApi::empty())->shouldNotBeCalled();
-        $httpClient->sendRequest(ShipmondoApi::request('DELETE', 'webhooks/6'))->willReturn(ShipmondoApi::empty())->shouldNotBeCalled();
-        $httpClient->sendRequest(ShipmondoApi::request('POST', 'webhooks'))->willReturn(ShipmondoApi::json(self::webhook(100, 'Shop [ab9f9937] - [orders:delete]', $endpoint)))->shouldBeCalledTimes(3);
+        $shipmondo = (new ScriptedHttpClient())
+            ->respond(200, [
+                // this shop's (ab9f9937 is its id), registered before the shop moved to its current address
+                self::webhook(1, 'Shop [ab9f9937] - [orders:delete]', 'https://old-address.example.com/webhook/shipmondo'),
+                // this shop's, registered before webhooks carried the shop's id
+                self::webhook(2, 'Shop - [orders:delete]', $endpoint),
+                // this shop's, registered with an earlier webhooks key
+                self::webhook(3, 'Shop [0badc0de] - [orders:delete]', $endpoint),
+                // another shop's, with and without its id
+                self::webhook(4, 'Shop [c10d3f55] - [orders:delete]', $anotherShopsEndpoint),
+                self::webhook(5, 'Shop - [orders:delete]', $anotherShopsEndpoint),
+                // another integration's
+                self::webhook(6, 'Another integration - [orders:delete]', $endpoint),
+            ])
+            ->respond(204)
+            ->respond(204)
+            ->respond(204)
+            ->respond(201, self::webhook(101, 'Shop [ab9f9937] - [orders:status_update]', $endpoint))
+            ->respond(201, self::webhook(102, 'Shop [ab9f9937] - [orders:create_shipment]', $endpoint))
+            ->respond(201, self::webhook(103, 'Shop [ab9f9937] - [orders:delete]', $endpoint))
+        ;
 
         $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
         $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn($endpoint);
 
-        (new WebhookRegistrar(ShipmondoApi::client($httpClient->reveal()), $urlGenerator->reveal(), self::handlers(), self::KEY, 'Shop'))->register();
+        (new WebhookRegistrar(ShipmondoApi::client($shipmondo), $urlGenerator->reveal(), self::handlers(), self::KEY, 'Shop'))->register();
+
+        self::assertSame([
+            'GET webhooks',
+            'DELETE webhooks/1',
+            'DELETE webhooks/2',
+            'DELETE webhooks/3',
+            'POST webhooks',
+            'POST webhooks',
+            'POST webhooks',
+        ], $shipmondo->requestLines());
     }
 
     private static function handlers(): OrderWebhookHandlers

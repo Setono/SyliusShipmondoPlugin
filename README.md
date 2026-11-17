@@ -55,6 +55,8 @@ SHIPMONDO_SANDBOX=false
 ```
 
 `SHIPMONDO_WEBHOOKS_KEY` signs the webhooks Shipmondo sends you and must be at least 32 bytes long.
+If several shops share a Shipmondo account, give each its own key: the webhooks are named after an id derived from it,
+and registering the webhooks in one shop replaces only that shop's.
 Set `SHIPMONDO_SANDBOX=true` to use the Shipmondo sandbox instead of the production API.
 
 ### Override template

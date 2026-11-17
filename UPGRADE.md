@@ -34,8 +34,9 @@ For most installations the required changes are:
   and if you override the admin Shipmondo page's template, flag such mappings too (section 14)
 - if you override the admin Shipmondo page's template, say when a list couldn't be loaded (section 15)
 - note that the shipping line of a sales order now counts the shipping promotions (section 16)
-- if several shops share a Shipmondo account, give each its own `SHIPMONDO_WEBHOOKS_KEY`, and delete in Shipmondo the
-  webhooks 1.x registered for an address a shop no longer has (section 17)
+- after registering the webhooks, delete in Shipmondo the old ones it leaves, sent to another address than the one it
+  registers now, and if several shops share a Shipmondo account, upgrade them all and give each its own
+  `SHIPMONDO_WEBHOOKS_KEY` (section 17)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -741,9 +742,17 @@ same id, and registering in one deletes the other's webhooks again. A new key gi
 then still replaces the webhooks sent to the shop's endpoint, but not ones sent to an earlier address.
 
 **Re-run `setono:sylius-shipmondo:register-webhooks`** after upgrading (section 4 asks for it too): the webhooks'
-names changed, so the admin Shipmondo page asks to register them again. The webhooks 1.x registered for an address
-the shop no longer has carry no id, so registering leaves them: delete them in Shipmondo (Settings > Integrations >
-Webhooks). A shop no longer needs a name prefix of its own to share a Shipmondo account.
+names changed, so the admin Shipmondo page asks to register them again. The webhooks registered before carry no id, so
+registering replaces them only when they are sent to the endpoint it registers now. Delete the ones it leaves in
+Shipmondo (Settings > Integrations > Webhooks): the ones for an address the shop no longer has, and the ones for
+another address of the shop, which would send the shop every webhook twice. That happens when they were registered
+with the admin's "Register webhooks" button under one host, and the command generates another endpoint, from the
+router's `default_uri` (`framework.router.default_uri`), or `http://localhost` without one.
+
+A shop still on 1.x deletes every webhook with the name prefix when it registers, the other shops' included, so
+upgrade every shop that shares the Shipmondo account. A shop that set a name prefix of its own to share the account can
+keep it. If it goes back to the default, registering leaves the webhooks with its old prefix: delete them in
+Shipmondo.
 
 ### Unchanged
 
