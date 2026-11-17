@@ -8,7 +8,6 @@ use Psr\EventDispatcher\EventDispatcherInterface;
 use Setono\Shipmondo\Request\SalesOrder\OrderLine;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\Event\OrderLineMappedEvent;
-use function Setono\SyliusShipmondoPlugin\formatAmount;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Sylius\Component\Core\Model\OrderItemUnitInterface;
 use Webmozart\Assert\Assert;
@@ -26,7 +25,7 @@ final class OrderLinesSalesOrderDataMapper implements SalesOrderDataMapperInterf
             $orderItemUnit = $orderItem->getUnits()->first();
             Assert::isInstanceOf($orderItemUnit, OrderItemUnitInterface::class);
 
-            $unitPriceExcludingVat = $orderItemUnit->getTotal() - $orderItemUnit->getTaxTotal();
+            $unitPrice = AmountWithVat::fromAmountIncludingVat($orderItemUnit->getTotal(), $orderItemUnit->getTaxTotal());
 
             $itemName = (string) $orderItem->getProductName();
             if ($orderItem->getVariantName() !== null) {
@@ -37,8 +36,8 @@ final class OrderLinesSalesOrderDataMapper implements SalesOrderDataMapperInterf
                 itemName: $itemName,
                 itemSku: $orderItem->getVariant()?->getCode(),
                 quantity: $orderItem->getQuantity(),
-                unitPriceExcludingVat: formatAmount($unitPriceExcludingVat),
-                vatPercent: (string) ($orderItemUnit->getTaxTotal() / $unitPriceExcludingVat),
+                unitPriceExcludingVat: $unitPrice->amountExcludingVat(),
+                vatPercent: $unitPrice->vatPercent(),
                 currencyCode: $order->getCurrencyCode(),
                 unitWeight: null === $orderItem->getVariant()?->getWeight() ? null : (int) $orderItem->getVariant()->getWeight(),
             );

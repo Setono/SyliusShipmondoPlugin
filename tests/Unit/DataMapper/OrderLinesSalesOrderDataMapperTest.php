@@ -80,6 +80,24 @@ final class OrderLinesSalesOrderDataMapperTest extends TestCase
     }
 
     /**
+     * A free item, e.g. a gift or an item with a 100 % discount, has no amount excluding VAT to share the VAT out on
+     *
+     * @test
+     */
+    public function it_maps_a_free_item_with_a_vat_percent_of_0(): void
+    {
+        $order = self::getOrder();
+        $order->addItem(self::getOrderItem(0, 0, true));
+
+        $salesOrder = new SalesOrderRequest();
+        (new OrderLinesSalesOrderDataMapper($this->prophesize(EventDispatcherInterface::class)->reveal()))->map($order, $salesOrder);
+
+        self::assertCount(1, $salesOrder->orderLines);
+        self::assertSame('0', $salesOrder->orderLines[0]->unitPriceExcludingVat);
+        self::assertSame('0', $salesOrder->orderLines[0]->vatPercent);
+    }
+
+    /**
      * @test
      */
     public function it_maps_the_variant_code_and_weight_and_dispatches_an_event_per_line(): void

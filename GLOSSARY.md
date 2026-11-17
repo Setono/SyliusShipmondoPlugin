@@ -47,6 +47,10 @@ How one upload went: uploaded, a Shipmondo failure, the order changed while it w
 **Rejected upload**:
 An upload that Shipmondo rejected or answered with not found. The order becomes failed, and the upload counts toward the upload run's stop rule.
 
+**VAT percent**:
+The VAT on an amount as a share of the amount excluding VAT, e.g. 0.25 for 25 %, as a sales order states it for each order line, the shipping and the payment. It is 0 when there is no amount excluding VAT, e.g. for a free item.
+_Avoid_: tax rate (Sylius's, which is set per tax category and may be included in the price)
+
 ### Shipmondo failures
 
 **Shipmondo failure**:
