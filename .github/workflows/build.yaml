@@ -206,8 +206,9 @@ jobs:
                     - "~6.4.0"
 
         steps:
+            # the runner image ships MySQL (root/root) disabled; Ubuntu 26.04 has no /etc/init.d script for it
             -   name: "Start MySQL"
-                run: "sudo /etc/init.d/mysql start"
+                run: "sudo systemctl start mysql.service"
 
             -   name: "Checkout"
                 uses: "actions/checkout@v6"
@@ -262,8 +263,9 @@ jobs:
                     - "~6.4.0"
 
         steps:
+            # the runner image ships MySQL (root/root) disabled; Ubuntu 26.04 has no /etc/init.d script for it
             -   name: "Start MySQL"
-                run: "sudo /etc/init.d/mysql start"
+                run: "sudo systemctl start mysql.service"
 
             -   name: "Checkout"
                 uses: "actions/checkout@v6"
