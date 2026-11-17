@@ -24,6 +24,8 @@ final class WebhookRegistrarTest extends TestCase
 
     private const KEY = 'a-webhooks-key-of-at-least-32-bytes!';
 
+    private const ANOTHER_SHOPS_KEY = 'another-shops-webhooks-key-of-32-bytes!';
+
     /**
      * @test
      */
@@ -34,12 +36,38 @@ final class WebhookRegistrarTest extends TestCase
 
         $registrar = new WebhookRegistrar(ShipmondoApi::client(new ScriptedHttpClient()), $urlGenerator->reveal(), self::handlers(), 'key', 'prefix');
 
+        // 3fd02dbf is the shop's id, derived from its webhooks key ('key')
         self::assertEquals([
-            new Webhook('prefix - [orders:status_update]', 'https://example.com/webhook', 'key', WebhookAction::StatusUpdate, WebhookResourceName::Orders),
-            new Webhook('prefix - [orders:create_shipment]', 'https://example.com/webhook', 'key', WebhookAction::CreateShipment, WebhookResourceName::Orders),
-            new Webhook('prefix - [orders:delete]', 'https://example.com/webhook', 'key', WebhookAction::Delete, WebhookResourceName::Orders),
+            new Webhook('prefix [3fd02dbf] - [orders:status_update]', 'https://example.com/webhook', 'key', WebhookAction::StatusUpdate, WebhookResourceName::Orders),
+            new Webhook('prefix [3fd02dbf] - [orders:create_shipment]', 'https://example.com/webhook', 'key', WebhookAction::CreateShipment, WebhookResourceName::Orders),
+            new Webhook('prefix [3fd02dbf] - [orders:delete]', 'https://example.com/webhook', 'key', WebhookAction::Delete, WebhookResourceName::Orders),
         ], iterator_to_array($registrar->getWebhooks(), false));
-        self::assertSame('00dc066b504bf3f9ef2067a52b04c921', $registrar->getVersion());
+        self::assertSame('11a5d6cb7e8aedb8b535b0c0c61fc6c3', $registrar->getVersion());
+    }
+
+    /**
+     * @test
+     */
+    public function it_names_the_webhooks_after_the_shop_whose_webhooks_key_they_carry(): void
+    {
+        $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
+        $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn('https://example.com/webhook');
+
+        $names = fn (string $webhooksKey): array => array_map(
+            static fn (Webhook $webhook): string => $webhook->name,
+            iterator_to_array((new WebhookRegistrar(ShipmondoApi::client(new ScriptedHttpClient()), $urlGenerator->reveal(), self::handlers(), $webhooksKey, 'Shop'))->getWebhooks(), false),
+        );
+
+        self::assertSame([
+            'Shop [ab9f9937] - [orders:status_update]',
+            'Shop [ab9f9937] - [orders:create_shipment]',
+            'Shop [ab9f9937] - [orders:delete]',
+        ], $names(self::KEY));
+        self::assertSame([
+            'Shop [c10d3f55] - [orders:status_update]',
+            'Shop [c10d3f55] - [orders:create_shipment]',
+            'Shop [c10d3f55] - [orders:delete]',
+        ], $names(self::ANOTHER_SHOPS_KEY));
     }
 
     /**
@@ -104,6 +132,44 @@ final class WebhookRegistrarTest extends TestCase
         self::assertSame($expected, $created);
     }
 
+    /**
+     * @test
+     */
+    public function it_replaces_only_this_shops_webhooks_when_another_shop_shares_the_shipmondo_account(): void
+    {
+        $endpoint = 'https://shop.example.com/webhook/shipmondo';
+        $anotherShopsEndpoint = 'https://another-shop.example.com/webhook/shipmondo';
+
+        $httpClient = $this->prophesize(HttpClientInterface::class);
+
+        $httpClient->sendRequest(ShipmondoApi::request('GET', 'webhooks'))->willReturn(ShipmondoApi::json([
+            // this shop's (ab9f9937 is its id), registered before the shop moved to its current address
+            self::webhook(1, 'Shop [ab9f9937] - [orders:delete]', 'https://old-address.example.com/webhook/shipmondo'),
+            // this shop's, registered before webhooks carried the shop's id
+            self::webhook(2, 'Shop - [orders:delete]', $endpoint),
+            // this shop's, registered with an earlier webhooks key
+            self::webhook(3, 'Shop [0badc0de] - [orders:delete]', $endpoint),
+            // another shop's, with and without its id
+            self::webhook(4, 'Shop [c10d3f55] - [orders:delete]', $anotherShopsEndpoint),
+            self::webhook(5, 'Shop - [orders:delete]', $anotherShopsEndpoint),
+            // another integration's
+            self::webhook(6, 'Another integration - [orders:delete]', $endpoint),
+        ]))->shouldBeCalledOnce();
+
+        $httpClient->sendRequest(ShipmondoApi::request('DELETE', 'webhooks/1'))->willReturn(ShipmondoApi::empty())->shouldBeCalledOnce();
+        $httpClient->sendRequest(ShipmondoApi::request('DELETE', 'webhooks/2'))->willReturn(ShipmondoApi::empty())->shouldBeCalledOnce();
+        $httpClient->sendRequest(ShipmondoApi::request('DELETE', 'webhooks/3'))->willReturn(ShipmondoApi::empty())->shouldBeCalledOnce();
+        $httpClient->sendRequest(ShipmondoApi::request('DELETE', 'webhooks/4'))->willReturn(ShipmondoApi::empty())->shouldNotBeCalled();
+        $httpClient->sendRequest(ShipmondoApi::request('DELETE', 'webhooks/5'))->willReturn(ShipmondoApi::empty())->shouldNotBeCalled();
+        $httpClient->sendRequest(ShipmondoApi::request('DELETE', 'webhooks/6'))->willReturn(ShipmondoApi::empty())->shouldNotBeCalled();
+        $httpClient->sendRequest(ShipmondoApi::request('POST', 'webhooks'))->willReturn(ShipmondoApi::json(self::webhook(100, 'Shop [ab9f9937] - [orders:delete]', $endpoint)))->shouldBeCalledTimes(3);
+
+        $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
+        $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn($endpoint);
+
+        (new WebhookRegistrar(ShipmondoApi::client($httpClient->reveal()), $urlGenerator->reveal(), self::handlers(), self::KEY, 'Shop'))->register();
+    }
+
     private static function handlers(): OrderWebhookHandlers
     {
         $log = new \ArrayObject();
@@ -118,11 +184,11 @@ final class WebhookRegistrarTest extends TestCase
     /**
      * @return array<string, mixed>
      */
-    private static function webhook(int $id, string $name): array
+    private static function webhook(int $id, string $name, string $endpoint = 'https://example.com/webhook/shipmondo'): array
     {
         return [
             'id' => $id,
-            'endpoint' => 'https://example.com/webhook/shipmondo',
+            'endpoint' => $endpoint,
             'active' => true,
             'name' => $name,
             'action' => 'create',
