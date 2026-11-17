@@ -271,7 +271,7 @@ final class ShipmondoControllerTest extends TestCase
     public function it_fetches_the_shipment_templates_when_the_payment_gateways_could_not_be_fetched(): void
     {
         $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'payment_gateways'))->willReturn(ShipmondoApi::empty(503));
-        $this->respondWithShipmentTemplates();
+        $this->givenShipmentTemplates();
 
         $this->paymentMethodRepository->findAll()->willReturn([self::paymentMethod(99)]);
         $staleShippingMethod = self::shippingMethod([98, 21]);
@@ -571,10 +571,10 @@ final class ShipmondoControllerTest extends TestCase
             ['id' => 11, 'name' => 'Quickpay', 'provider' => 'quickpay', 'merchant_number' => '1234'],
             ['id' => 12, 'name' => 'Stripe', 'provider' => 'stripe', 'merchant_number' => '5678'],
         ]));
-        $this->respondWithShipmentTemplates();
+        $this->givenShipmentTemplates();
     }
 
-    private function respondWithShipmentTemplates(): void
+    private function givenShipmentTemplates(): void
     {
         $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'shipment_templates'))->willReturn(ShipmondoApi::json([
             [

@@ -677,13 +677,14 @@ can't be removed, and its warning or error is logged for every upload.
 
 ### 15. The admin Shipmondo page says when it couldn't fetch a list, instead of that Shipmondo has none
 
-In 1.x the admin Shipmondo page fetched the payment gateways and then the shipment templates, and when either failed,
-both tables said that Shipmondo had none and sent you to Shipmondo to create one
+In 1.x the admin Shipmondo page fetched the payment gateways and then the shipment templates, and a table whose list
+couldn't be fetched said that Shipmondo had none and sent you to Shipmondo to create one. When the payment gateways
+failed, the shipment templates weren't fetched either, so both tables said so, and the flash always named both lists
 ([#57](https://github.com/Setono/SyliusShipmondoPlugin/issues/57)). In 2.x it fetches each list on its own:
 
 - a table whose list couldn't be fetched says so, e.g. "The payment gateways could not be loaded from Shipmondo, so the
-  payment methods can't be mapped now. Reload the page to try again.", and shows no form, since without the list the
-  page can't tell a mapping from a stale one;
+  payment methods can't be mapped now.", and shows no form, since without the list the page can't tell a mapping from a
+  stale one;
 - the other table works as usual, e.g. the shipping methods can be mapped when only the payment gateways couldn't be
   fetched;
 - the error flash names what couldn't be fetched, and why: one flash for both lists when they failed for the same

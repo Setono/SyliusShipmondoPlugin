@@ -23,9 +23,9 @@ final class ShipmondoPageTest extends BrowserTestCase
 
     private const NO_SHIPMENT_TEMPLATES = 'There are no shipment templates inside Shipmondo.';
 
-    private const PAYMENT_GATEWAYS_NOT_LOADED = 'The payment gateways could not be loaded from Shipmondo, so the payment methods can\'t be mapped now. Reload the page to try again.';
+    private const PAYMENT_GATEWAYS_NOT_LOADED = 'The payment gateways could not be loaded from Shipmondo, so the payment methods can\'t be mapped now.';
 
-    private const SHIPMENT_TEMPLATES_NOT_LOADED = 'The shipment templates could not be loaded from Shipmondo, so the shipping methods can\'t be mapped now. Reload the page to try again.';
+    private const SHIPMENT_TEMPLATES_NOT_LOADED = 'The shipment templates could not be loaded from Shipmondo, so the shipping methods can\'t be mapped now.';
 
     private const WEBHOOKS_NOT_REGISTERED = 'Either you have not registered webhooks yet or you need to re-register them';
 

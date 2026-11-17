@@ -128,7 +128,7 @@ final class ShipmondoControllerTest extends FunctionalTestCase
 
         self::assertResponseIsSuccessful();
         self::assertSelectorTextSame('.message.negative p', 'Could not fetch the payment gateways from Shipmondo. Shipmondo could not be reached, or had a server error. Try again later.');
-        self::assertSelectorTextContains('body', 'The payment gateways could not be loaded from Shipmondo, so the payment methods can\'t be mapped now. Reload the page to try again.');
+        self::assertSelectorTextContains('body', 'The payment gateways could not be loaded from Shipmondo, so the payment methods can\'t be mapped now.');
         self::assertSelectorTextNotContains('body', 'There are no configured payment gateways inside Shipmondo');
         self::assertSelectorNotExists('select[name^="payment_methods"]');
         self::assertSelectorExists(sprintf('select[name="shipping_methods[%d][]"] option[value="664116"]', self::id($this->fixtures->shippingMethod)));
@@ -149,7 +149,7 @@ final class ShipmondoControllerTest extends FunctionalTestCase
 
         self::assertResponseIsSuccessful();
         self::assertSelectorTextSame('.message.negative p', 'Could not fetch the shipment templates from Shipmondo. Shipmondo could not be reached, or had a server error. Try again later.');
-        self::assertSelectorTextContains('body', 'The shipment templates could not be loaded from Shipmondo, so the shipping methods can\'t be mapped now. Reload the page to try again.');
+        self::assertSelectorTextContains('body', 'The shipment templates could not be loaded from Shipmondo, so the shipping methods can\'t be mapped now.');
         self::assertSelectorTextNotContains('body', 'There are no shipment templates inside Shipmondo');
         self::assertSelectorNotExists('select[name^="shipping_methods"]');
         self::assertSelectorExists(sprintf('select[name="payment_methods[%d]"] option[value="4712"]', self::id($this->fixtures->paymentMethod)));
