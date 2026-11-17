@@ -19,6 +19,7 @@ setono_sylius_shipmondo:
         map_payment_methods_empty_information: 'There are no configured payment gateways inside Shipmondo. Go to <a href="https://app.shipmondo.com/main/app/#/setting/integration/payment-gateway" target="_blank">Shipmondo</a> and create your first payment gateway.'
         map_payment_methods_information: Map your payment methods to the payment gateways in Shipmondo. This way, you will be able to capture the payment inside Shipmondo when fulfilling the order. If there's no equivalent payment gateway in Shipmondo, leave it empty.
         map_shipping_methods: Map shipping methods
+        map_shipping_methods_empty_information: 'There are no shipment templates inside Shipmondo. Go to <a href="https://app.shipmondo.com/" target="_blank">Shipmondo</a> and create your first shipment template.'
         map_shipping_methods_information: Map your shipping methods to the shipment templates in Shipmondo. This way, shipments inside Shipmondo will have a shipment template assigned automatically. If there's no relevant shipment template in Shipmondo, leave it empty.
         payment_method_in_shipmondo: Payment method in Shipmondo
         payment_method_in_sylius: Payment method in Sylius
