@@ -274,6 +274,65 @@ final class ShipmondoControllerTest extends FunctionalTestCase
     }
 
     /**
+     * A shop that deleted its last payment gateway in Shipmondo still has to be able to remove the stale mapping, or
+     * every upload paid with that payment method logs an error
+     *
+     * @test
+     */
+    public function it_lets_the_admin_remove_a_stale_payment_gateway_mapping_when_shipmondo_has_no_payment_gateways(): void
+    {
+        $this->logIn();
+        $this->shipmondo->respond('GET', 'payment_gateways', 200, [], ['X-Total-Pages' => '1']);
+        $this->shipmondo->respond('GET', 'shipment_templates', 200, [], ['X-Total-Pages' => '1']);
+
+        $crawler = $this->browser->request('GET', '/admin/shipmondo');
+
+        self::assertSelectorTextContains('body', 'There are no configured payment gateways inside Shipmondo.');
+        $select = sprintf('select[name="payment_methods[%d]"]', self::id($this->fixtures->paymentMethod));
+        self::assertSame(['', '4711'], $crawler->filter($select . ' option')->extract(['value']));
+        self::assertSame('Not in Shipmondo (id 4711)', $crawler->filter($select . ' option[selected]')->text());
+
+        $form = $crawler->filter($select)->closest('form')?->form();
+        self::assertNotNull($form);
+        self::choice($form, sprintf('payment_methods[%d]', self::id($this->fixtures->paymentMethod)))->setValue('');
+        $this->browser->submit($form);
+
+        self::assertResponseIsSuccessful();
+        self::assertNull($this->paymentMethodShipmondoId());
+        self::assertSelectorNotExists('.message.warning');
+        self::assertSelectorNotExists('select[name^="payment_methods"]');
+    }
+
+    /**
+     * @test
+     */
+    public function it_lets_the_admin_remove_stale_shipment_templates_when_shipmondo_has_no_shipment_templates(): void
+    {
+        $this->logIn();
+        $this->fixtures->paymentMethod->setShipmondoId(null);
+        $this->fixtures->shippingMethod->setAllowedShipmentTemplates([999]);
+        $this->entityManager()->flush();
+        $this->shipmondo->respond('GET', 'payment_gateways', 200, [], ['X-Total-Pages' => '1']);
+        $this->shipmondo->respond('GET', 'shipment_templates', 200, [], ['X-Total-Pages' => '1']);
+
+        $crawler = $this->browser->request('GET', '/admin/shipmondo');
+
+        self::assertSelectorTextContains('body', 'There are no shipment templates inside Shipmondo.');
+        $select = sprintf('select[name="shipping_methods[%d][]"]', self::id($this->fixtures->shippingMethod));
+        self::assertSame('Not in Shipmondo (id 999)', $crawler->filter($select . ' option[selected]')->text());
+
+        $form = $crawler->filter($select)->closest('form')?->form();
+        self::assertNotNull($form);
+        self::choice($form, sprintf('shipping_methods[%d]', self::id($this->fixtures->shippingMethod)))->setValue([]);
+        $this->browser->submit($form);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame([], $this->allowedShipmentTemplates());
+        self::assertSelectorNotExists('.message.warning');
+        self::assertSelectorNotExists('select[name^="shipping_methods"]');
+    }
+
+    /**
      * @test
      */
     public function it_explains_that_there_are_no_shipment_templates_in_shipmondo(): void

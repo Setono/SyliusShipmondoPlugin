@@ -638,7 +638,8 @@ with a payment gateway it doesn't have (checked against its sandbox). In 2.x suc
 you change it, but:
 
 - the admin Shipmondo page flags it: a warning message above the payment methods or the shipping methods names each
-  method with a stale mapping, and marks its row;
+  method with a stale mapping, and marks its row. The form is shown whenever there is a stale mapping to remove, also
+  when Shipmondo has no payment gateway or shipment template left;
 - the upload of an order whose shipping method allows shipment templates that no longer exist logs a **warning**, and
   chooses the order's shipment template among the others, if any;
 - the upload of an order whose payment method is mapped to a payment gateway that no longer exists logs an **error**,
@@ -667,7 +668,9 @@ lists in a cache across a worker's messages. Changed, only if you construct or e
 `\SplObjectStorage`s keyed by the method, e.g. `stalePaymentGateways[paymentMethod] is defined` and
 `staleShipmentTemplates[shippingMethod] ?? []`. Each is empty when the page couldn't fetch its list from Shipmondo. The
 warnings' texts are `setono_sylius_shipmondo.ui.stale_payment_gateways` and
-`setono_sylius_shipmondo.ui.stale_shipment_templates`.
+`setono_sylius_shipmondo.ui.stale_shipment_templates`. Show a table's form also when Shipmondo has none left but there
+are stale mappings (e.g. `shipmondoPaymentMethods|length > 0 or stalePaymentGateways|length > 0`), or a stale mapping
+can't be removed, and its warning or error is logged for every upload.
 
 ### Unchanged
 

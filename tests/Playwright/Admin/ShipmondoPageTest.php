@@ -152,6 +152,9 @@ final class ShipmondoPageTest extends BrowserTestCase
      */
     public function the_page_tells_the_admin_to_create_a_payment_gateway_when_shipmondo_has_none(): void
     {
+        // a mapped payment method would be a stale mapping, which the page lists in a form so it can be removed
+        $this->fixtures->paymentMethod->setShipmondoId(null);
+        $this->entityManager()->flush();
         $this->respondWithList('payment_gateways', []);
         $this->respondWithList('shipment_templates', []);
 
