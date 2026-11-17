@@ -12,7 +12,7 @@ use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
 use Setono\SyliusShipmondoPlugin\Message\Command\RegisterWebhooks;
 use Setono\SyliusShipmondoPlugin\Model\PaymentMethodInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
-use Setono\SyliusShipmondoPlugin\Provider\ShipmondoSetupProvider;
+use Setono\SyliusShipmondoPlugin\Provider\SetupProviderInterface;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
 use Setono\SyliusShipmondoPlugin\Repository\RegisteredWebhooksRepositoryInterface;
 use Sylius\Component\Core\Repository\PaymentMethodRepositoryInterface;
@@ -34,7 +34,7 @@ final class ShipmondoController extends AbstractController
         private readonly WebhookRegistrarInterface $webhookRegistrar,
         private readonly PaymentMethodRepositoryInterface $paymentMethodRepository,
         private readonly ShippingMethodRepositoryInterface $shippingMethodRepository,
-        private readonly ShipmondoSetupProvider $shipmondoSetupProvider,
+        private readonly SetupProviderInterface $setupProvider,
         private readonly TranslatorInterface $translator,
         private readonly LoggerInterface $logger,
     ) {
@@ -67,10 +67,10 @@ final class ShipmondoController extends AbstractController
         // The page is still rendered when Shipmondo fails (e.g. so the webhooks can be registered), with a flash message
         // that explains why. Anything else is a bug, and is left to fail loudly
         try {
-            $shipmondoPaymentMethods = $this->shipmondoSetupProvider->paymentGateways();
+            $shipmondoPaymentMethods = $this->setupProvider->paymentGateways();
             $paymentGatewaysFetched = true;
 
-            $shipmondoShipmentTemplates = $this->shipmondoSetupProvider->shipmentTemplates();
+            $shipmondoShipmentTemplates = $this->setupProvider->shipmentTemplates();
             $shipmentTemplatesFetched = true;
         } catch (ShipmondoException $e) {
             $failure = ShipmondoFailure::of($e);
@@ -163,7 +163,7 @@ final class ShipmondoController extends AbstractController
         // read after saving, so they show the mappings as saved
         if ($paymentGatewaysFetched) {
             foreach ($paymentMethods as $paymentMethod) {
-                $stalePaymentGateway = $this->shipmondoSetupProvider->stalePaymentGateway($paymentMethod);
+                $stalePaymentGateway = $this->setupProvider->stalePaymentGateway($paymentMethod);
                 if (null !== $stalePaymentGateway) {
                     $stalePaymentGateways[$paymentMethod] = $stalePaymentGateway;
                 }
@@ -172,7 +172,7 @@ final class ShipmondoController extends AbstractController
 
         if ($shipmentTemplatesFetched) {
             foreach ($shippingMethods as $shippingMethod) {
-                $stale = $this->shipmondoSetupProvider->staleShipmentTemplates($shippingMethod);
+                $stale = $this->setupProvider->staleShipmentTemplates($shippingMethod);
                 if ([] !== $stale) {
                     $staleShipmentTemplates[$shippingMethod] = $stale;
                 }

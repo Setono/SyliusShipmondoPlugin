@@ -10,11 +10,14 @@
         <service id="Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface"
                  alias="Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProvider"/>
 
-        <service id="Setono\SyliusShipmondoPlugin\Provider\ShipmondoSetupProvider">
+        <service id="Setono\SyliusShipmondoPlugin\Provider\SetupProvider">
             <argument type="service" id="Setono\Shipmondo\Client\Client"/>
 
             <!-- forgets the payment gateways and shipment templates it fetched between requests and messages -->
             <tag name="kernel.reset" method="reset"/>
         </service>
+
+        <service id="Setono\SyliusShipmondoPlugin\Provider\SetupProviderInterface"
+                 alias="Setono\SyliusShipmondoPlugin\Provider\SetupProvider"/>
     </services>
 </container>

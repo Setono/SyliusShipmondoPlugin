@@ -553,7 +553,7 @@ allowed shipment templates that ship to the shipping address's country, from the
 - when they ship from several countries, from the country of the channel's shop billing data. **Set it** if a shipping
   method allows shipment templates to one country from several countries; without it, no shipment template is chosen.
 
-The shipment templates are also fetched from Shipmondo once until `Provider\ShipmondoSetupProvider` is reset, instead of
+The shipment templates are also fetched from Shipmondo once until `Provider\SetupProvider` is reset, instead of
 for every order: once per upload run on the command line, and once per request or message, since the provider is tagged
 `kernel.reset` (it implements `Symfony\Contracts\Service\ResetInterface`, so `symfony/service-contracts` is now
 required). A worker started with `messenger:consume --no-reset` keeps them until it stops, so restart it after changing
@@ -610,6 +610,7 @@ in a service of your own (autowiring) and decorate it:
 | `Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface` | `Setono\SyliusShipmondoPlugin\Canceller\OrderCanceller` |
 | `Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface` | `Setono\SyliusShipmondoPlugin\DataMapper\CompositeSalesOrderDataMapper`, which runs every data mapper |
 | `Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface` | `Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProvider` |
+| `Setono\SyliusShipmondoPlugin\Provider\SetupProviderInterface` | `Setono\SyliusShipmondoPlugin\Provider\SetupProvider` (section 14) |
 | `Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface` | `Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar` |
 | `Setono\SyliusShipmondoPlugin\Uploader\OrderUploaderInterface` | `Setono\SyliusShipmondoPlugin\Uploader\OrderUploader` |
 | `Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface` | `Setono\SyliusShipmondoPlugin\Webhook\OrderResolver` |
@@ -649,14 +650,16 @@ per upload run (see section 12). Like any call to Shipmondo during an upload, a 
 by its kind (section 6). A payment method without a mapping now sends no `payment_gateway_id` instead of an empty one;
 Shipmondo accepts both.
 
-New: `Provider\ShipmondoSetupProvider`, which fetches the payment gateways and shipment templates and tells the stale
-mappings (`stalePaymentGateway()`, `staleShipmentTemplates()`). Changed, only if you construct or extend these yourself:
+New: `Provider\SetupProviderInterface`, implemented by `Provider\SetupProvider`, which fetches the payment gateways and
+shipment templates and tells the stale mappings (`stalePaymentGateway()`, `staleShipmentTemplates()`). Its service is
+reached through the interface, a private alias (section 13), so decorate the interface to change it, e.g. to keep the
+lists in a cache across a worker's messages. Changed, only if you construct or extend these yourself:
 
-- `DataMapper\PaymentDetailsSalesOrderDataMapper` takes the `ShipmondoSetupProvider` and a `Psr\Log\LoggerInterface`;
+- `DataMapper\PaymentDetailsSalesOrderDataMapper` takes a `SetupProviderInterface` and a `Psr\Log\LoggerInterface`;
   it took no arguments;
-- `DataMapper\ShipmentTemplateSalesOrderDataMapper` takes the `ShipmondoSetupProvider` and a `Psr\Log\LoggerInterface`
-  instead of the SDK's `Client`, and no longer implements `ResetInterface`: the provider does;
-- `Controller\Admin\ShipmondoController` takes the `ShipmondoSetupProvider` instead of the SDK's `Client`.
+- `DataMapper\ShipmentTemplateSalesOrderDataMapper` takes a `SetupProviderInterface` and a `Psr\Log\LoggerInterface`
+  instead of the SDK's `Client`, and no longer implements `ResetInterface`: `SetupProvider` does;
+- `Controller\Admin\ShipmondoController` takes a `SetupProviderInterface` instead of the SDK's `Client`.
 
 **If you override `@SetonoSyliusShipmondoPlugin/admin/shipmondo/index.html.twig`:** it gets two new variables,
 `stalePaymentGateways` (each payment method with a stale mapping, with the id of its payment gateway) and

@@ -16,7 +16,7 @@ use Setono\Shipmondo\Response\ShipmentTemplate\ShipmentTemplate;
 use Setono\SyliusShipmondoPlugin\Controller\Admin\ShipmondoController;
 use Setono\SyliusShipmondoPlugin\Message\Command\RegisterWebhooks;
 use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooks;
-use Setono\SyliusShipmondoPlugin\Provider\ShipmondoSetupProvider;
+use Setono\SyliusShipmondoPlugin\Provider\SetupProvider;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
 use Setono\SyliusShipmondoPlugin\Repository\RegisteredWebhooksRepositoryInterface;
 use Sylius\Component\Core\Model\PaymentMethod as BasePaymentMethod;
@@ -587,7 +587,7 @@ final class ShipmondoControllerTest extends TestCase
             $this->webhookRegistrar->reveal(),
             $this->paymentMethodRepository->reveal(),
             $this->shippingMethodRepository->reveal(),
-            new ShipmondoSetupProvider(ShipmondoApi::client($this->httpClient->reveal())),
+            new SetupProvider(ShipmondoApi::client($this->httpClient->reveal())),
             Translations::translator(),
             $this->logger,
         );

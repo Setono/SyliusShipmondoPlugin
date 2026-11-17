@@ -11,7 +11,7 @@ use Setono\Shipmondo\Resolver\ShipmentTemplateResolver;
 use Setono\Shipmondo\Response\ShipmentTemplate\ShipmentTemplate;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
-use Setono\SyliusShipmondoPlugin\Provider\ShipmondoSetupProvider;
+use Setono\SyliusShipmondoPlugin\Provider\SetupProviderInterface;
 
 /**
  * Chooses the sales order's shipment template among the shipping method's allowed shipment templates that ship to the
@@ -21,7 +21,7 @@ use Setono\SyliusShipmondoPlugin\Provider\ShipmondoSetupProvider;
 final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapperInterface
 {
     public function __construct(
-        private readonly ShipmondoSetupProvider $shipmondoSetupProvider,
+        private readonly SetupProviderInterface $setupProvider,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -53,7 +53,7 @@ final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapper
             return;
         }
 
-        $staleShipmentTemplates = $this->shipmondoSetupProvider->staleShipmentTemplates($shippingMethod);
+        $staleShipmentTemplates = $this->setupProvider->staleShipmentTemplates($shippingMethod);
         if ([] !== $staleShipmentTemplates) {
             $this->logger->warning('The shipping method {shippingMethod} of the order {order} allows shipment templates that no longer exist in Shipmondo, so the order\'s shipment template is chosen among the others, if any. Remove them, or allow existing ones instead, on the admin Shipmondo page', [
                 'order' => $order->getNumber(),
@@ -66,7 +66,7 @@ final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapper
         $shipmentTemplates = [];
 
         // the shipping method allows them, and they ship to the shipping address's country
-        foreach ($this->shipmondoSetupProvider->shipmentTemplates() as $shipmentTemplate) {
+        foreach ($this->setupProvider->shipmentTemplates() as $shipmentTemplate) {
             if (!in_array($shipmentTemplate->id, $allowedShipmentTemplates, true) || $shipmentTemplate->receiver->countryCode !== $receiverCountry) {
                 continue;
             }

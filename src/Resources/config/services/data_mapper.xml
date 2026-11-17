@@ -14,7 +14,7 @@
         </service>
 
         <service id="Setono\SyliusShipmondoPlugin\DataMapper\PaymentDetailsSalesOrderDataMapper">
-            <argument type="service" id="Setono\SyliusShipmondoPlugin\Provider\ShipmondoSetupProvider"/>
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\Provider\SetupProviderInterface"/>
             <argument type="service" id="logger"/>
 
             <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="20"/>
@@ -33,7 +33,7 @@
         </service>
 
         <service id="Setono\SyliusShipmondoPlugin\DataMapper\ShipmentTemplateSalesOrderDataMapper">
-            <argument type="service" id="Setono\SyliusShipmondoPlugin\Provider\ShipmondoSetupProvider"/>
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\Provider\SetupProviderInterface"/>
             <argument type="service" id="logger"/>
 
             <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="50"/>

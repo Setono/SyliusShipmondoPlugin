@@ -9,7 +9,7 @@ use Setono\Shipmondo\Request\SalesOrder\PaymentDetails;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\PaymentMethodInterface;
-use Setono\SyliusShipmondoPlugin\Provider\ShipmondoSetupProvider;
+use Setono\SyliusShipmondoPlugin\Provider\SetupProviderInterface;
 use Webmozart\Assert\Assert;
 
 /**
@@ -19,7 +19,7 @@ use Webmozart\Assert\Assert;
 final class PaymentDetailsSalesOrderDataMapper implements SalesOrderDataMapperInterface
 {
     public function __construct(
-        private readonly ShipmondoSetupProvider $shipmondoSetupProvider,
+        private readonly SetupProviderInterface $setupProvider,
         private readonly LoggerInterface $logger,
     ) {
     }
@@ -49,7 +49,7 @@ final class PaymentDetailsSalesOrderDataMapper implements SalesOrderDataMapperIn
 
     private function logStalePaymentGateway(OrderInterface $order, PaymentMethodInterface $paymentMethod): void
     {
-        $stalePaymentGateway = $this->shipmondoSetupProvider->stalePaymentGateway($paymentMethod);
+        $stalePaymentGateway = $this->setupProvider->stalePaymentGateway($paymentMethod);
         if (null === $stalePaymentGateway) {
             return;
         }

@@ -5,22 +5,22 @@ declare(strict_types=1);
 namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Provider;
 
 use PHPUnit\Framework\TestCase;
-use Setono\SyliusShipmondoPlugin\Provider\ShipmondoSetupProvider;
+use Setono\SyliusShipmondoPlugin\Provider\SetupProvider;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\PaymentMethod;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\ShippingMethod;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ScriptedHttpClient;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ShipmondoApi;
 
-final class ShipmondoSetupProviderTest extends TestCase
+final class SetupProviderTest extends TestCase
 {
     private ScriptedHttpClient $httpClient;
 
-    private ShipmondoSetupProvider $provider;
+    private SetupProvider $provider;
 
     protected function setUp(): void
     {
         $this->httpClient = new ScriptedHttpClient();
-        $this->provider = new ShipmondoSetupProvider(ShipmondoApi::client($this->httpClient));
+        $this->provider = new SetupProvider(ShipmondoApi::client($this->httpClient));
     }
 
     /**

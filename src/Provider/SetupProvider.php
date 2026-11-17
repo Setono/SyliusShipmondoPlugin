@@ -12,14 +12,11 @@ use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
 use Symfony\Contracts\Service\ResetInterface;
 
 /**
- * The payment gateways and shipment templates in Shipmondo, which the admin maps payment methods and shipping methods
- * to, and the mappings to ones that no longer exist in Shipmondo, e.g. because they were deleted there.
- *
- * It fetches each list once until it is reset. The container resets services tagged kernel.reset between requests, and
+ * Fetches each list from Shipmondo once until it is reset. The container resets services tagged kernel.reset between requests, and
  * a Messenger worker after each message, so an upload run on the command line fetches them once, and an UploadOrder
  * command handled by a worker once per order
  */
-final class ShipmondoSetupProvider implements ResetInterface
+final class SetupProvider implements SetupProviderInterface, ResetInterface
 {
     /** @var list<PaymentGateway>|null */
     private ?array $paymentGateways = null;
@@ -31,9 +28,6 @@ final class ShipmondoSetupProvider implements ResetInterface
     {
     }
 
-    /**
-     * @return list<PaymentGateway>
-     */
     public function paymentGateways(): array
     {
         if (null === $this->paymentGateways) {
@@ -48,9 +42,6 @@ final class ShipmondoSetupProvider implements ResetInterface
         return $this->paymentGateways;
     }
 
-    /**
-     * @return list<ShipmentTemplate>
-     */
     public function shipmentTemplates(): array
     {
         if (null === $this->shipmentTemplates) {
@@ -65,9 +56,6 @@ final class ShipmondoSetupProvider implements ResetInterface
         return $this->shipmentTemplates;
     }
 
-    /**
-     * The payment gateway the payment method is mapped to, when it no longer exists in Shipmondo
-     */
     public function stalePaymentGateway(PaymentMethodInterface $paymentMethod): ?int
     {
         $paymentGateway = $paymentMethod->getShipmondoId();
@@ -84,11 +72,6 @@ final class ShipmondoSetupProvider implements ResetInterface
         return $paymentGateway;
     }
 
-    /**
-     * The shipment templates the shipping method allows that no longer exist in Shipmondo
-     *
-     * @return list<int>
-     */
     public function staleShipmentTemplates(ShippingMethodInterface $shippingMethod): array
     {
         $allowedShipmentTemplates = $shippingMethod->getAllowedShipmentTemplates();

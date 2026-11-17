@@ -14,7 +14,7 @@ use Psr\Log\LogLevel;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\DataMapper\ShipmentTemplateSalesOrderDataMapper;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
-use Setono\SyliusShipmondoPlugin\Provider\ShipmondoSetupProvider;
+use Setono\SyliusShipmondoPlugin\Provider\SetupProvider;
 use Sylius\Component\Core\Model\Address;
 use Sylius\Component\Core\Model\Channel;
 use Sylius\Component\Core\Model\OrderItemInterface;
@@ -414,7 +414,7 @@ final class ShipmentTemplateSalesOrderDataMapperTest extends TestCase
     {
         $salesOrder = new SalesOrderRequest();
 
-        $mapper = new ShipmentTemplateSalesOrderDataMapper(new ShipmondoSetupProvider(ShipmondoApi::client($this->httpClient->reveal())), $this->logger);
+        $mapper = new ShipmentTemplateSalesOrderDataMapper(new SetupProvider(ShipmondoApi::client($this->httpClient->reveal())), $this->logger);
         $mapper->map($order, $salesOrder);
 
         return $salesOrder;

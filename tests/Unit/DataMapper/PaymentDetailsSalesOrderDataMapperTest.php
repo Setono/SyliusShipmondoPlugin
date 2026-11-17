@@ -8,7 +8,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\LogLevel;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\DataMapper\PaymentDetailsSalesOrderDataMapper;
-use Setono\SyliusShipmondoPlugin\Provider\ShipmondoSetupProvider;
+use Setono\SyliusShipmondoPlugin\Provider\SetupProvider;
 use Sylius\Component\Core\Model\Adjustment;
 use Sylius\Component\Core\Model\AdjustmentInterface;
 use Sylius\Component\Core\Model\OrderItem;
@@ -33,7 +33,7 @@ final class PaymentDetailsSalesOrderDataMapperTest extends TestCase
     {
         $this->httpClient = new ScriptedHttpClient();
         $this->logger = new RecordingLogger();
-        $this->mapper = new PaymentDetailsSalesOrderDataMapper(new ShipmondoSetupProvider(ShipmondoApi::client($this->httpClient)), $this->logger);
+        $this->mapper = new PaymentDetailsSalesOrderDataMapper(new SetupProvider(ShipmondoApi::client($this->httpClient)), $this->logger);
     }
 
     /**
