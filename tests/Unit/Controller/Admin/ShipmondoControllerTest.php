@@ -114,11 +114,13 @@ final class ShipmondoControllerTest extends TestCase
         $this->givenShipmondoApi();
 
         $this->twig->render(self::TEMPLATE, Argument::that(function (array $context): bool {
-            self::assertSame(['paymentMethods', 'shippingMethods', 'shipmondoPaymentMethods', 'shipmondoShipmentTemplates', 'stalePaymentGateways', 'staleShipmentTemplates', 'registeredWebhooks'], array_keys($context));
+            self::assertSame(['paymentMethods', 'shippingMethods', 'shipmondoPaymentMethods', 'shipmondoShipmentTemplates', 'paymentGatewaysFetched', 'shipmentTemplatesFetched', 'stalePaymentGateways', 'staleShipmentTemplates', 'registeredWebhooks'], array_keys($context));
             self::assertSame($this->paymentMethods, $context['paymentMethods']);
             self::assertSame($this->shippingMethods, $context['shippingMethods']);
             self::assertSame([11, 12], self::ids($context['shipmondoPaymentMethods']));
             self::assertSame([21], self::ids($context['shipmondoShipmentTemplates']));
+            self::assertTrue($context['paymentGatewaysFetched']);
+            self::assertTrue($context['shipmentTemplatesFetched']);
             self::assertSame([], self::staleMappings($context['stalePaymentGateways']));
             self::assertSame([], self::staleMappings($context['staleShipmentTemplates']));
             self::assertSame($this->registeredWebhooks, $context['registeredWebhooks']);
@@ -179,8 +181,11 @@ final class ShipmondoControllerTest extends TestCase
         $this->shippingMethodRepository->findAll()->willReturn([self::shippingMethod([98])]);
 
         $this->twig->render(self::TEMPLATE, Argument::that(static function (array $context) use ($stalePaymentMethod): bool {
+            self::assertTrue($context['paymentGatewaysFetched']);
             self::assertSame([11], self::ids($context['shipmondoPaymentMethods']));
             self::assertSame([[$stalePaymentMethod, 99]], self::staleMappings($context['stalePaymentGateways']));
+            self::assertFalse($context['shipmentTemplatesFetched']);
+            self::assertSame([], $context['shipmondoShipmentTemplates']);
             self::assertSame([], self::staleMappings($context['staleShipmentTemplates']));
 
             return true;
@@ -188,7 +193,12 @@ final class ShipmondoControllerTest extends TestCase
 
         $this->controller()->index(new Request());
 
-        self::assertCount(1, $this->session->getFlashBag()->peek('error'));
+        self::assertSame([[
+            'message' => 'setono_sylius_shipmondo.shipment_templates_not_fetched',
+            'parameters' => ['%reason%' => 'Shipmondo did not accept the API credentials. Check SHIPMONDO_USERNAME and SHIPMONDO_KEY, and that SHIPMONDO_SANDBOX matches the Shipmondo account they belong to.'],
+        ]], $this->session->getFlashBag()->peek('error'));
+        self::assertCount(1, $this->logger->records);
+        self::assertSame('Could not fetch the shipment templates from Shipmondo for the Shipmondo page', $this->logger->records[0]['message']);
     }
 
     /**
@@ -213,12 +223,15 @@ final class ShipmondoControllerTest extends TestCase
     }
 
     /**
+     * When neither list could be fetched for the same reason, e.g. because Shipmondo rejects the credentials, one flash
+     * message names both
+     *
      * @test
      */
     public function it_still_renders_the_page_when_the_shipmondo_api_fails(): void
     {
         $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'payment_gateways'))->willReturn(ShipmondoApi::empty(401));
-        $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'shipment_templates'))->shouldNotBeCalled();
+        $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'shipment_templates'))->willReturn(ShipmondoApi::empty(401))->shouldBeCalledOnce();
 
         // without Shipmondo's payment gateways and shipment templates, no mapping is known to be stale
         $this->paymentMethodRepository->findAll()->willReturn([self::paymentMethod(99)]);
@@ -227,6 +240,8 @@ final class ShipmondoControllerTest extends TestCase
         $this->twig->render(self::TEMPLATE, Argument::that(static function (array $context): bool {
             self::assertSame([], $context['shipmondoPaymentMethods']);
             self::assertSame([], $context['shipmondoShipmentTemplates']);
+            self::assertFalse($context['paymentGatewaysFetched']);
+            self::assertFalse($context['shipmentTemplatesFetched']);
             self::assertSame([], self::staleMappings($context['stalePaymentGateways']));
             self::assertSame([], self::staleMappings($context['staleShipmentTemplates']));
 
@@ -241,10 +256,75 @@ final class ShipmondoControllerTest extends TestCase
             'message' => 'setono_sylius_shipmondo.shipmondo_data_not_fetched',
             'parameters' => ['%reason%' => 'Shipmondo did not accept the API credentials. Check SHIPMONDO_USERNAME and SHIPMONDO_KEY, and that SHIPMONDO_SANDBOX matches the Shipmondo account they belong to.'],
         ]], $this->session->getFlashBag()->peek('error'));
+        self::assertSame([
+            [LogLevel::WARNING, 'Could not fetch the payment gateways from Shipmondo for the Shipmondo page', 'credentials_failure'],
+            [LogLevel::WARNING, 'Could not fetch the shipment templates from Shipmondo for the Shipmondo page', 'credentials_failure'],
+        ], array_map(static fn (array $record): array => [$record['level'], $record['message'], $record['context']['shipmondoFailure']], $this->logger->records));
+    }
+
+    /**
+     * Each list is fetched on its own, so the shipping methods can still be mapped when the payment gateways couldn't
+     * be fetched
+     *
+     * @test
+     */
+    public function it_fetches_the_shipment_templates_when_the_payment_gateways_could_not_be_fetched(): void
+    {
+        $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'payment_gateways'))->willReturn(ShipmondoApi::empty(503));
+        $this->respondWithShipmentTemplates();
+
+        $this->paymentMethodRepository->findAll()->willReturn([self::paymentMethod(99)]);
+        $staleShippingMethod = self::shippingMethod([98, 21]);
+        $this->shippingMethodRepository->findAll()->willReturn([$staleShippingMethod]);
+
+        $this->twig->render(self::TEMPLATE, Argument::that(static function (array $context) use ($staleShippingMethod): bool {
+            self::assertFalse($context['paymentGatewaysFetched']);
+            self::assertSame([], $context['shipmondoPaymentMethods']);
+            // without Shipmondo's payment gateways, no payment gateway mapping is known to be stale
+            self::assertSame([], self::staleMappings($context['stalePaymentGateways']));
+
+            self::assertTrue($context['shipmentTemplatesFetched']);
+            self::assertSame([21], self::ids($context['shipmondoShipmentTemplates']));
+            self::assertSame([[$staleShippingMethod, [98]]], self::staleMappings($context['staleShipmentTemplates']));
+
+            return true;
+        }))->willReturn('<h1>Shipmondo</h1>')->shouldBeCalledOnce();
+
+        $response = $this->controller()->index(new Request());
+
+        self::assertSame(Response::HTTP_OK, $response->getStatusCode());
+        self::assertSame([[
+            'message' => 'setono_sylius_shipmondo.payment_gateways_not_fetched',
+            'parameters' => ['%reason%' => 'Shipmondo could not be reached, or had a server error. Try again later.'],
+        ]], $this->session->getFlashBag()->peek('error'));
         self::assertCount(1, $this->logger->records);
         self::assertSame(LogLevel::WARNING, $this->logger->records[0]['level']);
-        self::assertSame('Could not fetch the payment gateways and shipment templates from Shipmondo for the Shipmondo page', $this->logger->records[0]['message']);
-        self::assertSame('credentials_failure', $this->logger->records[0]['context']['shipmondoFailure']);
+        self::assertSame('Could not fetch the payment gateways from Shipmondo for the Shipmondo page', $this->logger->records[0]['message']);
+        self::assertSame('temporary_failure', $this->logger->records[0]['context']['shipmondoFailure']);
+        self::assertSame(503, $this->logger->records[0]['context']['shipmondoStatusCode']);
+    }
+
+    /**
+     * @test
+     */
+    public function it_explains_each_list_that_could_not_be_fetched_for_its_own_reason(): void
+    {
+        $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'payment_gateways'))->willReturn(ShipmondoApi::empty(429));
+        $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'shipment_templates'))->willReturn(ShipmondoApi::empty(503));
+        $this->givenRendered();
+
+        $this->controller()->index(new Request());
+
+        self::assertSame([
+            [
+                'message' => 'setono_sylius_shipmondo.payment_gateways_not_fetched',
+                'parameters' => ['%reason%' => 'Shipmondo is limiting how often the store may call it. Try again in a minute.'],
+            ],
+            [
+                'message' => 'setono_sylius_shipmondo.shipment_templates_not_fetched',
+                'parameters' => ['%reason%' => 'Shipmondo could not be reached, or had a server error. Try again later.'],
+            ],
+        ], $this->session->getFlashBag()->peek('error'));
     }
 
     /**
@@ -491,6 +571,11 @@ final class ShipmondoControllerTest extends TestCase
             ['id' => 11, 'name' => 'Quickpay', 'provider' => 'quickpay', 'merchant_number' => '1234'],
             ['id' => 12, 'name' => 'Stripe', 'provider' => 'stripe', 'merchant_number' => '5678'],
         ]));
+        $this->respondWithShipmentTemplates();
+    }
+
+    private function respondWithShipmentTemplates(): void
+    {
         $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'shipment_templates'))->willReturn(ShipmondoApi::json([
             [
                 'id' => 21,

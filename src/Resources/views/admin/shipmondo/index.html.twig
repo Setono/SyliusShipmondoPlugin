@@ -29,8 +29,11 @@
                     </div>
                 {% endif %}
 
+                {# without its payment gateways, the page can't tell a mapping from a stale one, and the flash message says why #}
+                {% if not paymentGatewaysFetched %}
+                    <p>{{ 'setono_sylius_shipmondo.ui.payment_gateways_not_loaded'|trans }}</p>
                 {# a stale mapping stays removable, also when Shipmondo has no payment gateway left #}
-                {% if shipmondoPaymentMethods|length > 0 or stalePaymentGateways|length > 0 %}
+                {% elseif shipmondoPaymentMethods|length > 0 or stalePaymentGateways|length > 0 %}
                     <form method="post">
                         <p>{{ (shipmondoPaymentMethods|length > 0 ? 'setono_sylius_shipmondo.ui.map_payment_methods_information' : 'setono_sylius_shipmondo.ui.map_payment_methods_empty_information')|trans|raw }}</p>
                         <table class="ui celled table">
@@ -98,8 +101,11 @@
                     </div>
                 {% endif %}
 
+                {# without its shipment templates, the page can't tell an allowed shipment template from a stale one, and the flash message says why #}
+                {% if not shipmentTemplatesFetched %}
+                    <p>{{ 'setono_sylius_shipmondo.ui.shipment_templates_not_loaded'|trans }}</p>
                 {# a stale mapping stays removable, also when Shipmondo has no shipment template left #}
-                {% if shipmondoShipmentTemplates|length > 0 or staleShipmentTemplates|length > 0 %}
+                {% elseif shipmondoShipmentTemplates|length > 0 or staleShipmentTemplates|length > 0 %}
                     <form method="post">
                         <p>{{ (shipmondoShipmentTemplates|length > 0 ? 'setono_sylius_shipmondo.ui.map_shipping_methods_information' : 'setono_sylius_shipmondo.ui.map_shipping_methods_empty_information')|trans|raw }}</p>
                         <table class="ui single line celled table">

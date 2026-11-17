@@ -21,6 +21,12 @@ final class ShipmondoPageTest extends BrowserTestCase
 
     private const NO_PAYMENT_GATEWAYS = 'There are no configured payment gateways inside Shipmondo.';
 
+    private const NO_SHIPMENT_TEMPLATES = 'There are no shipment templates inside Shipmondo.';
+
+    private const PAYMENT_GATEWAYS_NOT_LOADED = 'The payment gateways could not be loaded from Shipmondo, so the payment methods can\'t be mapped now. Reload the page to try again.';
+
+    private const SHIPMENT_TEMPLATES_NOT_LOADED = 'The shipment templates could not be loaded from Shipmondo, so the shipping methods can\'t be mapped now. Reload the page to try again.';
+
     private const WEBHOOKS_NOT_REGISTERED = 'Either you have not registered webhooks yet or you need to re-register them';
 
     private const QUICKPAY_ID = 4921;
@@ -136,11 +142,17 @@ final class ShipmondoPageTest extends BrowserTestCase
     public function the_page_explains_the_problem_when_shipmondo_rejects_the_credentials(): void
     {
         $this->shipmondo->respond('GET', 'payment_gateways', 401, ['error' => 'Invalid API credentials']);
+        $this->shipmondo->respond('GET', 'shipment_templates', 401, ['error' => 'Invalid API credentials']);
 
         $page = $this->visit('/admin/shipmondo');
 
+        expect($this->flash('error'))->toHaveCount(1);
         expect($this->flash('error'))->toContainText(self::API_ERROR);
-        expect($page->getByText(self::NO_PAYMENT_GATEWAYS))->toBeVisible();
+        // the page doesn't know whether Shipmondo has any, so it doesn't send the admin to create them
+        expect($page->getByText(self::PAYMENT_GATEWAYS_NOT_LOADED))->toBeVisible();
+        expect($page->getByText(self::SHIPMENT_TEMPLATES_NOT_LOADED))->toBeVisible();
+        expect($page->getByText(self::NO_PAYMENT_GATEWAYS))->toBeHidden();
+        expect($page->getByText(self::NO_SHIPMENT_TEMPLATES))->toBeHidden();
         expect($page->locator('select[name^="payment_methods"]'))->toHaveCount(0);
         expect($page->locator('select[name^="shipping_methods"]'))->toHaveCount(0);
         // the webhooks can still be registered once the credentials are fixed
@@ -178,7 +190,7 @@ final class ShipmondoPageTest extends BrowserTestCase
 
         $segment = $page->locator('.ui.segment:has-text("Map shipping methods")');
         expect($segment)->not()->toContainText('setono_sylius_shipmondo.ui.');
-        expect($segment)->toContainText('There are no shipment templates inside Shipmondo. Go to Shipmondo and create your first shipment template.');
+        expect($segment)->toContainText(self::NO_SHIPMENT_TEMPLATES . ' Go to Shipmondo and create your first shipment template.');
         expect($segment->getByRole('link', ['name' => 'Shipmondo', 'exact' => true]))->toHaveAttribute('href', 'https://app.shipmondo.com/');
     }
 
@@ -228,6 +240,7 @@ final class ShipmondoPageTest extends BrowserTestCase
     public function registering_the_webhooks_explains_the_problem_when_shipmondo_rejects_the_credentials(): void
     {
         $this->shipmondo->respond('GET', 'payment_gateways', 401, ['error' => 'Invalid API credentials']);
+        $this->shipmondo->respond('GET', 'shipment_templates', 401, ['error' => 'Invalid API credentials']);
         $this->shipmondo->respond('GET', 'webhooks', 401, ['error' => 'Invalid API credentials']);
         $page = $this->visit('/admin/shipmondo');
 
