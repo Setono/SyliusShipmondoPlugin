@@ -19,7 +19,8 @@ final class ShippingOrderLineMappedEvent
          */
         public readonly OrderLine $orderLine,
         /**
-         * This is the shipping adjustment that the order line is based on
+         * This is the shipping adjustment that the order line is based on. Its amount doesn't include the shipment's
+         * shipping promotions, which the order line's price does
          */
         public readonly AdjustmentInterface $adjustment,
         /**

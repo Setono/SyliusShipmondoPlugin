@@ -33,6 +33,7 @@ For most installations the required changes are:
 - watch the log for the error about a payment method mapped to a payment gateway that no longer exists in Shipmondo,
   and if you override the admin Shipmondo page's template, flag such mappings too (section 14)
 - if you override the admin Shipmondo page's template, say when a list couldn't be loaded (section 15)
+- note that the shipping line of a sales order now counts the shipping promotions (section 16)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -705,6 +706,19 @@ New translation keys: `setono_sylius_shipmondo.payment_gateways_not_fetched` and
 in the `messages` domain. `setono_sylius_shipmondo.shipmondo_data_not_fetched` is now flashed only when both lists
 failed for the same reason.
 
+### 16. The sales order's shipping line counts the shipping promotions
+
+In 1.x the shipping line of a sales order stated the shipping method's charge, before any shipping promotion, so with a
+promotion such as free shipping or 20 % off the shipping it had the wrong price and VAT percent, and the order lines
+added up to more than the customer paid ([#52](https://github.com/Setono/SyliusShipmondoPlugin/issues/52)). E.g. 50.00
+shipping less a 10.00 promotion, with 25 % VAT included, was sent as 42.00 at a VAT percent of about 0.19. In 2.x the
+shipping line states what the customer pays for the shipping: the shipping charge plus the shipment's
+`order_shipping_promotion` adjustments, excluding VAT, with the VAT percent of that amount (32.00 at 0.25 in the
+example). Shipping made free by a promotion is sent as 0.00 at 0. Shipping without a promotion is sent as before.
+
+**If you listen to `ShippingOrderLineMappedEvent`:** its `adjustment` is still the shipping adjustment, whose amount
+doesn't include the shipping promotions. Read the price from the event's `orderLine`.
+
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
@@ -712,5 +726,5 @@ above: the SDK types, the `sandbox` switch, webhook verification and registratio
 cancel-deletes-in-Shipmondo behaviour, how a failed upload is handled, the `cancelled` Shipmondo state with the
 link to the sales order, the checked pickup point, how a failed call to Shipmondo is explained, removing a mapping on
 the admin Shipmondo page, the one rule for a sales order's amounts, choosing the shipment template, the service ids,
-flagging the mappings that no longer exist in Shipmondo, and saying when the admin Shipmondo page couldn't fetch a
-list.
+flagging the mappings that no longer exist in Shipmondo, saying when the admin Shipmondo page couldn't fetch a list, and
+counting the shipping promotions in the shipping line.

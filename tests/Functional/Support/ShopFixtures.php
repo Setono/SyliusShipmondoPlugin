@@ -17,6 +17,7 @@ use Sylius\Component\Addressing\Model\CountryInterface;
 use Sylius\Component\Addressing\Model\ZoneInterface;
 use Sylius\Component\Addressing\Model\ZoneMemberInterface;
 use Sylius\Component\Core\Factory\PaymentMethodFactoryInterface;
+use Sylius\Component\Core\Factory\PromotionActionFactoryInterface;
 use Sylius\Component\Core\Model\AddressInterface;
 use Sylius\Component\Core\Model\AdminUserInterface;
 use Sylius\Component\Core\Model\ChannelInterface;
@@ -25,7 +26,9 @@ use Sylius\Component\Core\Model\CustomerInterface;
 use Sylius\Component\Core\Model\OrderItemInterface;
 use Sylius\Component\Core\Model\ProductInterface;
 use Sylius\Component\Core\Model\ProductVariantInterface;
+use Sylius\Component\Core\Model\PromotionInterface;
 use Sylius\Component\Core\Model\ShopUserInterface;
+use Sylius\Component\Core\Model\TaxRateInterface;
 use Sylius\Component\Core\OrderCheckoutTransitions;
 use Sylius\Component\Currency\Model\CurrencyInterface;
 use Sylius\Component\Locale\Model\LocaleInterface;
@@ -34,6 +37,7 @@ use Sylius\Component\Payment\PaymentTransitions;
 use Sylius\Component\Product\Factory\ProductFactoryInterface;
 use Sylius\Component\Resource\Factory\FactoryInterface;
 use Sylius\Component\Shipping\Calculator\DefaultCalculators;
+use Sylius\Component\Taxation\Model\TaxCategoryInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 use Webmozart\Assert\Assert;
 
@@ -234,6 +238,47 @@ final class ShopFixtures
         $this->persist($shippingMethod);
 
         return $shippingMethod;
+    }
+
+    /**
+     * Taxes the baseline shipping method in the customer's country at the rate, e.g. 0.25 for 25 %, included in its price
+     */
+    public function taxShipping(float $rate): void
+    {
+        $taxCategory = $this->create('sylius.factory.tax_category', TaxCategoryInterface::class);
+        $taxCategory->setCode('shipping');
+        $taxCategory->setName('Shipping');
+
+        $taxRate = $this->create('sylius.factory.tax_rate', TaxRateInterface::class);
+        $taxRate->setCode('shipping_vat');
+        $taxRate->setName('VAT');
+        $taxRate->setCategory($taxCategory);
+        $taxRate->setZone($this->shippingMethod->getZone());
+        $taxRate->setAmount($rate);
+        $taxRate->setIncludedInPrice(true);
+        $taxRate->setCalculator('default');
+
+        $this->shippingMethod->setTaxCategory($taxCategory);
+
+        $this->persist($taxCategory, $taxRate, $this->shippingMethod);
+    }
+
+    /**
+     * A promotion in the channel that takes the percentage, e.g. 0.2 for 20 %, off every order's shipping
+     */
+    public function createShippingPromotion(float $percentage): PromotionInterface
+    {
+        $promotion = $this->create('sylius.factory.promotion', PromotionInterface::class);
+        $promotion->setCode('shipping_discount');
+        $promotion->setName('Shipping discount');
+        $promotion->addChannel($this->channel);
+        $promotion->addAction(
+            $this->service('sylius.factory.promotion_action', PromotionActionFactoryInterface::class)->createShippingPercentageDiscount($percentage),
+        );
+
+        $this->persist($promotion);
+
+        return $promotion;
     }
 
     public function createCustomer(string $email = 'customer@example.com'): CustomerInterface
