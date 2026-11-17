@@ -662,7 +662,7 @@ mappings (`stalePaymentGateway()`, `staleShipmentTemplates()`). Changed, only if
 `stalePaymentGateways` (each payment method with a stale mapping, with the id of its payment gateway) and
 `staleShipmentTemplates` (each shipping method with stale mappings, with the ids of those shipment templates). Both are
 `\SplObjectStorage`s keyed by the method, e.g. `stalePaymentGateways[paymentMethod] is defined` and
-`staleShipmentTemplates[shippingMethod] ?? []`, and both are empty when the page couldn't fetch from Shipmondo. The
+`staleShipmentTemplates[shippingMethod] ?? []`. Each is empty when the page couldn't fetch its list from Shipmondo. The
 warnings' texts are `setono_sylius_shipmondo.ui.stale_payment_gateways` and
 `setono_sylius_shipmondo.ui.stale_shipment_templates`.
 

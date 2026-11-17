@@ -58,15 +58,20 @@ final class ShipmondoController extends AbstractController
          */
         $shipmondoShipmentTemplates = [];
 
-        // Whether the page knows what Shipmondo has, and so which mappings are stale
-        $fetched = false;
+        // Whether the page knows which payment gateways and shipment templates Shipmondo has, and so which mappings are
+        // stale. Each list is decided on its own: when only the shipment templates fail, the payment methods are still
+        // listed, and their stale mappings must still be shown, or saving the form would remove them
+        $paymentGatewaysFetched = false;
+        $shipmentTemplatesFetched = false;
 
         // The page is still rendered when Shipmondo fails (e.g. so the webhooks can be registered), with a flash message
         // that explains why. Anything else is a bug, and is left to fail loudly
         try {
             $shipmondoPaymentMethods = $this->shipmondoSetupProvider->paymentGateways();
+            $paymentGatewaysFetched = true;
+
             $shipmondoShipmentTemplates = $this->shipmondoSetupProvider->shipmentTemplates();
-            $fetched = true;
+            $shipmentTemplatesFetched = true;
         } catch (ShipmondoException $e) {
             $failure = ShipmondoFailure::of($e);
 
@@ -156,14 +161,16 @@ final class ShipmondoController extends AbstractController
         $staleShipmentTemplates = new \SplObjectStorage();
 
         // read after saving, so they show the mappings as saved
-        if ($fetched) {
+        if ($paymentGatewaysFetched) {
             foreach ($paymentMethods as $paymentMethod) {
                 $stalePaymentGateway = $this->shipmondoSetupProvider->stalePaymentGateway($paymentMethod);
                 if (null !== $stalePaymentGateway) {
                     $stalePaymentGateways[$paymentMethod] = $stalePaymentGateway;
                 }
             }
+        }
 
+        if ($shipmentTemplatesFetched) {
             foreach ($shippingMethods as $shippingMethod) {
                 $stale = $this->shipmondoSetupProvider->staleShipmentTemplates($shippingMethod);
                 if ([] !== $stale) {

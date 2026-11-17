@@ -162,6 +162,36 @@ final class ShipmondoControllerTest extends TestCase
     }
 
     /**
+     * The payment methods are still listed when only the shipment templates couldn't be fetched, so a stale mapping
+     * must still be flagged and shown, or saving the form would remove it
+     *
+     * @test
+     */
+    public function it_flags_the_stale_payment_gateways_when_only_the_shipment_templates_could_not_be_fetched(): void
+    {
+        $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'payment_gateways'))->willReturn(ShipmondoApi::json([
+            ['id' => 11, 'name' => 'Quickpay', 'provider' => 'quickpay', 'merchant_number' => '1234'],
+        ]));
+        $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'shipment_templates'))->willReturn(ShipmondoApi::empty(401))->shouldBeCalledOnce();
+
+        $stalePaymentMethod = self::paymentMethod(99);
+        $this->paymentMethodRepository->findAll()->willReturn([$stalePaymentMethod]);
+        $this->shippingMethodRepository->findAll()->willReturn([self::shippingMethod([98])]);
+
+        $this->twig->render(self::TEMPLATE, Argument::that(static function (array $context) use ($stalePaymentMethod): bool {
+            self::assertSame([11], self::ids($context['shipmondoPaymentMethods']));
+            self::assertSame([[$stalePaymentMethod, 99]], self::staleMappings($context['stalePaymentGateways']));
+            self::assertSame([], self::staleMappings($context['staleShipmentTemplates']));
+
+            return true;
+        }))->willReturn('<h1>Shipmondo</h1>')->shouldBeCalledOnce();
+
+        $this->controller()->index(new Request());
+
+        self::assertCount(1, $this->session->getFlashBag()->peek('error'));
+    }
+
+    /**
      * @test
      */
     public function it_flags_the_mappings_as_saved(): void

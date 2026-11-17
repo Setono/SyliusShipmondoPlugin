@@ -29,12 +29,8 @@ final class PaymentDetailsSalesOrderDataMapper implements SalesOrderDataMapperIn
         $paymentMethod = self::getPaymentMethod($order);
         $paymentGateway = $paymentMethod?->getShipmondoId();
 
-        if (null !== $paymentMethod && null !== $this->shipmondoSetupProvider->stalePaymentGateway($paymentMethod)) {
-            $this->logger->error('The payment method {paymentMethod} of the order {order} is mapped to the payment gateway {paymentGateway}, which no longer exists in Shipmondo, so Shipmondo may not capture the order\'s payment. Map the payment method to an existing payment gateway, or remove the mapping, on the admin Shipmondo page', [
-                'order' => $order->getNumber(),
-                'paymentMethod' => $paymentMethod->getCode(),
-                'paymentGateway' => $paymentGateway,
-            ]);
+        if (null !== $paymentMethod) {
+            $this->logStalePaymentGateway($order, $paymentMethod);
         }
 
         $amount = AmountWithVat::fromAmountIncludingVat($order->getTotal(), $order->getTaxTotal());
@@ -49,6 +45,20 @@ final class PaymentDetailsSalesOrderDataMapper implements SalesOrderDataMapperIn
             paymentMethod: $paymentMethod?->getName(),
             paymentGatewayId: null === $paymentGateway ? null : (string) $paymentGateway,
         );
+    }
+
+    private function logStalePaymentGateway(OrderInterface $order, PaymentMethodInterface $paymentMethod): void
+    {
+        $stalePaymentGateway = $this->shipmondoSetupProvider->stalePaymentGateway($paymentMethod);
+        if (null === $stalePaymentGateway) {
+            return;
+        }
+
+        $this->logger->error('The payment method {paymentMethod} of the order {order} is mapped to the payment gateway {paymentGateway}, which no longer exists in Shipmondo, so Shipmondo may not capture the order\'s payment. Map the payment method to an existing payment gateway, or remove the mapping, on the admin Shipmondo page', [
+            'order' => $order->getNumber(),
+            'paymentMethod' => $paymentMethod->getCode(),
+            'paymentGateway' => $stalePaymentGateway,
+        ]);
     }
 
     private static function getPaymentMethod(OrderInterface $order): ?PaymentMethodInterface

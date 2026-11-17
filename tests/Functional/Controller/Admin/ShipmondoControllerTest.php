@@ -231,6 +231,29 @@ final class ShipmondoControllerTest extends FunctionalTestCase
     }
 
     /**
+     * The payment methods are still listed when only the shipment templates couldn't be fetched, so saving them must
+     * keep a mapping to a payment gateway that no longer exists in Shipmondo
+     *
+     * @test
+     */
+    public function it_keeps_flagging_a_stale_payment_gateway_when_only_the_shipment_templates_could_not_be_fetched(): void
+    {
+        $this->logIn();
+        $this->shipmondo->respond('GET', 'payment_gateways', 200, [
+            ['id' => 4712, 'name' => 'Quickpay', 'provider' => 'quickpay', 'merchant_number' => '12345'],
+        ], ['X-Total-Pages' => '1']);
+        $this->shipmondo->respond('GET', 'shipment_templates', 401, ['error' => 'Invalid credentials']);
+
+        $crawler = $this->browser->request('GET', '/admin/shipmondo');
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('.message.negative', 'Could not fetch the payment gateways and shipment templates from Shipmondo.');
+        self::assertSame(['Bank transfer'], $crawler->filter('.message.warning li')->extract(['_text']));
+        $option = $crawler->filter(sprintf('select[name="payment_methods[%d]"] option[selected]', self::id($this->fixtures->paymentMethod)));
+        self::assertSame(['4711'], $option->extract(['value']));
+    }
+
+    /**
      * @test
      */
     public function it_flags_a_shipping_method_that_allows_shipment_templates_that_no_longer_exist_in_shipmondo(): void

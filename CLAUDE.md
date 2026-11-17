@@ -210,7 +210,7 @@ The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires
 **Stale Mappings**
 - A stale mapping is a payment method mapped to a payment gateway, or a shipping method that allows a shipment template, that no longer exists in Shipmondo. It is kept until an admin changes it (report only): the admin Shipmondo page flags it (a warning message per table, the row marked `warning`, a selected "Not in Shipmondo (id …)" option), and the upload logs it and uploads as before. Shipmondo accepts a sales order with a payment gateway it doesn't have (checked in the sandbox), hence the error level for that one
 - `Provider\ShipmondoSetupProvider` owns the rule (`stalePaymentGateway()`, `staleShipmentTemplates()`) and the lists both mappers and the admin page read, each fetched once until it is reset (`kernel.reset`): once per upload run on the command line, once per order when a worker handles `UploadOrder` (Messenger resets services after each message)
-- `ShipmondoController` passes the stale mappings to its template as `\SplObjectStorage`s keyed by the Sylius method, and only after a successful fetch, so a failed one flags nothing
+- `ShipmondoController` passes the stale mappings to its template as `\SplObjectStorage`s keyed by the Sylius method, each only once its list was fetched: a failed fetch flags nothing in its table, and when only the shipment templates fail, the payment methods are still flagged, or saving them would remove their stale mappings
 
 ### Entity Extensions
 

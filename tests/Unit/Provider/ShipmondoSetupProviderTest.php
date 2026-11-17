@@ -68,7 +68,7 @@ final class ShipmondoSetupProviderTest extends TestCase
     /**
      * @test
      */
-    public function a_payment_method_mapped_to_a_payment_gateway_shipmondo_no_longer_has_has_a_stale_payment_gateway(): void
+    public function a_payment_method_mapped_to_a_payment_gateway_that_no_longer_exists_in_shipmondo_has_a_stale_payment_gateway(): void
     {
         $this->httpClient->respond(200, [self::paymentGateway(11), self::paymentGateway(12)]);
 
