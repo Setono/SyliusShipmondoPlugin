@@ -166,6 +166,24 @@ final class OrderCancellationTest extends FunctionalTestCase
         self::assertCount(1, $this->shipmondo->requests('DELETE', 'sales_orders/' . self::SHIPMONDO_ID));
     }
 
+    /**
+     * Without an outer transaction, e.g. a console command applying the cancel transition and flushing: handled
+     * synchronously, the deletion's failure is absorbed too
+     *
+     * @test
+     */
+    public function it_still_cancels_an_order_cancelled_outside_a_request_when_shipmondo_fails_to_delete_the_sales_order(): void
+    {
+        $order = $this->uploadedOrder();
+        $this->shipmondo->respond('DELETE', 'sales_orders/' . self::SHIPMONDO_ID, 500, ['error' => 'Internal Server Error']);
+
+        $this->cancel($order);
+
+        $row = $this->orderRow(self::id($order));
+        self::assertSame(OrderInterface::STATE_CANCELLED, $row['state']);
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, self::SHIPMONDO_ID], [$row['shipmondo_state'], $row['shipmondo_id']]);
+    }
+
     private function orderIn(string $shipmondoState): OrderInterface
     {
         $order = $this->fixtures->createOrder($this->fixtures->createCustomer());

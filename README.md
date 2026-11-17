@@ -198,6 +198,35 @@ php bin/console doctrine:migrations:diff
 php bin/console doctrine:migrations:migrate
 ```
 
+## Cancelled orders and asynchronous deletion
+
+When an order is cancelled in Sylius, the plugin deletes its sales order in Shipmondo through the `DeleteOrder` command
+on the `setono_sylius_shipmondo.command_bus` bus. It is handled synchronously by default, and a failing Shipmondo call
+never fails the cancellation: the admin is told to delete the sales order in Shipmondo, and the failure is logged.
+
+To delete the sales order in a worker instead, route the command to an asynchronous transport:
+
+```yaml
+# config/packages/messenger.yaml
+framework:
+    messenger:
+        routing:
+            'Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder': async
+```
+
+A worker retries a deletion that fails temporarily (a Shipmondo server error or a network problem) or is rate limited,
+with the transport's own retry strategy; the plugin configures none. A deletion that trying again won't change (e.g.
+Shipmondo doesn't accept the credentials) goes straight to the failure transport, as does one that runs out of
+retries, so watch the failure transport:
+
+```shell
+php bin/console messenger:failed:show
+```
+
+A failed deletion is not retried, only logged, when it is handled inside a database transaction other than the command
+bus's own: when `DeleteOrder` is routed to `sync://`, and when a worker wraps the handling of messages in a transaction
+of its own.
+
 ## Development
 
 ```shell
