@@ -59,8 +59,9 @@ final class ShipmondoController extends AbstractController
         $shipmondoShipmentTemplates = [];
 
         // Whether the page knows which payment gateways and shipment templates Shipmondo has, and so which mappings are
-        // stale. Each list is decided on its own: when only the shipment templates fail, the payment methods are still
-        // listed, and their stale mappings must still be shown, or saving the form would remove them
+        // stale. The shipment templates are fetched only once the payment gateways are, so when only the shipment
+        // templates fail, the payment methods are still listed, and their stale mappings must still be shown, or saving
+        // the form would remove them
         $paymentGatewaysFetched = false;
         $shipmentTemplatesFetched = false;
 

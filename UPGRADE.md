@@ -528,7 +528,8 @@ as "Not in Shipmondo (id …)", selected, so saving the form keeps it until you 
 select, add `<input type="hidden" name="listed_shipping_methods[]" value="{{ shippingMethod.id }}">`, which tells the
 page which shipping methods the form lists. Without it, shipment templates can still be mapped, but not all removed.
 Pass `clearable: true` when you turn the selects into dropdowns. And show a mapping Shipmondo doesn't list as a selected
-option (`setono_sylius_shipmondo.ui.not_in_shipmondo`, which takes `%id%`), or saving the form removes it.
+option (`setono_sylius_shipmondo.ui.not_in_shipmondo`, which takes `%id%`), or saving the form removes it. The template
+gets these mappings as variables (section 14).
 
 ### 11. A sales order's amounts are worked out by one rule, so an order with a free item uploads
 
@@ -654,7 +655,7 @@ Shipmondo accepts both.
 New: `Provider\SetupProviderInterface`, implemented by `Provider\SetupProvider`, which fetches the payment gateways and
 shipment templates and tells the stale mappings (`stalePaymentGateway()`, `staleShipmentTemplates()`). Its service is
 reached through the interface, a private alias (section 13), so decorate the interface to change it, e.g. to keep the
-lists in a cache across a worker's messages. Changed, only if you construct or extend these yourself:
+lists in a cache across a worker's messages. Changed, only if you construct these (final) classes yourself:
 
 - `DataMapper\PaymentDetailsSalesOrderDataMapper` takes a `SetupProviderInterface` and a `Psr\Log\LoggerInterface`;
   it took no arguments;

@@ -54,7 +54,7 @@ Shipmondo's preset for shipping a sales order: the carrier and product, and the 
 Shipmondo's connection to the store's payment provider, with which Shipmondo can capture a sales order's payment when the order is fulfilled. The admin maps each payment method to one, or to none.
 
 **Stale mapping**:
-A payment method mapped to a payment gateway, or a shipping method that allows a shipment template, that no longer exists in Shipmondo, e.g. because it was deleted there. It is kept until an admin changes it: the Shipmondo page flags it, and the upload of an order that uses it logs it and uploads the order as before.
+A payment method mapped to a payment gateway, or a shipping method that allows a shipment template, that no longer exists in Shipmondo, e.g. because it was deleted there. The payment gateway or shipment template it points to is called stale too. It is kept until an admin changes it: the Shipmondo page flags it, and the upload of an order that uses it logs it and uploads the order as before.
 _Avoid_: broken mapping, orphaned mapping
 
 **VAT percent**:
