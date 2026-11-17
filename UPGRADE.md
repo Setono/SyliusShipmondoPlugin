@@ -32,6 +32,7 @@ For most installations the required changes are:
   named after its class (section 13)
 - watch the log for the error about a payment method mapped to a payment gateway that no longer exists in Shipmondo,
   and if you override the admin Shipmondo page's template, flag such mappings too (section 14)
+- if you override the admin Shipmondo page's template, say when a list couldn't be loaded (section 15)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -458,9 +459,10 @@ one kind of Shipmondo failure (`Failure\ShipmondoFailureKind`), and each caller 
 | `rejected` | Shipmondo answers any other 4xx |
 | `unexpected_failure` | anything else: a success the SDK can't read, a redirect, or a failure that isn't Shipmondo's answer, such as a data mapper that throws |
 
-- **The admin's Shipmondo page** says why it couldn't fetch the payment gateways and shipment templates, e.g. that
-  Shipmondo couldn't be reached, instead of always asking you to check the credentials, and logs it as a warning. It
-  only catches Shipmondo failures: any other exception is a bug, and ends on an error page.
+- **The admin's Shipmondo page** says why it couldn't fetch the payment gateways or the shipment templates, e.g. that
+  Shipmondo couldn't be reached, instead of always asking you to check the credentials, and logs it as a warning (see
+  section 15 for how it tells which list it couldn't fetch). It only catches Shipmondo failures: any other exception
+  is a bug, and ends on an error page.
 - **Registering the webhooks** with the admin's "Register webhooks" button returns to the Shipmondo page with an error
   flash that says why, and that the webhooks may be only partly registered (registration deletes the plugin's webhooks
   before it creates them), so register them again. `setono:sylius-shipmondo:register-webhooks` prints the same and
@@ -673,6 +675,36 @@ warnings' texts are `setono_sylius_shipmondo.ui.stale_payment_gateways` and
 are stale mappings (e.g. `shipmondoPaymentMethods|length > 0 or stalePaymentGateways|length > 0`), or a stale mapping
 can't be removed, and its warning or error is logged for every upload.
 
+### 15. The admin Shipmondo page says when it couldn't fetch a list, instead of that Shipmondo has none
+
+In 1.x the admin Shipmondo page fetched the payment gateways and then the shipment templates, and a table whose list
+couldn't be fetched said that Shipmondo had none and sent you to Shipmondo to create one. When the payment gateways
+failed, the shipment templates weren't fetched either, so both tables said so, and the flash always named both lists
+([#57](https://github.com/Setono/SyliusShipmondoPlugin/issues/57)). In 2.x it fetches each list on its own:
+
+- a table whose list couldn't be fetched says so, e.g. "The payment gateways could not be loaded from Shipmondo, so the
+  payment methods can't be mapped now.", and shows no form, since without the list the page can't tell a mapping from a
+  stale one;
+- the other table works as usual, e.g. the shipping methods can be mapped when only the payment gateways couldn't be
+  fetched;
+- the error flash names what couldn't be fetched, and why: one flash for both lists when they failed for the same
+  reason, such as a credentials failure, and one per list otherwise. Each failure is logged as a warning.
+
+When Shipmondo doesn't answer, the page now waits for both calls, so it can take up to twice the HTTP client's timeout
+before it shows.
+
+**If you override `@SetonoSyliusShipmondoPlugin/admin/shipmondo/index.html.twig`:** it gets two new booleans,
+`paymentGatewaysFetched` and `shipmentTemplatesFetched`. When one is false, its list and its stale mappings are empty:
+show `setono_sylius_shipmondo.ui.payment_gateways_not_loaded` or
+`setono_sylius_shipmondo.ui.shipment_templates_not_loaded` instead of the table's form or its text saying Shipmondo has
+none.
+
+New translation keys: `setono_sylius_shipmondo.payment_gateways_not_fetched` and
+`setono_sylius_shipmondo.shipment_templates_not_fetched` in the `flashes` domain (both take `%reason%`), and
+`setono_sylius_shipmondo.ui.payment_gateways_not_loaded` and `setono_sylius_shipmondo.ui.shipment_templates_not_loaded`
+in the `messages` domain. `setono_sylius_shipmondo.shipmondo_data_not_fetched` is now flashed only when both lists
+failed for the same reason.
+
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
@@ -680,4 +712,5 @@ above: the SDK types, the `sandbox` switch, webhook verification and registratio
 cancel-deletes-in-Shipmondo behaviour, how a failed upload is handled, the `cancelled` Shipmondo state with the
 link to the sales order, the checked pickup point, how a failed call to Shipmondo is explained, removing a mapping on
 the admin Shipmondo page, the one rule for a sales order's amounts, choosing the shipment template, the service ids,
-and flagging the mappings that no longer exist in Shipmondo.
+flagging the mappings that no longer exist in Shipmondo, and saying when the admin Shipmondo page couldn't fetch a
+list.

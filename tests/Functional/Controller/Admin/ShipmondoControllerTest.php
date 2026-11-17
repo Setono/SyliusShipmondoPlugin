@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Setono\SyliusShipmondoPlugin\Functional\Controller\Admin;
 
+use Symfony\Component\DomCrawler\Crawler;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
 
@@ -58,15 +59,23 @@ final class ShipmondoControllerTest extends FunctionalTestCase
     {
         $this->logIn();
         $this->shipmondo->respond('GET', 'payment_gateways', 401, ['error' => 'Invalid credentials']);
+        $this->shipmondo->respond('GET', 'shipment_templates', 401, ['error' => 'Invalid credentials']);
 
         $this->browser->request('GET', '/admin/shipmondo');
 
         self::assertResponseIsSuccessful();
-        self::assertSelectorTextContains('.message.negative', 'Could not fetch the payment gateways and shipment templates from Shipmondo. Shipmondo did not accept the API credentials.');
+        // both failed for the same reason, so one message says so
+        self::assertSelectorCount(1, '.message.negative');
+        self::assertSelectorTextContains('.message.negative p', 'Could not fetch the payment gateways and shipment templates from Shipmondo. Shipmondo did not accept the API credentials.');
+        // neither table says Shipmondo has none
+        self::assertSelectorTextContains('body', 'The payment gateways could not be loaded from Shipmondo');
+        self::assertSelectorTextContains('body', 'The shipment templates could not be loaded from Shipmondo');
+        self::assertSelectorTextNotContains('body', 'There are no');
         // the webhooks can still be registered
         self::assertSelectorExists('a[href="/admin/shipmondo/register-webhooks"]');
         // without Shipmondo's payment gateways and shipment templates, no mapping is known to be stale
         self::assertSelectorNotExists('.message.warning');
+        self::assertSelectorNotExists('form select');
     }
 
     /**
@@ -76,12 +85,74 @@ final class ShipmondoControllerTest extends FunctionalTestCase
     {
         $this->logIn();
         $this->shipmondo->failToConnect('GET', 'payment_gateways');
+        $this->shipmondo->failToConnect('GET', 'shipment_templates');
 
         $this->browser->request('GET', '/admin/shipmondo');
 
         self::assertResponseIsSuccessful();
-        self::assertSelectorTextContains('.message.negative', 'Could not fetch the payment gateways and shipment templates from Shipmondo. Shipmondo could not be reached, or had a server error.');
+        self::assertSelectorTextContains('.message.negative p', 'Could not fetch the payment gateways and shipment templates from Shipmondo. Shipmondo could not be reached, or had a server error.');
         self::assertSelectorTextNotContains('.message.negative', 'credentials');
+    }
+
+    /**
+     * @test
+     */
+    public function it_says_what_could_not_be_fetched_when_each_list_failed_for_its_own_reason(): void
+    {
+        $this->logIn();
+        $this->shipmondo->respond('GET', 'payment_gateways', 429, ['error' => 'Too many requests']);
+        $this->shipmondo->failToConnect('GET', 'shipment_templates');
+
+        $crawler = $this->browser->request('GET', '/admin/shipmondo');
+
+        self::assertResponseIsSuccessful();
+        self::assertSame([
+            'Could not fetch the payment gateways from Shipmondo. Shipmondo is limiting how often the store may call it. Try again in a minute.',
+            'Could not fetch the shipment templates from Shipmondo. Shipmondo could not be reached, or had a server error. Try again later.',
+        ], $crawler->filter('.message.negative p')->each(static fn (Crawler $message): string => $message->text()));
+    }
+
+    /**
+     * Each list is fetched on its own, so the shipping methods can still be mapped when the payment gateways couldn't
+     * be fetched
+     *
+     * @test
+     */
+    public function it_says_the_payment_gateways_could_not_be_loaded_instead_of_that_shipmondo_has_none(): void
+    {
+        $this->logIn();
+        $this->shipmondo->failToConnect('GET', 'payment_gateways');
+        $this->respondWithShipmentTemplates();
+
+        $this->browser->request('GET', '/admin/shipmondo');
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextSame('.message.negative p', 'Could not fetch the payment gateways from Shipmondo. Shipmondo could not be reached, or had a server error. Try again later.');
+        self::assertSelectorTextContains('body', 'The payment gateways could not be loaded from Shipmondo, so the payment methods can\'t be mapped now.');
+        self::assertSelectorTextNotContains('body', 'There are no configured payment gateways inside Shipmondo');
+        self::assertSelectorNotExists('select[name^="payment_methods"]');
+        self::assertSelectorExists(sprintf('select[name="shipping_methods[%d][]"] option[value="664116"]', self::id($this->fixtures->shippingMethod)));
+    }
+
+    /**
+     * The payment methods can still be mapped when only the shipment templates couldn't be fetched
+     *
+     * @test
+     */
+    public function it_says_the_shipment_templates_could_not_be_loaded_instead_of_that_shipmondo_has_none(): void
+    {
+        $this->logIn();
+        $this->respondWithPaymentGateways();
+        $this->shipmondo->respond('GET', 'shipment_templates', 503, null);
+
+        $this->browser->request('GET', '/admin/shipmondo');
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextSame('.message.negative p', 'Could not fetch the shipment templates from Shipmondo. Shipmondo could not be reached, or had a server error. Try again later.');
+        self::assertSelectorTextContains('body', 'The shipment templates could not be loaded from Shipmondo, so the shipping methods can\'t be mapped now.');
+        self::assertSelectorTextNotContains('body', 'There are no shipment templates inside Shipmondo');
+        self::assertSelectorNotExists('select[name^="shipping_methods"]');
+        self::assertSelectorExists(sprintf('select[name="payment_methods[%d]"] option[value="4712"]', self::id($this->fixtures->paymentMethod)));
     }
 
     /**
@@ -247,7 +318,7 @@ final class ShipmondoControllerTest extends FunctionalTestCase
         $crawler = $this->browser->request('GET', '/admin/shipmondo');
 
         self::assertResponseIsSuccessful();
-        self::assertSelectorTextContains('.message.negative', 'Could not fetch the payment gateways and shipment templates from Shipmondo.');
+        self::assertSelectorTextContains('.message.negative p', 'Could not fetch the shipment templates from Shipmondo.');
         self::assertSame(['Bank transfer'], $crawler->filter('.message.warning li')->extract(['_text']));
         $option = $crawler->filter(sprintf('select[name="payment_methods[%d]"] option[selected]', self::id($this->fixtures->paymentMethod)));
         self::assertSame(['4711'], $option->extract(['value']));
@@ -412,11 +483,20 @@ final class ShipmondoControllerTest extends FunctionalTestCase
 
     private function respondWithGatewaysAndTemplates(): void
     {
+        $this->respondWithPaymentGateways();
+        $this->respondWithShipmentTemplates();
+    }
+
+    private function respondWithPaymentGateways(): void
+    {
         $this->shipmondo->respond('GET', 'payment_gateways', 200, [
             ['id' => 4711, 'name' => 'Bank transfer', 'provider' => 'manual', 'merchant_number' => ''],
             ['id' => 4712, 'name' => 'Quickpay', 'provider' => 'quickpay', 'merchant_number' => '12345'],
         ], ['X-Total-Pages' => '1']);
+    }
 
+    private function respondWithShipmentTemplates(): void
+    {
         $this->shipmondo->respond('GET', 'shipment_templates', 200, [
             ['id' => 664116, 'name' => 'GLS pickup point (DK)', 'sender' => ['country_code' => 'DK'], 'receiver' => ['country_code' => 'DK'], 'parcels' => []],
             ['id' => 664115, 'name' => 'GLS pickup point (SE)', 'sender' => ['country_code' => 'DK'], 'receiver' => ['country_code' => 'SE'], 'parcels' => []],

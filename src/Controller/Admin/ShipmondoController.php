@@ -58,27 +58,36 @@ final class ShipmondoController extends AbstractController
          */
         $shipmondoShipmentTemplates = [];
 
-        // Whether the page knows which payment gateways and shipment templates Shipmondo has, and so which mappings are
-        // stale. The shipment templates are fetched only once the payment gateways are, so when only the shipment
-        // templates fail, the payment methods are still listed, and their stale mappings must still be shown, or saving
-        // the form would remove them
-        $paymentGatewaysFetched = false;
-        $shipmentTemplatesFetched = false;
+        // Each list is fetched on its own, so a list that couldn't be fetched doesn't keep the other one from being
+        // mapped, and its table can say it couldn't be loaded instead of that Shipmondo has none. The page is still
+        // rendered when Shipmondo fails (e.g. so the webhooks can be registered), with a flash message that says what
+        // couldn't be fetched and why. Anything else is a bug, and is left to fail loudly
+        $paymentGatewaysFailure = null;
 
-        // The page is still rendered when Shipmondo fails (e.g. so the webhooks can be registered), with a flash message
-        // that explains why. Anything else is a bug, and is left to fail loudly
         try {
             $shipmondoPaymentMethods = $this->setupProvider->paymentGateways();
-            $paymentGatewaysFetched = true;
-
-            $shipmondoShipmentTemplates = $this->setupProvider->shipmentTemplates();
-            $shipmentTemplatesFetched = true;
         } catch (ShipmondoException $e) {
-            $failure = ShipmondoFailure::of($e);
+            $paymentGatewaysFailure = ShipmondoFailure::of($e);
 
-            $this->logger->warning('Could not fetch the payment gateways and shipment templates from Shipmondo for the Shipmondo page', $failure->logContext());
-            $this->addFailureFlash('setono_sylius_shipmondo.shipmondo_data_not_fetched', $failure);
+            $this->logger->warning('Could not fetch the payment gateways from Shipmondo for the Shipmondo page', $paymentGatewaysFailure->logContext());
         }
+
+        $shipmentTemplatesFailure = null;
+
+        try {
+            $shipmondoShipmentTemplates = $this->setupProvider->shipmentTemplates();
+        } catch (ShipmondoException $e) {
+            $shipmentTemplatesFailure = ShipmondoFailure::of($e);
+
+            $this->logger->warning('Could not fetch the shipment templates from Shipmondo for the Shipmondo page', $shipmentTemplatesFailure->logContext());
+        }
+
+        $this->addNotFetchedFlashes($paymentGatewaysFailure, $shipmentTemplatesFailure);
+
+        // Whether the page knows which payment gateways and shipment templates Shipmondo has, and so which mappings are
+        // stale. A list that was fetched is shown with its stale mappings, or saving its form would remove them
+        $paymentGatewaysFetched = null === $paymentGatewaysFailure;
+        $shipmentTemplatesFetched = null === $shipmentTemplatesFailure;
 
         // todo this should be made using Symfony forms
         if ($request->isMethod('POST') && $request->request->has('payment_methods')) {
@@ -185,6 +194,8 @@ final class ShipmondoController extends AbstractController
             'shippingMethods' => $shippingMethods,
             'shipmondoPaymentMethods' => $shipmondoPaymentMethods,
             'shipmondoShipmentTemplates' => $shipmondoShipmentTemplates,
+            'paymentGatewaysFetched' => $paymentGatewaysFetched,
+            'shipmentTemplatesFetched' => $shipmentTemplatesFetched,
             'stalePaymentGateways' => $stalePaymentGateways,
             'staleShipmentTemplates' => $staleShipmentTemplates,
             'registeredWebhooks' => $this->registeredWebhooksRepository->findOneByVersion($this->webhookRegistrar->getVersion()),
@@ -205,6 +216,29 @@ final class ShipmondoController extends AbstractController
         }
 
         return $this->redirectToRoute('setono_sylius_shipmondo_admin_shipmondo_index');
+    }
+
+    /**
+     * Flashes which lists couldn't be fetched from Shipmondo, and why: once for both when both failed for the same
+     * reason, e.g. a credentials failure, and once per list otherwise
+     */
+    private function addNotFetchedFlashes(?ShipmondoFailure $paymentGatewaysFailure, ?ShipmondoFailure $shipmentTemplatesFailure): void
+    {
+        if (null !== $paymentGatewaysFailure && null !== $shipmentTemplatesFailure &&
+            $paymentGatewaysFailure->trans($this->translator) === $shipmentTemplatesFailure->trans($this->translator)
+        ) {
+            $this->addFailureFlash('setono_sylius_shipmondo.shipmondo_data_not_fetched', $paymentGatewaysFailure);
+
+            return;
+        }
+
+        if (null !== $paymentGatewaysFailure) {
+            $this->addFailureFlash('setono_sylius_shipmondo.payment_gateways_not_fetched', $paymentGatewaysFailure);
+        }
+
+        if (null !== $shipmentTemplatesFailure) {
+            $this->addFailureFlash('setono_sylius_shipmondo.shipment_templates_not_fetched', $shipmentTemplatesFailure);
+        }
     }
 
     /**
