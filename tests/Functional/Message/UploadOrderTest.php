@@ -23,8 +23,8 @@ final class UploadOrderTest extends FunctionalTestCase
     public function it_uploads_the_order_and_returns_the_outcome(): void
     {
         $order = $this->uploadingOrder();
+        $this->respondWithThePaymentGateway();
         $this->shipmondo
-            ->respond('GET', 'shipment_templates', 200, [])
             ->respond('POST', 'sales_orders', 201, ['id' => 1001])
         ;
 
@@ -47,7 +47,7 @@ final class UploadOrderTest extends FunctionalTestCase
         string $state,
     ): void {
         $order = $this->uploadingOrder();
-        $this->shipmondo->respond('GET', 'shipment_templates', 200, []);
+        $this->respondWithThePaymentGateway();
         $fail($this, $order);
 
         self::assertSame($outcome, $this->dispatch(new UploadOrder($order)));

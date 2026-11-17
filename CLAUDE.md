@@ -44,6 +44,7 @@ PHPUnit bootstraps the test app via `tests/Application/config/bootstrap.php` (se
 - Tests that need real commits or the consumers' DBAL 3 semantics (no savepoints) override `commitsForReal()` to return `true`, as `OrderCancellationTest` does. They get a plain connection without savepoints, read through a second connection (only committed data), and the baseline is restored afterwards.
 - The Shipmondo API is never called. `FunctionalTestCase` replaces the `Setono\Shipmondo\Client\Client` service with a real SDK client whose PSR-18 transport is `Support\ShipmondoApiStub`. Register responses per method and path, e.g. `$this->shipmondo->respond('DELETE', 'sales_orders/123', 204, null)`, or a network error with `failToConnect('POST', 'sales_orders')`, and assert on `$this->shipmondo->requests()`. A request without a registered response fails the test.
 - `Support\ShopFixtures` creates customers and real orders through Sylius's factories and checkout state machine.
+- Assert on what the application logged via `logs()` (the test app's `recorded` Monolog handler). An upload fetches the payment gateways, since the baseline's payment method is mapped: stub them with `respondWithThePaymentGateway()`.
 - Assert persisted state via `orderRow()` or `database()`. Run console commands with `executeCommand()` (an `Application` from the kernel plus a `CommandTester`, as in Symfony's "Testing Commands" docs), then `$tester->assertCommandIsSuccessful()`.
 - When the frontend is not built, empty Webpack Encore builds are written to `tests/Application/public/build/{admin,shop}` for the run and removed afterwards.
 - A test that demonstrates an open bug calls `self::skipUntilFixed(<issue number>)`.
@@ -152,8 +153,8 @@ The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires
   - `SalesOrderDataMapper`: Basic order data and addresses
   - `OrderLinesSalesOrderDataMapper`: Order line items
   - `ShippingSalesOrderDataMapper`: Shipping information
-  - `PaymentDetailsSalesOrderDataMapper`: Payment details
-  - `ShipmentTemplateSalesOrderDataMapper`: The shipment template, among the shipping method's allowed ones that ship from the store's country: the country they all ship from, or else the channel's shop billing data's country, both decided among the allowed ones that ship to the shipping address's country. It fetches the shipment templates once until it is reset (`kernel.reset`): once per upload run on the command line, once per order when a worker handles `UploadOrder` (Messenger resets services after each message)
+  - `PaymentDetailsSalesOrderDataMapper`: Payment details, with the payment gateway the payment method is mapped to (none when unmapped). It logs an error for a stale mapping (see Stale Mappings) and sends it anyway
+  - `ShipmentTemplateSalesOrderDataMapper`: The shipment template, among the shipping method's allowed ones that ship from the store's country: the country they all ship from, or else the channel's shop billing data's country, both decided among the allowed ones that ship to the shipping address's country. It logs a warning per order for stale mappings, and asks Shipmondo nothing when the shipping method allows no shipment template
   - `ServicePointDataMapper`: The chosen pickup point, as the sales order's service point
 - New mappers can be added by implementing `SalesOrderDataMapperInterface` and will be auto-registered via the `setono_sylius_shipmondo.sales_order_data_mapper` tag
 - `DataMapper\AmountWithVat` is the one rule for an amount and its VAT, formatted as Shipmondo reads them (`fromAmountIncludingVat()` / `fromAmountExcludingVat()`, `amountExcludingVat()`, `vatAmount()`, `amountIncludingVat()`, `vatPercent()`): the order lines, shipping and payment details mappers all use it, and its VAT percent is `0` when there is no amount excluding VAT (e.g. a free item)
@@ -205,6 +206,11 @@ The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires
 - `Form\Extension\ShipmentTypeExtension` adds an unmapped hidden `shipmondoPickupPoint` field and, on `POST_SUBMIT` once the shipping method is known (and Sylius could read it), parses it with `Parser\PickupPointParser` (JSON, then `PickupPoint::fromArray()`): a shipping method without pickup point delivery gets no pickup point, and one with it needs a readable one (`ERROR_MISSING_PICKUP_POINT`, `ERROR_INVALID_PICKUP_POINT`). Its errors go on the root form, the only errors Sylius's shipping step renders
 - `Doctrine\Type\PickupPointType` (registered by the extension's prepend) stores it in the shipment's JSON column and reads it with the same parser; a stored value it can't read reads as `null`. `ServicePointDataMapper` sends it with `ServicePoint::fromPickupPoint()`
 - Turning off pickup point delivery in the admin clears the carrier code: a `SUBMIT` listener on the `carrierCode` field of `ShippingMethodTypeExtension`
+
+**Stale Mappings**
+- A stale mapping is a payment method mapped to a payment gateway, or a shipping method that allows a shipment template, that no longer exists in Shipmondo. It is kept until an admin changes it (report only): the admin Shipmondo page flags it (a warning message per table, the row marked `warning`, a selected "Not in Shipmondo (id …)" option), and the upload logs it and uploads as before. Shipmondo accepts a sales order with a payment gateway it doesn't have (checked in the sandbox), hence the error level for that one
+- `Provider\ShipmondoSetupProvider` owns the rule (`stalePaymentGateway()`, `staleShipmentTemplates()`) and the lists both mappers and the admin page read, each fetched once until it is reset (`kernel.reset`): once per upload run on the command line, once per order when a worker handles `UploadOrder` (Messenger resets services after each message)
+- `ShipmondoController` passes the stale mappings to its template as `\SplObjectStorage`s keyed by the Sylius method, and only after a successful fetch, so a failed one flags nothing
 
 ### Entity Extensions
 

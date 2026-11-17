@@ -14,7 +14,7 @@
             <argument type="service" id="Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface"/>
             <argument type="service" id="sylius.repository.payment_method"/>
             <argument type="service" id="sylius.repository.shipping_method"/>
-            <argument type="service" id="Setono\Shipmondo\Client\Client"/>
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\Provider\ShipmondoSetupProvider"/>
             <argument type="service" id="translator"/>
             <argument type="service" id="logger"/>
 

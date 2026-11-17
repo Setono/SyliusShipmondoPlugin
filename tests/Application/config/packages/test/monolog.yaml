@@ -4,3 +4,7 @@ monolog:
             type: stream
             path: "%kernel.logs_dir%/%kernel.environment%.log"
             level: error
+        # keeps what the application logs in memory, so a functional test can assert on it (FunctionalTestCase::logs())
+        recorded:
+            type: test
+            level: info

@@ -14,7 +14,8 @@
         </service>
 
         <service id="Setono\SyliusShipmondoPlugin\DataMapper\PaymentDetailsSalesOrderDataMapper">
-            <argument type="service" id="sylius.repository.payment_method"/>
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\Provider\ShipmondoSetupProvider"/>
+            <argument type="service" id="logger"/>
 
             <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="20"/>
         </service>
@@ -32,11 +33,10 @@
         </service>
 
         <service id="Setono\SyliusShipmondoPlugin\DataMapper\ShipmentTemplateSalesOrderDataMapper">
-            <argument type="service" id="Setono\Shipmondo\Client\Client"/>
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\Provider\ShipmondoSetupProvider"/>
+            <argument type="service" id="logger"/>
 
             <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="50"/>
-            <!-- forgets the shipment templates it fetched between requests and messages -->
-            <tag name="kernel.reset" method="reset"/>
         </service>
 
         <service id="Setono\SyliusShipmondoPlugin\DataMapper\ServicePointDataMapper">

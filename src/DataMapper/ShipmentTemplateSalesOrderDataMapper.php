@@ -4,37 +4,26 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\DataMapper;
 
-use Setono\Shipmondo\Client\Client;
+use Psr\Log\LoggerInterface;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\Shipmondo\Resolver\Shipment;
 use Setono\Shipmondo\Resolver\ShipmentTemplateResolver;
 use Setono\Shipmondo\Response\ShipmentTemplate\ShipmentTemplate;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
-use Symfony\Contracts\Service\ResetInterface;
+use Setono\SyliusShipmondoPlugin\Provider\ShipmondoSetupProvider;
 
 /**
  * Chooses the sales order's shipment template among the shipping method's allowed shipment templates that ship to the
- * shipping address's country: the one that ships from the store's country and fits the order's weight best
+ * shipping address's country: the one that ships from the store's country and fits the order's weight best. It warns
+ * when the shipping method allows shipment templates that no longer exist in Shipmondo
  */
-final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapperInterface, ResetInterface
+final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapperInterface
 {
-    /**
-     * Every shipment template in Shipmondo, fetched once until the mapper is reset. The container resets services tagged
-     * kernel.reset between requests, and a Messenger worker after each message, so an upload run on the command line
-     * fetches them once, and an UploadOrder command handled by a worker once per order
-     *
-     * @var list<ShipmentTemplate>|null
-     */
-    private ?array $shipmentTemplates = null;
-
-    public function __construct(private readonly Client $client)
-    {
-    }
-
-    public function reset(): void
-    {
-        $this->shipmentTemplates = null;
+    public function __construct(
+        private readonly ShipmondoSetupProvider $shipmondoSetupProvider,
+        private readonly LoggerInterface $logger,
+    ) {
     }
 
     public function map(OrderInterface $order, SalesOrderRequest $salesOrder): void
@@ -60,12 +49,24 @@ final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapper
         }
 
         $allowedShipmentTemplates = $shippingMethod->getAllowedShipmentTemplates();
+        if ([] === $allowedShipmentTemplates) {
+            return;
+        }
+
+        $staleShipmentTemplates = $this->shipmondoSetupProvider->staleShipmentTemplates($shippingMethod);
+        if ([] !== $staleShipmentTemplates) {
+            $this->logger->warning('The shipping method {shippingMethod} of the order {order} allows shipment templates that no longer exist in Shipmondo, so the order\'s shipment template is chosen among the others, if any. Remove them, or allow existing ones instead, on the admin Shipmondo page', [
+                'order' => $order->getNumber(),
+                'shippingMethod' => $shippingMethod->getCode(),
+                'shipmentTemplates' => $staleShipmentTemplates,
+            ]);
+        }
 
         /** @var list<ShipmentTemplate> $shipmentTemplates */
         $shipmentTemplates = [];
 
         // the shipping method allows them, and they ship to the shipping address's country
-        foreach ($this->shipmentTemplates() as $shipmentTemplate) {
+        foreach ($this->shipmondoSetupProvider->shipmentTemplates() as $shipmentTemplate) {
             if (!in_array($shipmentTemplate->id, $allowedShipmentTemplates, true) || $shipmentTemplate->receiver->countryCode !== $receiverCountry) {
                 continue;
             }
@@ -94,23 +95,6 @@ final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapper
         $shipmentTemplate = $resolver->resolve($shipment, $shipmentTemplates);
 
         $salesOrder->shipmentTemplateId = $shipmentTemplate?->id;
-    }
-
-    /**
-     * @return list<ShipmentTemplate>
-     */
-    private function shipmentTemplates(): array
-    {
-        if (null === $this->shipmentTemplates) {
-            $shipmentTemplates = [];
-            foreach ($this->client->shipmentTemplates()->paginate() as $shipmentTemplate) {
-                $shipmentTemplates[] = $shipmentTemplate;
-            }
-
-            $this->shipmentTemplates = $shipmentTemplates;
-        }
-
-        return $this->shipmentTemplates;
     }
 
     /**

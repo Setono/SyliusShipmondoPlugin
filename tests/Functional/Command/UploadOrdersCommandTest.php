@@ -32,6 +32,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         $cart = $this->fixtures->createCart($customer);
 
         $this->respondWithShipmentTemplates();
+        $this->respondWithThePaymentGateway();
         $this->shipmondo
             ->respond('POST', 'sales_orders', 201, ['id' => 1001])
             ->respond('POST', 'sales_orders', 201, ['id' => 1002])
@@ -77,6 +78,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         $order = $this->fixtures->createOrder($this->fixtures->createCustomer(), pickupPoint: PickupPoints::create());
 
         $this->respondWithShipmentTemplates();
+        $this->respondWithThePaymentGateway();
         $this->shipmondo->respond('POST', 'sales_orders', 201, ['id' => 1001]);
 
         $tester = $this->executeCommand(self::COMMAND);
@@ -137,6 +139,44 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
     }
 
     /**
+     * A payment gateway or shipment template deleted in Shipmondo stays mapped until an admin changes it. Shipmondo
+     * accepts a sales order with a payment gateway it doesn't have, so the upload logs it, and uploads the order as it is
+     *
+     * @test
+     */
+    public function it_uploads_an_order_whose_mappings_no_longer_exist_in_shipmondo_and_logs_them(): void
+    {
+        $this->fixtures->shippingMethod->setAllowedShipmentTemplates([999, 664116]);
+        $order = $this->fixtures->createOrder($this->fixtures->createCustomer());
+
+        $this->respondWithShipmentTemplates();
+        $this->shipmondo
+            ->respond('GET', 'payment_gateways', 200, [
+                ['id' => 4712, 'name' => 'Quickpay', 'provider' => 'quickpay', 'merchant_number' => '12345'],
+            ], ['X-Total-Pages' => '1'])
+            ->respond('POST', 'sales_orders', 201, ['id' => 1001])
+        ;
+
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+
+        $body = ShipmondoApiStub::jsonBody($this->shipmondo->requests('POST', 'sales_orders')[0]);
+        self::assertSame(664116, $body['shipment_template_id']);
+        self::assertIsArray($body['payment_details']);
+        self::assertSame((string) ShopFixtures::PAYMENT_METHOD_SHIPMONDO_ID, $body['payment_details']['payment_gateway_id']);
+        $row = $this->orderRow(self::id($order));
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, 1001], [$row['shipmondo_state'], $row['shipmondo_id']]);
+
+        $staleMappings = array_values(array_filter(
+            $this->logs(),
+            static fn (array $log): bool => str_contains($log['message'], 'no longer exist'),
+        ));
+        self::assertSame([
+            ['warning', ['order' => $order->getNumber(), 'shippingMethod' => ShopFixtures::SHIPPING_METHOD_CODE, 'shipmentTemplates' => [999]]],
+            ['error', ['order' => $order->getNumber(), 'paymentMethod' => ShopFixtures::PAYMENT_METHOD_CODE, 'paymentGateway' => ShopFixtures::PAYMENT_METHOD_SHIPMONDO_ID]],
+        ], array_map(static fn (array $log): array => [$log['level'], $log['context']], $staleMappings));
+    }
+
+    /**
      * @test
      */
     public function it_does_nothing_when_no_order_is_ready_for_upload(): void
@@ -160,7 +200,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         $failed = $this->fixtures->createOrder($customer);
         $uploaded = $this->fixtures->createOrder($customer);
 
-        $this->shipmondo->respond('GET', 'shipment_templates', 200, []);
+        $this->respondWithThePaymentGateway();
         $fail($this, $failed);
         $this->shipmondo->respond('POST', 'sales_orders', 201, ['id' => 1002]);
 
@@ -209,8 +249,8 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         $turnedAway = $this->fixtures->createOrder($customer);
         $notTried = $this->fixtures->createOrder($customer);
 
+        $this->respondWithThePaymentGateway();
         $this->shipmondo
-            ->respond('GET', 'shipment_templates', 200, [])
             ->respond('POST', 'sales_orders', $statusCode, ['error' => 'No'])
         ;
 
@@ -246,8 +286,8 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         $notTried = $this->fixtures->createOrder($customer);
 
         // e.g. the payment gateway every order is mapped to was deleted in Shipmondo
+        $this->respondWithThePaymentGateway();
         $this->shipmondo
-            ->respond('GET', 'shipment_templates', 200, [])
             ->respond('POST', 'sales_orders', 422, ['error' => 'The payment gateway does not exist'])
         ;
 
@@ -275,8 +315,8 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
             $this->cancelBehindTheApplicationsBack($cancelled);
         });
 
+        $this->respondWithThePaymentGateway();
         $this->shipmondo
-            ->respond('GET', 'shipment_templates', 200, [])
             ->respond('POST', 'sales_orders', 201, ['id' => 1001])
             ->respond('POST', 'sales_orders', 201, ['id' => 1003])
         ;
@@ -307,8 +347,8 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
             $this->connection()->executeStatement('UPDATE sylius_order SET version = version + 1 WHERE id = ?', [self::id($changed)]);
         });
 
+        $this->respondWithThePaymentGateway();
         $this->shipmondo
-            ->respond('GET', 'shipment_templates', 200, [])
             ->respond('POST', 'sales_orders', 201, ['id' => 1001])
             ->respond('POST', 'sales_orders', 201, ['id' => 1002])
         ;
@@ -335,8 +375,8 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         // an admin cancels the order while its sales order is created, so the cancellation finds no sales order to delete
         $this->cancelWhenMapped($cancelled);
 
+        $this->respondWithThePaymentGateway();
         $this->shipmondo
-            ->respond('GET', 'shipment_templates', 200, [])
             ->respond('POST', 'sales_orders', 201, ['id' => 1001])
             ->respond('DELETE', 'sales_orders/1001', 204, null)
             ->respond('POST', 'sales_orders', 201, ['id' => 1002])
@@ -360,8 +400,8 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         $order = $this->fixtures->createOrder($this->fixtures->createCustomer());
         $this->cancelWhenMapped($order);
 
+        $this->respondWithThePaymentGateway();
         $this->shipmondo
-            ->respond('GET', 'shipment_templates', 200, [])
             ->respond('POST', 'sales_orders', $statusCode, ['error' => 'No'])
         ;
 

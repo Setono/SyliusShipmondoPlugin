@@ -50,6 +50,13 @@ An upload that Shipmondo rejected or answered with not found. The order becomes 
 **Shipment template**:
 Shipmondo's preset for shipping a sales order: the carrier and product, and the parcels, from a sender country to a receiver country. The admin allows some for each shipping method, and the upload chooses the one that ships from the store's country to the shipping address's country and fits the order's weight best.
 
+**Payment gateway**:
+Shipmondo's connection to the store's payment provider, with which Shipmondo can capture a sales order's payment when the order is fulfilled. The admin maps each payment method to one, or to none.
+
+**Stale mapping**:
+A payment method mapped to a payment gateway, or a shipping method that allows a shipment template, that no longer exists in Shipmondo, e.g. because it was deleted there. It is kept until an admin changes it: the Shipmondo page flags it, and the upload of an order that uses it logs it and uploads the order as before.
+_Avoid_: broken mapping, orphaned mapping
+
 **VAT percent**:
 The VAT on an amount as a share of the amount excluding VAT, e.g. 0.25 for 25 %, as a sales order states it for each order line, the shipping and the payment. It is 0 when there is no amount excluding VAT, e.g. for a free item.
 _Avoid_: tax rate (Sylius's, which is set per tax category and may be included in the price)
