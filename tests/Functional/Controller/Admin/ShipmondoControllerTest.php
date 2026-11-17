@@ -46,6 +46,9 @@ final class ShipmondoControllerTest extends FunctionalTestCase
             $crawler->filter(sprintf('select[name="shipping_methods[%d][]"] option', self::id($this->fixtures->shippingMethod)))->extract(['value']),
         );
         self::assertSelectorTextContains('body', 'Either you have not registered webhooks yet');
+        // every mapping exists in Shipmondo
+        self::assertSelectorNotExists('.message.warning');
+        self::assertSelectorNotExists('tr.warning');
     }
 
     /**
@@ -62,6 +65,8 @@ final class ShipmondoControllerTest extends FunctionalTestCase
         self::assertSelectorTextContains('.message.negative', 'Could not fetch the payment gateways and shipment templates from Shipmondo. Shipmondo did not accept the API credentials.');
         // the webhooks can still be registered
         self::assertSelectorExists('a[href="/admin/shipmondo/register-webhooks"]');
+        // without Shipmondo's payment gateways and shipment templates, no mapping is known to be stale
+        self::assertSelectorNotExists('.message.warning');
     }
 
     /**
@@ -202,6 +207,129 @@ final class ShipmondoControllerTest extends FunctionalTestCase
 
         self::assertResponseIsSuccessful();
         self::assertSame([664116, 999], $this->allowedShipmentTemplates());
+    }
+
+    /**
+     * @test
+     */
+    public function it_flags_a_payment_method_mapped_to_a_payment_gateway_that_no_longer_exists_in_shipmondo(): void
+    {
+        $this->logIn();
+        $this->shipmondo->respond('GET', 'payment_gateways', 200, [
+            ['id' => 4712, 'name' => 'Quickpay', 'provider' => 'quickpay', 'merchant_number' => '12345'],
+        ], ['X-Total-Pages' => '1']);
+        $this->shipmondo->respond('GET', 'shipment_templates', 200, [], ['X-Total-Pages' => '1']);
+
+        $crawler = $this->browser->request('GET', '/admin/shipmondo');
+
+        self::assertResponseIsSuccessful();
+        $warning = $crawler->filter('.message.warning');
+        self::assertCount(1, $warning);
+        self::assertStringContainsString('These payment methods are mapped to a payment gateway that no longer exists in Shipmondo', $warning->text());
+        self::assertSame(['Bank transfer'], $warning->filter('li')->extract(['_text']));
+        self::assertSame(['warning'], $crawler->filter(sprintf('select[name="payment_methods[%d]"]', self::id($this->fixtures->paymentMethod)))->closest('tr')?->extract(['class']));
+    }
+
+    /**
+     * The payment methods are still listed when only the shipment templates couldn't be fetched, so saving them must
+     * keep a mapping to a payment gateway that no longer exists in Shipmondo
+     *
+     * @test
+     */
+    public function it_keeps_flagging_a_stale_payment_gateway_when_only_the_shipment_templates_could_not_be_fetched(): void
+    {
+        $this->logIn();
+        $this->shipmondo->respond('GET', 'payment_gateways', 200, [
+            ['id' => 4712, 'name' => 'Quickpay', 'provider' => 'quickpay', 'merchant_number' => '12345'],
+        ], ['X-Total-Pages' => '1']);
+        $this->shipmondo->respond('GET', 'shipment_templates', 401, ['error' => 'Invalid credentials']);
+
+        $crawler = $this->browser->request('GET', '/admin/shipmondo');
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('.message.negative', 'Could not fetch the payment gateways and shipment templates from Shipmondo.');
+        self::assertSame(['Bank transfer'], $crawler->filter('.message.warning li')->extract(['_text']));
+        $option = $crawler->filter(sprintf('select[name="payment_methods[%d]"] option[selected]', self::id($this->fixtures->paymentMethod)));
+        self::assertSame(['4711'], $option->extract(['value']));
+    }
+
+    /**
+     * @test
+     */
+    public function it_flags_a_shipping_method_that_allows_shipment_templates_that_no_longer_exist_in_shipmondo(): void
+    {
+        $this->logIn();
+        $this->fixtures->shippingMethod->setAllowedShipmentTemplates([999, 664116]);
+        $this->entityManager()->flush();
+        $this->respondWithGatewaysAndTemplates();
+
+        $crawler = $this->browser->request('GET', '/admin/shipmondo');
+
+        self::assertResponseIsSuccessful();
+        $warning = $crawler->filter('.message.warning');
+        self::assertCount(1, $warning);
+        self::assertStringContainsString('These shipping methods allow shipment templates that no longer exist in Shipmondo', $warning->text());
+        self::assertSame(['GLS pickup point'], $warning->filter('li')->extract(['_text']));
+        self::assertSame(['warning'], $crawler->filter(sprintf('select[name="shipping_methods[%d][]"]', self::id($this->fixtures->shippingMethod)))->closest('tr')?->extract(['class']));
+    }
+
+    /**
+     * A shop that deleted its last payment gateway in Shipmondo still has to be able to remove the stale mapping, or
+     * every upload paid with that payment method logs an error
+     *
+     * @test
+     */
+    public function it_lets_the_admin_remove_a_stale_payment_gateway_mapping_when_shipmondo_has_no_payment_gateways(): void
+    {
+        $this->logIn();
+        $this->shipmondo->respond('GET', 'payment_gateways', 200, [], ['X-Total-Pages' => '1']);
+        $this->shipmondo->respond('GET', 'shipment_templates', 200, [], ['X-Total-Pages' => '1']);
+
+        $crawler = $this->browser->request('GET', '/admin/shipmondo');
+
+        self::assertSelectorTextContains('body', 'There are no configured payment gateways inside Shipmondo.');
+        $select = sprintf('select[name="payment_methods[%d]"]', self::id($this->fixtures->paymentMethod));
+        self::assertSame(['', '4711'], $crawler->filter($select . ' option')->extract(['value']));
+        self::assertSame('Not in Shipmondo (id 4711)', $crawler->filter($select . ' option[selected]')->text());
+
+        $form = $crawler->filter($select)->closest('form')?->form();
+        self::assertNotNull($form);
+        self::choice($form, sprintf('payment_methods[%d]', self::id($this->fixtures->paymentMethod)))->setValue('');
+        $this->browser->submit($form);
+
+        self::assertResponseIsSuccessful();
+        self::assertNull($this->paymentMethodShipmondoId());
+        self::assertSelectorNotExists('.message.warning');
+        self::assertSelectorNotExists('select[name^="payment_methods"]');
+    }
+
+    /**
+     * @test
+     */
+    public function it_lets_the_admin_remove_stale_shipment_templates_when_shipmondo_has_no_shipment_templates(): void
+    {
+        $this->logIn();
+        $this->fixtures->paymentMethod->setShipmondoId(null);
+        $this->fixtures->shippingMethod->setAllowedShipmentTemplates([999]);
+        $this->entityManager()->flush();
+        $this->shipmondo->respond('GET', 'payment_gateways', 200, [], ['X-Total-Pages' => '1']);
+        $this->shipmondo->respond('GET', 'shipment_templates', 200, [], ['X-Total-Pages' => '1']);
+
+        $crawler = $this->browser->request('GET', '/admin/shipmondo');
+
+        self::assertSelectorTextContains('body', 'There are no shipment templates inside Shipmondo.');
+        $select = sprintf('select[name="shipping_methods[%d][]"]', self::id($this->fixtures->shippingMethod));
+        self::assertSame('Not in Shipmondo (id 999)', $crawler->filter($select . ' option[selected]')->text());
+
+        $form = $crawler->filter($select)->closest('form')?->form();
+        self::assertNotNull($form);
+        self::choice($form, sprintf('shipping_methods[%d]', self::id($this->fixtures->shippingMethod)))->setValue([]);
+        $this->browser->submit($form);
+
+        self::assertResponseIsSuccessful();
+        self::assertSame([], $this->allowedShipmentTemplates());
+        self::assertSelectorNotExists('.message.warning');
+        self::assertSelectorNotExists('select[name^="shipping_methods"]');
     }
 
     /**

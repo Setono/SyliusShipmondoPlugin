@@ -16,6 +16,8 @@ use Setono\SyliusShipmondoPlugin\Message\Middleware\AbsorbDeleteOrderFailureMidd
 use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooks;
 use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProvider;
 use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface;
+use Setono\SyliusShipmondoPlugin\Provider\SetupProvider;
+use Setono\SyliusShipmondoPlugin\Provider\SetupProviderInterface;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
 use Setono\SyliusShipmondoPlugin\Uploader\OrderUploader;
@@ -109,6 +111,7 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
             OrderCancellerInterface::class => OrderCanceller::class,
             SalesOrderDataMapperInterface::class => CompositeSalesOrderDataMapper::class,
             PreQualifiedUploadableOrdersProviderInterface::class => PreQualifiedUploadableOrdersProvider::class,
+            SetupProviderInterface::class => SetupProvider::class,
             WebhookRegistrarInterface::class => WebhookRegistrar::class,
             OrderUploaderInterface::class => OrderUploader::class,
             OrderResolverInterface::class => OrderResolver::class,

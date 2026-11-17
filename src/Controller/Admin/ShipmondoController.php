@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\Controller\Admin;
 
 use Psr\Log\LoggerInterface;
-use Setono\Shipmondo\Client\Client;
 use Setono\Shipmondo\Exception\ShipmondoException;
 use Setono\Shipmondo\Response\PaymentGateway\PaymentGateway;
 use Setono\Shipmondo\Response\ShipmentTemplate\ShipmentTemplate;
@@ -13,6 +12,7 @@ use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
 use Setono\SyliusShipmondoPlugin\Message\Command\RegisterWebhooks;
 use Setono\SyliusShipmondoPlugin\Model\PaymentMethodInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
+use Setono\SyliusShipmondoPlugin\Provider\SetupProviderInterface;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
 use Setono\SyliusShipmondoPlugin\Repository\RegisteredWebhooksRepositoryInterface;
 use Sylius\Component\Core\Repository\PaymentMethodRepositoryInterface;
@@ -34,7 +34,7 @@ final class ShipmondoController extends AbstractController
         private readonly WebhookRegistrarInterface $webhookRegistrar,
         private readonly PaymentMethodRepositoryInterface $paymentMethodRepository,
         private readonly ShippingMethodRepositoryInterface $shippingMethodRepository,
-        private readonly Client $client,
+        private readonly SetupProviderInterface $setupProvider,
         private readonly TranslatorInterface $translator,
         private readonly LoggerInterface $logger,
     ) {
@@ -58,16 +58,21 @@ final class ShipmondoController extends AbstractController
          */
         $shipmondoShipmentTemplates = [];
 
+        // Whether the page knows which payment gateways and shipment templates Shipmondo has, and so which mappings are
+        // stale. The shipment templates are fetched only once the payment gateways are, so when only the shipment
+        // templates fail, the payment methods are still listed, and their stale mappings must still be shown, or saving
+        // the form would remove them
+        $paymentGatewaysFetched = false;
+        $shipmentTemplatesFetched = false;
+
         // The page is still rendered when Shipmondo fails (e.g. so the webhooks can be registered), with a flash message
         // that explains why. Anything else is a bug, and is left to fail loudly
         try {
-            foreach ($this->client->paymentGateways()->paginate() as $item) {
-                $shipmondoPaymentMethods[] = $item;
-            }
+            $shipmondoPaymentMethods = $this->setupProvider->paymentGateways();
+            $paymentGatewaysFetched = true;
 
-            foreach ($this->client->shipmentTemplates()->paginate() as $item) {
-                $shipmondoShipmentTemplates[] = $item;
-            }
+            $shipmondoShipmentTemplates = $this->setupProvider->shipmentTemplates();
+            $shipmentTemplatesFetched = true;
         } catch (ShipmondoException $e) {
             $failure = ShipmondoFailure::of($e);
 
@@ -142,11 +147,46 @@ final class ShipmondoController extends AbstractController
             }
         }
 
+        /**
+         * The payment methods mapped to a payment gateway that no longer exists in Shipmondo, with that payment gateway
+         *
+         * @var \SplObjectStorage<PaymentMethodInterface, int> $stalePaymentGateways
+         */
+        $stalePaymentGateways = new \SplObjectStorage();
+
+        /**
+         * The shipping methods that allow shipment templates that no longer exist in Shipmondo, with those shipment templates
+         *
+         * @var \SplObjectStorage<ShippingMethodInterface, non-empty-list<int>> $staleShipmentTemplates
+         */
+        $staleShipmentTemplates = new \SplObjectStorage();
+
+        // read after saving, so they show the mappings as saved
+        if ($paymentGatewaysFetched) {
+            foreach ($paymentMethods as $paymentMethod) {
+                $stalePaymentGateway = $this->setupProvider->stalePaymentGateway($paymentMethod);
+                if (null !== $stalePaymentGateway) {
+                    $stalePaymentGateways[$paymentMethod] = $stalePaymentGateway;
+                }
+            }
+        }
+
+        if ($shipmentTemplatesFetched) {
+            foreach ($shippingMethods as $shippingMethod) {
+                $stale = $this->setupProvider->staleShipmentTemplates($shippingMethod);
+                if ([] !== $stale) {
+                    $staleShipmentTemplates[$shippingMethod] = $stale;
+                }
+            }
+        }
+
         return $this->render('@SetonoSyliusShipmondoPlugin/admin/shipmondo/index.html.twig', [
             'paymentMethods' => $paymentMethods,
             'shippingMethods' => $shippingMethods,
             'shipmondoPaymentMethods' => $shipmondoPaymentMethods,
             'shipmondoShipmentTemplates' => $shipmondoShipmentTemplates,
+            'stalePaymentGateways' => $stalePaymentGateways,
+            'staleShipmentTemplates' => $staleShipmentTemplates,
             'registeredWebhooks' => $this->registeredWebhooksRepository->findOneByVersion($this->webhookRegistrar->getVersion()),
         ]);
     }

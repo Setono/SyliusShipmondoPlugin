@@ -10,9 +10,11 @@ use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
 use Psr\Http\Client\ClientInterface as HttpClientInterface;
+use Psr\Log\LogLevel;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\DataMapper\ShipmentTemplateSalesOrderDataMapper;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
+use Setono\SyliusShipmondoPlugin\Provider\SetupProvider;
 use Sylius\Component\Core\Model\Address;
 use Sylius\Component\Core\Model\Channel;
 use Sylius\Component\Core\Model\OrderItemInterface;
@@ -22,6 +24,7 @@ use Sylius\Component\Core\Model\ShippingMethod as BaseShippingMethod;
 use Sylius\Component\Core\Model\ShopBillingData;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Shipment;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\ShippingMethod;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\RecordingLogger;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ShipmondoApi;
 
 final class ShipmentTemplateSalesOrderDataMapperTest extends TestCase
@@ -31,9 +34,12 @@ final class ShipmentTemplateSalesOrderDataMapperTest extends TestCase
     /** @var ObjectProphecy<HttpClientInterface> */
     private ObjectProphecy $httpClient;
 
+    private RecordingLogger $logger;
+
     protected function setUp(): void
     {
         $this->httpClient = $this->prophesize(HttpClientInterface::class);
+        $this->logger = new RecordingLogger();
     }
 
     /**
@@ -65,6 +71,7 @@ final class ShipmentTemplateSalesOrderDataMapperTest extends TestCase
         ]);
 
         self::assertSame(2, $this->map($order)->shipmentTemplateId);
+        self::assertSame([], $this->logger->records);
     }
 
     /**
@@ -159,31 +166,6 @@ final class ShipmentTemplateSalesOrderDataMapperTest extends TestCase
     }
 
     /**
-     * An upload run maps every order with the same mapper, and kernel.reset resets it between requests and messages
-     *
-     * @test
-     */
-    public function it_fetches_the_shipment_templates_once_until_it_is_reset(): void
-    {
-        $this->httpClient
-            ->sendRequest(ShipmondoApi::request('GET', 'shipment_templates'))
-            ->willReturn(ShipmondoApi::json([self::template(1, 'DK', 'DK', 5)]))
-            ->shouldBeCalledTimes(2)
-        ;
-        $mapper = new ShipmentTemplateSalesOrderDataMapper(ShipmondoApi::client($this->httpClient->reveal()));
-        $order = $this->order('DK', self::shippingMethod('GLS', [1]), [self::item(1.0, 1)]);
-
-        $mapper->map($order, $salesOrder = new SalesOrderRequest());
-        self::assertSame(1, $salesOrder->shipmentTemplateId);
-        $mapper->map($order, $salesOrder = new SalesOrderRequest());
-        self::assertSame(1, $salesOrder->shipmentTemplateId);
-
-        $mapper->reset();
-        $mapper->map($order, $salesOrder = new SalesOrderRequest());
-        self::assertSame(1, $salesOrder->shipmentTemplateId);
-    }
-
-    /**
      * @test
      */
     public function it_does_not_map_a_shipment_template_when_none_of_the_allowed_templates_supports_the_shipment(): void
@@ -216,6 +198,21 @@ final class ShipmentTemplateSalesOrderDataMapperTest extends TestCase
      */
     public function it_does_not_map_a_shipment_template_when_no_template_is_allowed_for_the_shipping_method(): void
     {
+        $this->httpClient->sendRequest(Argument::any())->shouldNotBeCalled();
+
+        $order = $this->order('DK', self::shippingMethod('GLS', []), [self::item(1.0, 1)]);
+
+        self::assertNull($this->map($order)->shipmentTemplateId);
+        self::assertSame([], $this->logger->records);
+    }
+
+    /**
+     * A shipment template deleted in Shipmondo stays allowed until an admin removes it, so the upload warns about it
+     *
+     * @test
+     */
+    public function it_warns_and_maps_no_shipment_template_when_none_of_the_allowed_templates_exists_in_shipmondo(): void
+    {
         $this->givenShipmentTemplates([
             self::template(1, 'DK', 'DK', 5),
         ]);
@@ -223,6 +220,22 @@ final class ShipmentTemplateSalesOrderDataMapperTest extends TestCase
         $order = $this->order('DK', self::shippingMethod('GLS', [99]), [self::item(1.0, 1)]);
 
         self::assertNull($this->map($order)->shipmentTemplateId);
+        self::assertSame([self::staleShipmentTemplatesWarning([99])], $this->logger->records);
+    }
+
+    /**
+     * @test
+     */
+    public function it_warns_and_chooses_among_the_other_allowed_templates_when_some_no_longer_exist_in_shipmondo(): void
+    {
+        $this->givenShipmentTemplates([
+            self::template(1, 'DK', 'DK', 5),
+        ]);
+
+        $order = $this->order('DK', self::shippingMethod('GLS', [99, 1, 98]), [self::item(1.0, 1)]);
+
+        self::assertSame(1, $this->map($order)->shipmentTemplateId);
+        self::assertSame([self::staleShipmentTemplatesWarning([99, 98])], $this->logger->records);
     }
 
     /**
@@ -286,6 +299,24 @@ final class ShipmentTemplateSalesOrderDataMapperTest extends TestCase
     }
 
     /**
+     * @param list<int> $shipmentTemplates
+     *
+     * @return array{level: mixed, message: string, context: array<array-key, mixed>}
+     */
+    private static function staleShipmentTemplatesWarning(array $shipmentTemplates): array
+    {
+        return [
+            'level' => LogLevel::WARNING,
+            'message' => 'The shipping method {shippingMethod} of the order {order} allows shipment templates that no longer exist in Shipmondo, so the order\'s shipment template is chosen among the others, if any. Remove them, or allow existing ones instead, on the admin Shipmondo page',
+            'context' => [
+                'order' => '000001',
+                'shippingMethod' => 'gls',
+                'shipmentTemplates' => $shipmentTemplates,
+            ],
+        ];
+    }
+
+    /**
      * @param list<array<string, mixed>> $templates
      */
     private function givenShipmentTemplates(array $templates): void
@@ -317,6 +348,7 @@ final class ShipmentTemplateSalesOrderDataMapperTest extends TestCase
     private static function shippingMethod(?string $name, array $allowedShipmentTemplates): ShippingMethod
     {
         $shippingMethod = new ShippingMethod();
+        $shippingMethod->setCode('gls');
         $shippingMethod->setCurrentLocale('en_US');
         $shippingMethod->setName($name);
         $shippingMethod->setAllowedShipmentTemplates($allowedShipmentTemplates);
@@ -369,6 +401,7 @@ final class ShipmentTemplateSalesOrderDataMapperTest extends TestCase
         }
 
         $order = $this->prophesize(OrderInterface::class);
+        $order->getNumber()->willReturn('000001');
         $order->getChannel()->willReturn($channel);
         $order->getShippingAddress()->willReturn(self::address($countryCode));
         $order->getShipments()->willReturn(new ArrayCollection([$shipment]));
@@ -381,7 +414,8 @@ final class ShipmentTemplateSalesOrderDataMapperTest extends TestCase
     {
         $salesOrder = new SalesOrderRequest();
 
-        (new ShipmentTemplateSalesOrderDataMapper(ShipmondoApi::client($this->httpClient->reveal())))->map($order, $salesOrder);
+        $mapper = new ShipmentTemplateSalesOrderDataMapper(new SetupProvider(ShipmondoApi::client($this->httpClient->reveal())), $this->logger);
+        $mapper->map($order, $salesOrder);
 
         return $salesOrder;
     }

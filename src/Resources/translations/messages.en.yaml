@@ -35,6 +35,8 @@ setono_sylius_shipmondo:
         shipmondo_index: Manage your Shipmondo settings
         shipmondo_state: Shipmondo state
         shipping_method_in_sylius: Shipping method in Sylius
+        stale_payment_gateways: 'These payment methods are mapped to a payment gateway that no longer exists in Shipmondo, so Shipmondo may not capture their payments. Map them to an existing payment gateway, or remove the mapping:'
+        stale_shipment_templates: 'These shipping methods allow shipment templates that no longer exist in Shipmondo, so their orders may get another shipment template, or none. Remove them, or allow existing ones instead:'
         try_again: Try again
         uploaded_to_shipmondo: Uploaded to Shipmondo
         uploading_to_shipmondo: Uploading to Shipmondo

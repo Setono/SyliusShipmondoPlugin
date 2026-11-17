@@ -30,6 +30,8 @@ For most installations the required changes are:
   data country (section 12)
 - if you reference, decorate or replace one of the plugin's services by its id, use its new id: every service is now
   named after its class (section 13)
+- watch the log for the error about a payment method mapped to a payment gateway that no longer exists in Shipmondo,
+  and if you override the admin Shipmondo page's template, flag such mappings too (section 14)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -526,7 +528,8 @@ as "Not in Shipmondo (id …)", selected, so saving the form keeps it until you 
 select, add `<input type="hidden" name="listed_shipping_methods[]" value="{{ shippingMethod.id }}">`, which tells the
 page which shipping methods the form lists. Without it, shipment templates can still be mapped, but not all removed.
 Pass `clearable: true` when you turn the selects into dropdowns. And show a mapping Shipmondo doesn't list as a selected
-option (`setono_sylius_shipmondo.ui.not_in_shipmondo`, which takes `%id%`), or saving the form removes it.
+option (`setono_sylius_shipmondo.ui.not_in_shipmondo`, which takes `%id%`), or saving the form removes it. The template
+gets these mappings as variables (section 14).
 
 ### 11. A sales order's amounts are worked out by one rule, so an order with a free item uploads
 
@@ -551,11 +554,12 @@ allowed shipment templates that ship to the shipping address's country, from the
 - when they ship from several countries, from the country of the channel's shop billing data. **Set it** if a shipping
   method allows shipment templates to one country from several countries; without it, no shipment template is chosen.
 
-The shipment templates are also fetched from Shipmondo once until `DataMapper\ShipmentTemplateSalesOrderDataMapper` is
-reset, instead of for every order: once per upload run on the command line, and once per request or message, since the
-mapper is tagged `kernel.reset` (it implements `Symfony\Contracts\Service\ResetInterface`, so `symfony/service-contracts`
-is now required). A worker started with `messenger:consume --no-reset` keeps them until it stops, so restart it after
-changing the shipment templates in Shipmondo.
+The shipment templates are also fetched from Shipmondo once until `Provider\SetupProvider` is reset, instead of
+for every order: once per upload run on the command line, and once per request or message, since the provider is tagged
+`kernel.reset` (it implements `Symfony\Contracts\Service\ResetInterface`, so `symfony/service-contracts` is now
+required). A worker started with `messenger:consume --no-reset` keeps them until it stops, so restart it after changing
+the shipment templates or payment gateways in Shipmondo. An order whose shipping method allows no shipment template
+doesn't fetch them at all.
 
 ### 13. Every service is named after its class
 
@@ -607,6 +611,7 @@ in a service of your own (autowiring) and decorate it:
 | `Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface` | `Setono\SyliusShipmondoPlugin\Canceller\OrderCanceller` |
 | `Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface` | `Setono\SyliusShipmondoPlugin\DataMapper\CompositeSalesOrderDataMapper`, which runs every data mapper |
 | `Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface` | `Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProvider` |
+| `Setono\SyliusShipmondoPlugin\Provider\SetupProviderInterface` | `Setono\SyliusShipmondoPlugin\Provider\SetupProvider` (section 14) |
 | `Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface` | `Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar` |
 | `Setono\SyliusShipmondoPlugin\Uploader\OrderUploaderInterface` | `Setono\SyliusShipmondoPlugin\Uploader\OrderUploader` |
 | `Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface` | `Setono\SyliusShipmondoPlugin\Webhook\OrderResolver` |
@@ -624,11 +629,55 @@ Unchanged: the parameters (`setono_sylius_shipmondo.api.*`, `setono_sylius_shipm
 the services Sylius defines for the `registered_webhooks` resource
 (`setono_sylius_shipmondo.repository.registered_webhooks` and the like).
 
+### 14. Mappings to payment gateways and shipment templates that no longer exist in Shipmondo are flagged
+
+In 1.x nothing noticed when a payment gateway or shipment template that a payment method or shipping method is mapped
+to no longer existed in Shipmondo, e.g. because it was deleted there
+([#32](https://github.com/Setono/SyliusShipmondoPlugin/issues/32)). An order whose shipping method's shipment templates
+were all gone was uploaded without one, and the payment gateway was sent as it was: Shipmondo accepts a sales order
+with a payment gateway it doesn't have (checked against its sandbox). In 2.x such a stale mapping is still kept until
+you change it, but:
+
+- the admin Shipmondo page flags it: a warning message above the payment methods or the shipping methods names each
+  method with a stale mapping, and marks its row. The form is shown whenever there is a stale mapping to remove, also
+  when Shipmondo has no payment gateway or shipment template left;
+- the upload of an order whose shipping method allows shipment templates that no longer exist logs a **warning**, and
+  chooses the order's shipment template among the others, if any;
+- the upload of an order whose payment method is mapped to a payment gateway that no longer exists logs an **error**,
+  since Shipmondo may not capture the order's payment, and uploads the order with that payment gateway as before.
+  **When you see it, map the payment method to an existing payment gateway**, or remove the mapping.
+
+To tell, the upload now also fetches the payment gateways from Shipmondo when an order's payment method is mapped, once
+per upload run (see section 12). Like any call to Shipmondo during an upload, a failure to fetch them settles the order
+by its kind (section 6). A payment method without a mapping now sends no `payment_gateway_id` instead of an empty one;
+Shipmondo accepts both.
+
+New: `Provider\SetupProviderInterface`, implemented by `Provider\SetupProvider`, which fetches the payment gateways and
+shipment templates and tells the stale mappings (`stalePaymentGateway()`, `staleShipmentTemplates()`). Its service is
+reached through the interface, a private alias (section 13), so decorate the interface to change it, e.g. to keep the
+lists in a cache across a worker's messages. Changed, only if you construct these (final) classes yourself:
+
+- `DataMapper\PaymentDetailsSalesOrderDataMapper` takes a `SetupProviderInterface` and a `Psr\Log\LoggerInterface`;
+  it took no arguments;
+- `DataMapper\ShipmentTemplateSalesOrderDataMapper` takes a `SetupProviderInterface` and a `Psr\Log\LoggerInterface`
+  instead of the SDK's `Client`, and no longer implements `ResetInterface`: `SetupProvider` does;
+- `Controller\Admin\ShipmondoController` takes a `SetupProviderInterface` instead of the SDK's `Client`.
+
+**If you override `@SetonoSyliusShipmondoPlugin/admin/shipmondo/index.html.twig`:** it gets two new variables,
+`stalePaymentGateways` (each payment method with a stale mapping, with the id of its payment gateway) and
+`staleShipmentTemplates` (each shipping method with stale mappings, with the ids of those shipment templates). Both are
+`\SplObjectStorage`s keyed by the method, e.g. `stalePaymentGateways[paymentMethod] is defined` and
+`staleShipmentTemplates[shippingMethod] ?? []`. Each is empty when the page couldn't fetch its list from Shipmondo. The
+warnings' texts are `setono_sylius_shipmondo.ui.stale_payment_gateways` and
+`setono_sylius_shipmondo.ui.stale_shipment_templates`. Show a table's form also when Shipmondo has none left but there
+are stale mappings (e.g. `shipmondoPaymentMethods|length > 0 or stalePaymentGateways|length > 0`), or a stale mapping
+can't be removed, and its warning or error is logged for every upload.
+
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
 above: the SDK types, the `sandbox` switch, webhook verification and registration, the webhook reactions, the
 cancel-deletes-in-Shipmondo behaviour, how a failed upload is handled, the `cancelled` Shipmondo state with the
 link to the sales order, the checked pickup point, how a failed call to Shipmondo is explained, removing a mapping on
-the admin Shipmondo page, the one rule for a sales order's amounts, choosing the shipment template, and the service
-ids.
+the admin Shipmondo page, the one rule for a sales order's amounts, choosing the shipment template, the service ids,
+and flagging the mappings that no longer exist in Shipmondo.

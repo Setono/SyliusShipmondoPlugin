@@ -16,6 +16,7 @@ use Setono\Shipmondo\Response\ShipmentTemplate\ShipmentTemplate;
 use Setono\SyliusShipmondoPlugin\Controller\Admin\ShipmondoController;
 use Setono\SyliusShipmondoPlugin\Message\Command\RegisterWebhooks;
 use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooks;
+use Setono\SyliusShipmondoPlugin\Provider\SetupProvider;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
 use Setono\SyliusShipmondoPlugin\Repository\RegisteredWebhooksRepositoryInterface;
 use Sylius\Component\Core\Model\PaymentMethod as BasePaymentMethod;
@@ -113,11 +114,13 @@ final class ShipmondoControllerTest extends TestCase
         $this->givenShipmondoApi();
 
         $this->twig->render(self::TEMPLATE, Argument::that(function (array $context): bool {
-            self::assertSame(['paymentMethods', 'shippingMethods', 'shipmondoPaymentMethods', 'shipmondoShipmentTemplates', 'registeredWebhooks'], array_keys($context));
+            self::assertSame(['paymentMethods', 'shippingMethods', 'shipmondoPaymentMethods', 'shipmondoShipmentTemplates', 'stalePaymentGateways', 'staleShipmentTemplates', 'registeredWebhooks'], array_keys($context));
             self::assertSame($this->paymentMethods, $context['paymentMethods']);
             self::assertSame($this->shippingMethods, $context['shippingMethods']);
             self::assertSame([11, 12], self::ids($context['shipmondoPaymentMethods']));
             self::assertSame([21], self::ids($context['shipmondoShipmentTemplates']));
+            self::assertSame([], self::staleMappings($context['stalePaymentGateways']));
+            self::assertSame([], self::staleMappings($context['staleShipmentTemplates']));
             self::assertSame($this->registeredWebhooks, $context['registeredWebhooks']);
 
             return true;
@@ -131,6 +134,85 @@ final class ShipmondoControllerTest extends TestCase
     }
 
     /**
+     * A payment gateway or shipment template deleted in Shipmondo stays mapped until an admin changes it, so the page
+     * flags it
+     *
+     * @test
+     */
+    public function it_passes_the_mappings_that_no_longer_exist_in_shipmondo_to_the_template(): void
+    {
+        $this->givenShipmondoApi();
+
+        $mapped = self::paymentMethod(11);
+        $stalePaymentMethod = self::paymentMethod(99);
+        $this->paymentMethodRepository->findAll()->willReturn([$mapped, $stalePaymentMethod, self::paymentMethod(null)]);
+
+        $allowed = self::shippingMethod([21]);
+        $staleShippingMethod = self::shippingMethod([98, 21, 97]);
+        $this->shippingMethodRepository->findAll()->willReturn([$allowed, $staleShippingMethod, self::shippingMethod([])]);
+
+        $this->twig->render(self::TEMPLATE, Argument::that(static function (array $context) use ($stalePaymentMethod, $staleShippingMethod): bool {
+            self::assertSame([[$stalePaymentMethod, 99]], self::staleMappings($context['stalePaymentGateways']));
+            self::assertSame([[$staleShippingMethod, [98, 97]]], self::staleMappings($context['staleShipmentTemplates']));
+
+            return true;
+        }))->willReturn('<h1>Shipmondo</h1>')->shouldBeCalledOnce();
+
+        $this->controller()->index(new Request());
+    }
+
+    /**
+     * The payment methods are still listed when only the shipment templates couldn't be fetched, so a stale mapping
+     * must still be flagged and shown, or saving the form would remove it
+     *
+     * @test
+     */
+    public function it_flags_the_stale_payment_gateways_when_only_the_shipment_templates_could_not_be_fetched(): void
+    {
+        $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'payment_gateways'))->willReturn(ShipmondoApi::json([
+            ['id' => 11, 'name' => 'Quickpay', 'provider' => 'quickpay', 'merchant_number' => '1234'],
+        ]));
+        $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'shipment_templates'))->willReturn(ShipmondoApi::empty(401))->shouldBeCalledOnce();
+
+        $stalePaymentMethod = self::paymentMethod(99);
+        $this->paymentMethodRepository->findAll()->willReturn([$stalePaymentMethod]);
+        $this->shippingMethodRepository->findAll()->willReturn([self::shippingMethod([98])]);
+
+        $this->twig->render(self::TEMPLATE, Argument::that(static function (array $context) use ($stalePaymentMethod): bool {
+            self::assertSame([11], self::ids($context['shipmondoPaymentMethods']));
+            self::assertSame([[$stalePaymentMethod, 99]], self::staleMappings($context['stalePaymentGateways']));
+            self::assertSame([], self::staleMappings($context['staleShipmentTemplates']));
+
+            return true;
+        }))->willReturn('<h1>Shipmondo</h1>')->shouldBeCalledOnce();
+
+        $this->controller()->index(new Request());
+
+        self::assertCount(1, $this->session->getFlashBag()->peek('error'));
+    }
+
+    /**
+     * @test
+     */
+    public function it_flags_the_mappings_as_saved(): void
+    {
+        $this->givenShipmondoApi();
+
+        $paymentMethod = self::paymentMethod(99);
+        $this->paymentMethodRepository->findAll()->willReturn([$paymentMethod]);
+        $this->paymentMethodRepository->find(1)->willReturn($paymentMethod);
+        $this->paymentMethodRepository->add($paymentMethod)->shouldBeCalledOnce();
+
+        $this->twig->render(self::TEMPLATE, Argument::that(static function (array $context): bool {
+            self::assertSame([], self::staleMappings($context['stalePaymentGateways']));
+
+            return true;
+        }))->willReturn('<h1>Shipmondo</h1>')->shouldBeCalledOnce();
+
+        $this->controller()->index(self::post(['payment_methods' => [1 => '11']]));
+    }
+
+    /**
      * @test
      */
     public function it_still_renders_the_page_when_the_shipmondo_api_fails(): void
@@ -138,9 +220,15 @@ final class ShipmondoControllerTest extends TestCase
         $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'payment_gateways'))->willReturn(ShipmondoApi::empty(401));
         $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'shipment_templates'))->shouldNotBeCalled();
 
+        // without Shipmondo's payment gateways and shipment templates, no mapping is known to be stale
+        $this->paymentMethodRepository->findAll()->willReturn([self::paymentMethod(99)]);
+        $this->shippingMethodRepository->findAll()->willReturn([self::shippingMethod([98])]);
+
         $this->twig->render(self::TEMPLATE, Argument::that(static function (array $context): bool {
             self::assertSame([], $context['shipmondoPaymentMethods']);
             self::assertSame([], $context['shipmondoShipmentTemplates']);
+            self::assertSame([], self::staleMappings($context['stalePaymentGateways']));
+            self::assertSame([], self::staleMappings($context['staleShipmentTemplates']));
 
             return true;
         }))->willReturn('<h1>Shipmondo</h1>')->shouldBeCalledOnce();
@@ -438,6 +526,42 @@ final class ShipmondoControllerTest extends TestCase
     }
 
     /**
+     * Returns each Sylius method the template is told has a stale mapping, with what is stale
+     *
+     * @return list<array{object, mixed}>
+     */
+    private static function staleMappings(mixed $staleMappings): array
+    {
+        self::assertInstanceOf(\SplObjectStorage::class, $staleMappings);
+
+        $pairs = [];
+        foreach ($staleMappings as $method) {
+            $pairs[] = [$method, $staleMappings[$method]];
+        }
+
+        return $pairs;
+    }
+
+    private static function paymentMethod(?int $paymentGateway): PaymentMethod
+    {
+        $paymentMethod = new PaymentMethod();
+        $paymentMethod->setShipmondoId($paymentGateway);
+
+        return $paymentMethod;
+    }
+
+    /**
+     * @param list<int> $allowedShipmentTemplates
+     */
+    private static function shippingMethod(array $allowedShipmentTemplates): ShippingMethod
+    {
+        $shippingMethod = new ShippingMethod();
+        $shippingMethod->setAllowedShipmentTemplates($allowedShipmentTemplates);
+
+        return $shippingMethod;
+    }
+
+    /**
      * @param array<string, mixed> $parameters
      */
     private static function post(array $parameters): Request
@@ -463,7 +587,7 @@ final class ShipmondoControllerTest extends TestCase
             $this->webhookRegistrar->reveal(),
             $this->paymentMethodRepository->reveal(),
             $this->shippingMethodRepository->reveal(),
-            ShipmondoApi::client($this->httpClient->reveal()),
+            new SetupProvider(ShipmondoApi::client($this->httpClient->reveal())),
             Translations::translator(),
             $this->logger,
         );

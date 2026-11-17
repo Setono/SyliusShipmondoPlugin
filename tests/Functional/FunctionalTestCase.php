@@ -8,6 +8,7 @@ use DAMA\DoctrineTestBundle\Doctrine\DBAL\StaticDriver;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\ORM\EntityManagerInterface;
+use Monolog\Handler\TestHandler;
 use Setono\Shipmondo\Client\Client;
 use Setono\SyliusShipmondoPlugin\Event\SalesOrderMappedEvent;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
@@ -130,6 +131,41 @@ abstract class FunctionalTestCase extends WebTestCase
         $tester->execute($input);
 
         return $tester;
+    }
+
+    /**
+     * Answers the request for Shipmondo's payment gateways with the one the baseline's payment method is mapped to, as
+     * the upload of an order paid with it asks for them
+     */
+    protected function respondWithThePaymentGateway(): void
+    {
+        $this->shipmondo->respond('GET', 'payment_gateways', 200, [
+            ['id' => ShopFixtures::PAYMENT_METHOD_SHIPMONDO_ID, 'name' => 'Bank transfer', 'provider' => 'manual', 'merchant_number' => ''],
+        ], ['X-Total-Pages' => '1']);
+    }
+
+    /**
+     * What the application logged at info level and above during the test, read from the test application's "recorded"
+     * Monolog handler. The level is PSR-3's, e.g. 'error'
+     *
+     * @return list<array{level: string, message: string, context: array<array-key, mixed>}>
+     */
+    protected function logs(): array
+    {
+        $handler = static::getContainer()->get('monolog.handler.recorded');
+        Assert::isInstanceOf($handler, TestHandler::class);
+
+        $logs = [];
+        // array access reads a record on Monolog 2 (an array) and 3 (a LogRecord) alike
+        foreach ($handler->getRecords() as $record) {
+            Assert::string($record['level_name']);
+            Assert::string($record['message']);
+            Assert::isArray($record['context']);
+
+            $logs[] = ['level' => strtolower($record['level_name']), 'message' => $record['message'], 'context' => $record['context']];
+        }
+
+        return $logs;
     }
 
     protected function eventDispatcher(): EventDispatcherInterface

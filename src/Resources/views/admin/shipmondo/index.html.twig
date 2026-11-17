@@ -18,9 +18,21 @@
             <div class="ui segment">
                 <h4 class="ui header">{{ 'setono_sylius_shipmondo.ui.map_payment_methods'|trans }}</h4>
 
-                {% if shipmondoPaymentMethods|length > 0 %}
+                {% if stalePaymentGateways|length > 0 %}
+                    <div class="ui warning message">
+                        <p>{{ 'setono_sylius_shipmondo.ui.stale_payment_gateways'|trans }}</p>
+                        <ul class="list">
+                            {% for paymentMethod in stalePaymentGateways %}
+                                <li>{{ paymentMethod.name }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+
+                {# a stale mapping stays removable, also when Shipmondo has no payment gateway left #}
+                {% if shipmondoPaymentMethods|length > 0 or stalePaymentGateways|length > 0 %}
                     <form method="post">
-                        <p>{{ 'setono_sylius_shipmondo.ui.map_payment_methods_information'|trans|raw }}</p>
+                        <p>{{ (shipmondoPaymentMethods|length > 0 ? 'setono_sylius_shipmondo.ui.map_payment_methods_information' : 'setono_sylius_shipmondo.ui.map_payment_methods_empty_information')|trans|raw }}</p>
                         <table class="ui celled table">
                             <thead>
                             <tr>
@@ -29,9 +41,8 @@
                             </tr>
                             </thead>
                             <tbody>
-                            {% set listedPaymentGatewayIds = shipmondoPaymentMethods|map(paymentGateway => paymentGateway.id) %}
                             {% for paymentMethod in paymentMethods %}
-                                <tr>
+                                <tr{% if stalePaymentGateways[paymentMethod] is defined %} class="warning"{% endif %}>
                                     <td>{{ paymentMethod.name }}</td>
                                     <td>
                                         <select name="payment_methods[{{ paymentMethod.id }}]" class="ui dropdown">
@@ -39,9 +50,9 @@
                                             {% for shipmondoPaymentMethod in shipmondoPaymentMethods %}
                                                 <option value="{{ shipmondoPaymentMethod.id }}" {% if shipmondoPaymentMethod.id == paymentMethod.shipmondoId %}selected{% endif %}>{{ shipmondoPaymentMethod.name }}</option>
                                             {% endfor %}
-                                            {# a mapping to a payment gateway Shipmondo doesn't list is kept until the admin removes it #}
-                                            {% if paymentMethod.shipmondoId is not null and paymentMethod.shipmondoId not in listedPaymentGatewayIds %}
-                                                <option value="{{ paymentMethod.shipmondoId }}" selected>{{ 'setono_sylius_shipmondo.ui.not_in_shipmondo'|trans({'%id%': paymentMethod.shipmondoId}) }}</option>
+                                            {# a mapping to a payment gateway that no longer exists in Shipmondo is kept until the admin removes it #}
+                                            {% if stalePaymentGateways[paymentMethod] is defined %}
+                                                <option value="{{ stalePaymentGateways[paymentMethod] }}" selected>{{ 'setono_sylius_shipmondo.ui.not_in_shipmondo'|trans({'%id%': stalePaymentGateways[paymentMethod]}) }}</option>
                                             {% endif %}
                                         </select>
                                     </td>
@@ -76,9 +87,21 @@
             <div class="ui segment">
                 <h4 class="ui header">{{ 'setono_sylius_shipmondo.ui.map_shipping_methods'|trans }}</h4>
 
-                {% if shipmondoShipmentTemplates|length > 0 %}
+                {% if staleShipmentTemplates|length > 0 %}
+                    <div class="ui warning message">
+                        <p>{{ 'setono_sylius_shipmondo.ui.stale_shipment_templates'|trans }}</p>
+                        <ul class="list">
+                            {% for shippingMethod in staleShipmentTemplates %}
+                                <li>{{ shippingMethod.name }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                {% endif %}
+
+                {# a stale mapping stays removable, also when Shipmondo has no shipment template left #}
+                {% if shipmondoShipmentTemplates|length > 0 or staleShipmentTemplates|length > 0 %}
                     <form method="post">
-                        <p>{{ 'setono_sylius_shipmondo.ui.map_shipping_methods_information'|trans|raw }}</p>
+                        <p>{{ (shipmondoShipmentTemplates|length > 0 ? 'setono_sylius_shipmondo.ui.map_shipping_methods_information' : 'setono_sylius_shipmondo.ui.map_shipping_methods_empty_information')|trans|raw }}</p>
                         <table class="ui single line celled table">
                             <thead>
                             <tr>
@@ -87,9 +110,8 @@
                             </tr>
                             </thead>
                             <tbody>
-                            {% set listedShipmentTemplateIds = shipmondoShipmentTemplates|map(shipmentTemplate => shipmentTemplate.id) %}
                             {% for shippingMethod in shippingMethods %}
-                                <tr>
+                                <tr{% if staleShipmentTemplates[shippingMethod] is defined %} class="warning"{% endif %}>
                                     <td>{{ shippingMethod.name }}</td>
                                     <td>
                                         {# a select without a selected shipment template isn't submitted, so this says which shipping methods the form lists #}
@@ -98,8 +120,8 @@
                                             {% for shipmondoShipmentTemplate in shipmondoShipmentTemplates %}
                                                 <option value="{{ shipmondoShipmentTemplate.id }}" {% if shippingMethod.hasAllowedShipmentTemplate(shipmondoShipmentTemplate) %}selected{% endif %}>{{ shipmondoShipmentTemplate.name }}</option>
                                             {% endfor %}
-                                            {# an allowed shipment template Shipmondo doesn't list is kept until the admin removes it #}
-                                            {% for allowedShipmentTemplate in shippingMethod.allowedShipmentTemplates|filter(id => id not in listedShipmentTemplateIds) %}
+                                            {# an allowed shipment template that no longer exists in Shipmondo is kept until the admin removes it #}
+                                            {% for allowedShipmentTemplate in staleShipmentTemplates[shippingMethod] ?? [] %}
                                                 <option value="{{ allowedShipmentTemplate }}" selected>{{ 'setono_sylius_shipmondo.ui.not_in_shipmondo'|trans({'%id%': allowedShipmentTemplate}) }}</option>
                                             {% endfor %}
                                         </select>
