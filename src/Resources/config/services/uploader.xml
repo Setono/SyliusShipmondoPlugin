@@ -2,16 +2,18 @@
 <container xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://symfony.com/schema/dic/services"
            xsi:schemaLocation="http://symfony.com/schema/dic/services http://symfony.com/schema/dic/services/services-1.0.xsd">
     <services>
-        <service id="setono_sylius_shipmondo.uploader.order"
-                 class="Setono\SyliusShipmondoPlugin\Uploader\OrderUploader">
-            <argument type="service" id="setono_sylius_shipmondo.provider.pre_qualified_uploadable_orders"/>
+        <service id="Setono\SyliusShipmondoPlugin\Uploader\OrderUploader">
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface"/>
             <argument type="service" id="setono_sylius_shipmondo.command_bus"/>
             <argument type="service" id="state_machine.setono_sylius_shipmondo__order"/>
-            <argument type="service" id="setono_sylius_shipmondo.client"/>
-            <argument type="service" id="setono_sylius_shipmondo.data_mapper.sales_order.composite"/>
-            <argument type="service" id="setono_sylius_shipmondo.canceller.order"/>
+            <argument type="service" id="Setono\Shipmondo\Client\Client"/>
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface"/>
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface"/>
             <argument type="service" id="logger"/>
             <argument type="service" id="doctrine"/>
         </service>
+
+        <service id="Setono\SyliusShipmondoPlugin\Uploader\OrderUploaderInterface"
+                 alias="Setono\SyliusShipmondoPlugin\Uploader\OrderUploader"/>
     </services>
 </container>

@@ -2,19 +2,16 @@
 <container xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://symfony.com/schema/dic/services"
            xsi:schemaLocation="http://symfony.com/schema/dic/services http://symfony.com/schema/dic/services/services-1.0.xsd">
     <services>
-        <service id="setono_sylius_shipmondo.webhook.shipmondo_webhook_parser"
-                 class="Setono\Shipmondo\Webhook\WebhookParser"/>
+        <service id="Setono\Shipmondo\Webhook\WebhookParser"/>
 
-        <service id="setono_sylius_shipmondo.webhook.webhook_parser"
-                 class="Setono\SyliusShipmondoPlugin\Webhook\WebhookParser">
-            <argument type="service" id="setono_sylius_shipmondo.webhook.shipmondo_webhook_parser"/>
+        <service id="Setono\SyliusShipmondoPlugin\Webhook\WebhookParser">
+            <argument type="service" id="Setono\Shipmondo\Webhook\WebhookParser"/>
             <argument>%setono_sylius_shipmondo.webhooks.key%</argument>
         </service>
 
-        <service id="setono_sylius_shipmondo.webhook.webhook_consumer"
-                 class="Setono\SyliusShipmondoPlugin\Webhook\WebhookConsumer">
-            <argument type="service" id="setono_sylius_shipmondo.webhook.order_resolver"/>
-            <argument type="service" id="setono_sylius_shipmondo.webhook.order_webhook_handlers"/>
+        <service id="Setono\SyliusShipmondoPlugin\Webhook\WebhookConsumer">
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface"/>
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers"/>
             <argument type="service" id="logger"/>
             <argument type="service" id="doctrine"/>
 

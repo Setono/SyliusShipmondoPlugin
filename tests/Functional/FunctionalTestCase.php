@@ -8,6 +8,7 @@ use DAMA\DoctrineTestBundle\Doctrine\DBAL\StaticDriver;
 use Doctrine\DBAL\Connection;
 use Doctrine\DBAL\DriverManager;
 use Doctrine\ORM\EntityManagerInterface;
+use Setono\Shipmondo\Client\Client;
 use Setono\SyliusShipmondoPlugin\Event\SalesOrderMappedEvent;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Sylius\Abstraction\StateMachine\StateMachineInterface;
@@ -28,7 +29,7 @@ use Webmozart\Assert\Assert;
 /**
  * Boots the real test application against MySQL (DATABASE_URL), starting from the baseline shop
  * ({@see ShopFixtures}), with the Shipmondo API stubbed at the HTTP boundary: the plugin's
- * `setono_sylius_shipmondo.client` service is replaced with a real SDK client whose PSR-18 transport is
+ * `Setono\Shipmondo\Client\Client` service is replaced with a real SDK client whose PSR-18 transport is
  * {@see ShipmondoApiStub}.
  *
  * Every test runs inside a transaction that dama/doctrine-test-bundle rolls back afterwards. DAMA needs DBAL
@@ -69,7 +70,7 @@ abstract class FunctionalTestCase extends WebTestCase
 
         // must happen before any service that depends on the client is instantiated
         $this->shipmondo = new ShipmondoApiStub();
-        static::getContainer()->set('setono_sylius_shipmondo.client', $this->shipmondo->client());
+        static::getContainer()->set(Client::class, $this->shipmondo->client());
 
         if (static::commitsForReal()) {
             // DAMA only takes over connections opened while static connections are kept

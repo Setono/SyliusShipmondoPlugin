@@ -7,6 +7,7 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Unit;
 use Doctrine\Bundle\DoctrineBundle\DependencyInjection\Compiler\DoctrineOrmMappingsPass;
 use PHPUnit\Framework\TestCase;
 use Setono\CompositeCompilerPass\CompositeCompilerPass;
+use Setono\SyliusShipmondoPlugin\DataMapper\CompositeSalesOrderDataMapper;
 use Setono\SyliusShipmondoPlugin\DependencyInjection\Compiler\RegisterOrderWebhookHandlersPass;
 use Setono\SyliusShipmondoPlugin\SetonoSyliusShipmondoPlugin;
 use Sylius\Bundle\ResourceBundle\SyliusResourceBundle;
@@ -43,7 +44,7 @@ final class SetonoSyliusShipmondoPluginTest extends TestCase
 
         // run the composite pass against a container with the composite and a tagged data mapper
         $target = new ContainerBuilder();
-        $target->register('setono_sylius_shipmondo.data_mapper.sales_order.composite');
+        $target->register(CompositeSalesOrderDataMapper::class);
         $target->register('mapper')->addTag('setono_sylius_shipmondo.sales_order_data_mapper');
 
         foreach ($compositePasses as $pass) {
@@ -52,7 +53,7 @@ final class SetonoSyliusShipmondoPluginTest extends TestCase
 
         self::assertEquals(
             [['add', [new Reference('mapper')]]],
-            $target->getDefinition('setono_sylius_shipmondo.data_mapper.sales_order.composite')->getMethodCalls(),
+            $target->getDefinition(CompositeSalesOrderDataMapper::class)->getMethodCalls(),
         );
     }
 }

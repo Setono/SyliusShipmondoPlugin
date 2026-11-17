@@ -28,6 +28,8 @@ For most installations the required changes are:
 - note that an order with a free item now uploads (section 11)
 - if a shipping method allows shipment templates to one country from several countries, set the channels' shop billing
   data country (section 12)
+- if you reference, decorate or replace one of the plugin's services by its id, use its new id: every service is now
+  named after its class (section 13)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -182,13 +184,11 @@ New:
 
 - `Webhook\Handler\OrderWebhookHandlerInterface` (see above);
 - the plugin's three webhook handlers `Webhook\Handler\SalesOrderShippedHandler`, `SalesOrderPaymentHandler` and
-  `SalesOrderDeletedHandler` (services `setono_sylius_shipmondo.webhook.handler.sales_order_shipped`,
-  `.sales_order_payment` and `.sales_order_deleted`);
-- `Webhook\Handler\OrderWebhookHandlers` (service `setono_sylius_shipmondo.webhook.order_webhook_handlers`), the
-  handlers of each action, which `DependencyInjection\Compiler\RegisterOrderWebhookHandlersPass` fills when the
-  container is built;
-- `Webhook\OrderResolverInterface` (service `setono_sylius_shipmondo.webhook.order_resolver`), which links a webhook
-  payload to its Sylius order;
+  `SalesOrderDeletedHandler`;
+- `Webhook\Handler\OrderWebhookHandlers`, the handlers of each action, which
+  `DependencyInjection\Compiler\RegisterOrderWebhookHandlersPass` fills when the container is built;
+- `Webhook\OrderResolverInterface` and `Webhook\OrderResolver`, which find the Sylius order linked to a webhook's sales
+  order;
 - the `reset` transition (`OrderWorkflow::TRANSITION_RESET`, `uploaded_to_shipmondo` → `pending`) on the
   `setono_sylius_shipmondo__order` workflow;
 - the `Message\Command\DeleteOrder` command (section 5).
@@ -309,9 +309,8 @@ In 1.x, cancelling an order left its Shipmondo state as it was, e.g. `pending` (
 [#5](https://github.com/Setono/SyliusShipmondoPlugin/issues/5)). The `setono_sylius_shipmondo__order` workflow now
 has a `cancelled` state (`OrderInterface::SHIPMONDO_STATE_CANCELLED`) and a `cancel` transition
 (`OrderWorkflow::TRANSITION_CANCEL`) into it from `pending` and `failed`, the states in which Shipmondo has no sales
-order for the order. A guard on the workflow (`Workflow\OrderCancellationGuard`, service
-`setono_sylius_shipmondo.workflow.order_cancellation_guard`) lets `cancel` through only for an order that is cancelled
-in Sylius. When an order is cancelled in Sylius, it depends on its Shipmondo state:
+order for the order. A guard on the workflow (`Workflow\OrderCancellationGuard`) lets `cancel` through only for an
+order that is cancelled in Sylius. When an order is cancelled in Sylius, it depends on its Shipmondo state:
 
 | Shipmondo state | What happens |
 |---|---|
@@ -365,10 +364,10 @@ Only if you extend or call the code involved:
 | | `EventListener\OrderCancellationListener::__construct(Canceller\OrderCancellerInterface $orderCanceller, $requestStack)` |
 | | `Message\CommandHandler\DeleteOrderHandler::__construct($orderRepository, $shipmondoClient, Symfony\Component\Workflow\WorkflowInterface $orderWorkflow, Canceller\OrderCancellerInterface $orderCanceller)` |
 
-New: `Canceller\OrderCancellerInterface` and `Canceller\OrderCanceller` (service `setono_sylius_shipmondo.canceller.order`),
-which make the Shipmondo state of an order that is cancelled in Sylius cancelled too, and the `Canceller\Cancellation`
-enum, which says what happened; `Workflow\OrderCancellationGuard`; the `OrderInterface::SHIPMONDO_STATE_CANCELLED`,
-`OrderWorkflow::TRANSITION_CANCEL` and `OrderWorkflow::CONTEXT_SALES_ORDER_ID` constants.
+New: `Canceller\OrderCancellerInterface` and `Canceller\OrderCanceller`, which make the Shipmondo state of an order
+that is cancelled in Sylius cancelled too, and the `Canceller\Cancellation` enum, which says what happened;
+`Workflow\OrderCancellationGuard`; the `OrderInterface::SHIPMONDO_STATE_CANCELLED`, `OrderWorkflow::TRANSITION_CANCEL`
+and `OrderWorkflow::CONTEXT_SALES_ORDER_ID` constants.
 
 ### 8. The checkout checks the chosen pickup point, and the shipment stores it as the SDK's `PickupPoint`
 
@@ -558,10 +557,78 @@ mapper is tagged `kernel.reset` (it implements `Symfony\Contracts\Service\ResetI
 is now required). A worker started with `messenger:consume --no-reset` keeps them until it stops, so restart it after
 changing the shipment templates in Shipmondo.
 
+### 13. Every service is named after its class
+
+Every service the plugin defines now has its class's fully qualified name as its id, instead of a
+`setono_sylius_shipmondo.*` id ([#41](https://github.com/Setono/SyliusShipmondoPlugin/issues/41)). That includes the
+two services that are instances of the SDK's classes, the client (`Setono\Shipmondo\Client\Client`) and the SDK's
+webhook parser (`Setono\Shipmondo\Webhook\WebhookParser`). **If you reference, decorate or replace a service by its
+1.x id**, in your service configuration, routes or code (e.g. `$container->get()` in a test), use its new id:
+
+| 1.x id | 2.x id |
+|---|---|
+| `setono_sylius_shipmondo.client` | `Setono\Shipmondo\Client\Client` |
+| `setono_sylius_shipmondo.command.register_webhooks` | `Setono\SyliusShipmondoPlugin\Command\RegisterWebhooksCommand` |
+| `setono_sylius_shipmondo.command.upload_orders` | `Setono\SyliusShipmondoPlugin\Command\UploadOrdersCommand` |
+| `setono_sylius_shipmondo.controller.admin.shipmondo` | `Setono\SyliusShipmondoPlugin\Controller\Admin\ShipmondoController` |
+| `setono_sylius_shipmondo.controller.debug_webhook` | `Setono\SyliusShipmondoPlugin\Controller\DebugWebhookController` |
+| `setono_sylius_shipmondo.controller.shop.get_pickup_points` | `Setono\SyliusShipmondoPlugin\Controller\Shop\GetPickupPointsAction` |
+| `setono_sylius_shipmondo.custom_factory.remote_event` | removed (section 4) |
+| `setono_sylius_shipmondo.data_mapper.sales_order.composite` | `Setono\SyliusShipmondoPlugin\DataMapper\CompositeSalesOrderDataMapper` |
+| `setono_sylius_shipmondo.data_mapper.sales_order.default` | `Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapper` |
+| `setono_sylius_shipmondo.data_mapper.sales_order.order_lines` | `Setono\SyliusShipmondoPlugin\DataMapper\OrderLinesSalesOrderDataMapper` |
+| `setono_sylius_shipmondo.data_mapper.sales_order.payment_details` | `Setono\SyliusShipmondoPlugin\DataMapper\PaymentDetailsSalesOrderDataMapper` |
+| `setono_sylius_shipmondo.data_mapper.sales_order.service_point` | `Setono\SyliusShipmondoPlugin\DataMapper\ServicePointDataMapper` |
+| `setono_sylius_shipmondo.data_mapper.sales_order.shipment_template` | `Setono\SyliusShipmondoPlugin\DataMapper\ShipmentTemplateSalesOrderDataMapper` |
+| `setono_sylius_shipmondo.data_mapper.sales_order.shipping` | `Setono\SyliusShipmondoPlugin\DataMapper\ShippingSalesOrderDataMapper` |
+| `setono_sylius_shipmondo.event_subscriber.add_menu` | `Setono\SyliusShipmondoPlugin\EventSubscriber\AddMenuSubscriber` |
+| `setono_sylius_shipmondo.event_subscriber.grid.add_pickup_point_delivery_to_shipping_method_grid` | `Setono\SyliusShipmondoPlugin\EventSubscriber\Grid\AddPickupPointDeliveryToShippingMethodGridSubscriber` |
+| `setono_sylius_shipmondo.event_subscriber.grid.add_shipmondo_state_column_to_order_grid` | `Setono\SyliusShipmondoPlugin\EventSubscriber\Grid\AddShipmondoStateColumnToOrderGridSubscriber` |
+| `setono_sylius_shipmondo.form.type_extension.shipment` | `Setono\SyliusShipmondoPlugin\Form\Extension\ShipmentTypeExtension` |
+| `setono_sylius_shipmondo.form.type_extension.shipping_method` | `Setono\SyliusShipmondoPlugin\Form\Extension\ShippingMethodTypeExtension` |
+| `setono_sylius_shipmondo.message.command_handler.register_webhooks` | `Setono\SyliusShipmondoPlugin\Message\CommandHandler\RegisterWebhooksHandler` |
+| `setono_sylius_shipmondo.message.command_handler.upload_order` | `Setono\SyliusShipmondoPlugin\Message\CommandHandler\UploadOrderHandler` |
+| `setono_sylius_shipmondo.provider.pre_qualified_uploadable_orders` | `Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProvider` |
+| `setono_sylius_shipmondo.registrar.webhook` | `Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar` |
+| `setono_sylius_shipmondo.twig.extension` | `Setono\SyliusShipmondoPlugin\Twig\Extension` |
+| `setono_sylius_shipmondo.twig.runtime` | `Setono\SyliusShipmondoPlugin\Twig\Runtime` |
+| `setono_sylius_shipmondo.uploader.order` | `Setono\SyliusShipmondoPlugin\Uploader\OrderUploader` |
+| `setono_sylius_shipmondo.webhook.webhook_consumer` | `Setono\SyliusShipmondoPlugin\Webhook\WebhookConsumer` |
+| `setono_sylius_shipmondo.webhook.webhook_parser` | `Setono\SyliusShipmondoPlugin\Webhook\WebhookParser` |
+
+The services that are new in 2.x are named after their classes too. If you import the plugin's routes, its routes
+follow on their own.
+
+New: the services below can also be reached through their interface, a private alias, so you can type-hint the interface
+in a service of your own (autowiring) and decorate it:
+
+| Alias id | Service |
+|---|---|
+| `Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface` | `Setono\SyliusShipmondoPlugin\Canceller\OrderCanceller` |
+| `Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface` | `Setono\SyliusShipmondoPlugin\DataMapper\CompositeSalesOrderDataMapper`, which runs every data mapper |
+| `Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface` | `Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProvider` |
+| `Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface` | `Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar` |
+| `Setono\SyliusShipmondoPlugin\Uploader\OrderUploaderInterface` | `Setono\SyliusShipmondoPlugin\Uploader\OrderUploader` |
+| `Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface` | `Setono\SyliusShipmondoPlugin\Webhook\OrderResolver` |
+
+The plugin's own services get these through the aliases too, so decorating the interface, or the class, reaches them.
+The SDK's interfaces (`Setono\Shipmondo\Client\ClientInterface`, `Setono\Shipmondo\Webhook\WebhookParserInterface`)
+get no alias, so they stay free for an application that uses the SDK itself.
+
+**If your application defines a service under one of the new ids**, e.g. its own `Setono\Shipmondo\Client\Client`,
+your definition now replaces the plugin's, and the plugin uses it.
+
+Unchanged: the parameters (`setono_sylius_shipmondo.api.*`, `setono_sylius_shipmondo.webhooks.*`), the tags
+(`setono_sylius_shipmondo.sales_order_data_mapper`, `setono_sylius_shipmondo.order_webhook_handler`), the
+`setono_sylius_shipmondo.command_bus` Messenger bus, the `state_machine.setono_sylius_shipmondo__order` workflow and
+the services Sylius defines for the `registered_webhooks` resource
+(`setono_sylius_shipmondo.repository.registered_webhooks` and the like).
+
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
 above: the SDK types, the `sandbox` switch, webhook verification and registration, the webhook reactions, the
 cancel-deletes-in-Shipmondo behaviour, how a failed upload is handled, the `cancelled` Shipmondo state with the
 link to the sales order, the checked pickup point, how a failed call to Shipmondo is explained, removing a mapping on
-the admin Shipmondo page, the one rule for a sales order's amounts, and choosing the shipment template.
+the admin Shipmondo page, the one rule for a sales order's amounts, choosing the shipment template, and the service
+ids.

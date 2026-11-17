@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\DependencyInjection\Compiler;
 
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlerInterface;
+use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers;
 use Symfony\Component\DependencyInjection\Argument\IteratorArgument;
 use Symfony\Component\DependencyInjection\Compiler\CompilerPassInterface;
 use Symfony\Component\DependencyInjection\Compiler\PriorityTaggedServiceTrait;
@@ -20,13 +21,11 @@ final class RegisterOrderWebhookHandlersPass implements CompilerPassInterface
 {
     use PriorityTaggedServiceTrait;
 
-    private const HANDLERS = 'setono_sylius_shipmondo.webhook.order_webhook_handlers';
-
     private const TAG = 'setono_sylius_shipmondo.order_webhook_handler';
 
     public function process(ContainerBuilder $container): void
     {
-        if (!$container->hasDefinition(self::HANDLERS)) {
+        if (!$container->hasDefinition(OrderWebhookHandlers::class)) {
             return;
         }
 
@@ -38,7 +37,7 @@ final class RegisterOrderWebhookHandlersPass implements CompilerPassInterface
             }
         }
 
-        $container->getDefinition(self::HANDLERS)->setArgument(0, array_map(
+        $container->getDefinition(OrderWebhookHandlers::class)->setArgument(0, array_map(
             static fn (array $references): IteratorArgument => new IteratorArgument($references),
             $handlers,
         ));

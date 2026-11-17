@@ -5,12 +5,27 @@ declare(strict_types=1);
 namespace Tests\Setono\SyliusShipmondoPlugin\Unit\DependencyInjection;
 
 use Matthias\SymfonyDependencyInjectionTest\PhpUnit\AbstractExtensionTestCase;
+use Setono\SyliusShipmondoPlugin\Canceller\OrderCanceller;
+use Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface;
+use Setono\SyliusShipmondoPlugin\DataMapper\CompositeSalesOrderDataMapper;
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
 use Setono\SyliusShipmondoPlugin\DependencyInjection\SetonoSyliusShipmondoExtension;
 use Setono\SyliusShipmondoPlugin\Doctrine\Type\PickupPointType;
+use Setono\SyliusShipmondoPlugin\EventListener\OrderCancellationListener;
+use Setono\SyliusShipmondoPlugin\Message\Middleware\AbsorbDeleteOrderFailureMiddleware;
 use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooks;
+use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProvider;
+use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface;
+use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar;
+use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
+use Setono\SyliusShipmondoPlugin\Uploader\OrderUploader;
+use Setono\SyliusShipmondoPlugin\Uploader\OrderUploaderInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlerInterface;
+use Setono\SyliusShipmondoPlugin\Webhook\OrderResolver;
+use Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface;
+use Setono\SyliusShipmondoPlugin\Webhook\WebhookParser;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
+use Symfony\Component\DependencyInjection\Compiler\ResolveClassPass;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
 
@@ -48,7 +63,61 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
         $this->load();
 
         $this->assertContainerBuilderHasParameter('setono_sylius_shipmondo.model.registered_webhooks.class', RegisteredWebhooks::class);
-        $this->assertContainerBuilderHasService('setono_sylius_shipmondo.webhook.webhook_parser');
+        $this->assertContainerBuilderHasService(WebhookParser::class);
+    }
+
+    /**
+     * @test
+     */
+    public function it_names_every_service_it_defines_after_its_class(): void
+    {
+        $this->load();
+
+        // gives a service without a class the class its id names, as when the container is compiled
+        (new ResolveClassPass())->process($this->container);
+
+        // the services Sylius registers for the plugin's resource follow Sylius's naming
+        $resourceServices = [
+            'setono_sylius_shipmondo.controller.registered_webhooks',
+            'setono_sylius_shipmondo.factory.registered_webhooks',
+            'setono_sylius_shipmondo.repository.registered_webhooks',
+        ];
+
+        $misnamed = [];
+        foreach ($this->container->getDefinitions() as $id => $definition) {
+            // the container itself, and anonymous services, which have no id of their own
+            if ($definition->isSynthetic() || str_starts_with($id, '.') || in_array($id, $resourceServices, true)) {
+                continue;
+            }
+
+            if ($id !== $definition->getClass()) {
+                $misnamed[$id] = $definition->getClass();
+            }
+        }
+
+        self::assertSame([], $misnamed);
+    }
+
+    /**
+     * @test
+     */
+    public function it_aliases_the_interfaces_of_its_services_to_them(): void
+    {
+        $this->load();
+
+        $aliases = [
+            OrderCancellerInterface::class => OrderCanceller::class,
+            SalesOrderDataMapperInterface::class => CompositeSalesOrderDataMapper::class,
+            PreQualifiedUploadableOrdersProviderInterface::class => PreQualifiedUploadableOrdersProvider::class,
+            WebhookRegistrarInterface::class => WebhookRegistrar::class,
+            OrderUploaderInterface::class => OrderUploader::class,
+            OrderResolverInterface::class => OrderResolver::class,
+        ];
+
+        foreach ($aliases as $interface => $implementation) {
+            $this->assertContainerBuilderHasAlias($interface, $implementation);
+            self::assertFalse($this->container->getAlias($interface)->isPublic(), sprintf('"%s" is private', $interface));
+        }
     }
 
     /**
@@ -85,7 +154,7 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
                     'setono_sylius_shipmondo.command_bus' => [
                         'middleware' => [
                             'doctrine_transaction',
-                            'setono_sylius_shipmondo.message.middleware.absorb_delete_order_failure',
+                            AbsorbDeleteOrderFailureMiddleware::class,
                             'router_context',
                         ],
                     ],
@@ -94,7 +163,7 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
             'webhook' => [
                 'routing' => [
                     'shipmondo' => [
-                        'service' => 'setono_sylius_shipmondo.webhook.webhook_parser',
+                        'service' => WebhookParser::class,
                     ],
                 ],
             ],
@@ -125,7 +194,7 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
                     'after' => [
                         'setono_sylius_shipmondo_delete_sales_order' => [
                             'on' => ['cancel'],
-                            'do' => ['@setono_sylius_shipmondo.event_listener.order_cancellation', '__invoke'],
+                            'do' => ['@' . OrderCancellationListener::class, '__invoke'],
                             'args' => ['object'],
                         ],
                     ],

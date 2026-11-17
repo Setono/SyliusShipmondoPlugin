@@ -2,10 +2,10 @@ setono_sylius_shipmondo_admin_shipmondo_index:
     path: /shipmondo
     methods: [GET,POST]
     defaults:
-        _controller: setono_sylius_shipmondo.controller.admin.shipmondo::index
+        _controller: Setono\SyliusShipmondoPlugin\Controller\Admin\ShipmondoController::index
         
 setono_sylius_shipmondo_admin_shipmondo_register_webhooks:
     path: /shipmondo/register-webhooks
     methods: [GET]
     defaults:
-        _controller: setono_sylius_shipmondo.controller.admin.shipmondo::registerWebhooks
+        _controller: Setono\SyliusShipmondoPlugin\Controller\Admin\ShipmondoController::registerWebhooks

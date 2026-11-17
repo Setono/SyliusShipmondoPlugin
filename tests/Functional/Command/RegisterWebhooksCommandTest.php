@@ -122,7 +122,7 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
 
     private function registrar(): WebhookRegistrarInterface
     {
-        $registrar = static::getContainer()->get('setono_sylius_shipmondo.registrar.webhook');
+        $registrar = static::getContainer()->get(WebhookRegistrarInterface::class);
         Assert::isInstanceOf($registrar, WebhookRegistrarInterface::class);
 
         return $registrar;

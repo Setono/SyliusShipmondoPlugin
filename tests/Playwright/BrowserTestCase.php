@@ -9,6 +9,7 @@ use Doctrine\ORM\EntityManagerInterface;
 use Playwright\Locator\LocatorInterface;
 use Playwright\Page\PageInterface;
 use Playwright\Symfony\Test\PlaywrightTestCase;
+use Setono\Shipmondo\Client\Client;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\PaymentMethodInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
@@ -120,7 +121,7 @@ abstract class BrowserTestCase extends PlaywrightTestCase
      */
     private function installShipmondoStub(): void
     {
-        static::getContainer()->set('setono_sylius_shipmondo.client', $this->shipmondo->client());
+        static::getContainer()->set(Client::class, $this->shipmondo->client());
     }
 
     /**

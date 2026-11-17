@@ -2,48 +2,44 @@
 <container xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://symfony.com/schema/dic/services"
            xsi:schemaLocation="http://symfony.com/schema/dic/services http://symfony.com/schema/dic/services/services-1.0.xsd">
     <services>
-        <service id="setono_sylius_shipmondo.data_mapper.sales_order.composite"
-                 class="Setono\SyliusShipmondoPlugin\DataMapper\CompositeSalesOrderDataMapper">
+        <service id="Setono\SyliusShipmondoPlugin\DataMapper\CompositeSalesOrderDataMapper">
             <argument type="service" id="event_dispatcher"/>
         </service>
 
-        <service id="setono_sylius_shipmondo.data_mapper.sales_order.default"
-                 class="Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapper">
+        <service id="Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface"
+                 alias="Setono\SyliusShipmondoPlugin\DataMapper\CompositeSalesOrderDataMapper"/>
+
+        <service id="Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapper">
             <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="10"/>
         </service>
 
-        <service id="setono_sylius_shipmondo.data_mapper.sales_order.payment_details"
-                 class="Setono\SyliusShipmondoPlugin\DataMapper\PaymentDetailsSalesOrderDataMapper">
+        <service id="Setono\SyliusShipmondoPlugin\DataMapper\PaymentDetailsSalesOrderDataMapper">
             <argument type="service" id="sylius.repository.payment_method"/>
 
             <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="20"/>
         </service>
 
-        <service id="setono_sylius_shipmondo.data_mapper.sales_order.order_lines"
-                 class="Setono\SyliusShipmondoPlugin\DataMapper\OrderLinesSalesOrderDataMapper">
+        <service id="Setono\SyliusShipmondoPlugin\DataMapper\OrderLinesSalesOrderDataMapper">
             <argument type="service" id="event_dispatcher"/>
 
             <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="30"/>
         </service>
 
-        <service id="setono_sylius_shipmondo.data_mapper.sales_order.shipping"
-                 class="Setono\SyliusShipmondoPlugin\DataMapper\ShippingSalesOrderDataMapper">
+        <service id="Setono\SyliusShipmondoPlugin\DataMapper\ShippingSalesOrderDataMapper">
             <argument type="service" id="event_dispatcher"/>
 
             <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="40"/>
         </service>
 
-        <service id="setono_sylius_shipmondo.data_mapper.sales_order.shipment_template"
-                 class="Setono\SyliusShipmondoPlugin\DataMapper\ShipmentTemplateSalesOrderDataMapper">
-            <argument type="service" id="setono_sylius_shipmondo.client"/>
+        <service id="Setono\SyliusShipmondoPlugin\DataMapper\ShipmentTemplateSalesOrderDataMapper">
+            <argument type="service" id="Setono\Shipmondo\Client\Client"/>
 
             <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="50"/>
             <!-- forgets the shipment templates it fetched between requests and messages -->
             <tag name="kernel.reset" method="reset"/>
         </service>
 
-        <service id="setono_sylius_shipmondo.data_mapper.sales_order.service_point"
-                 class="Setono\SyliusShipmondoPlugin\DataMapper\ServicePointDataMapper">
+        <service id="Setono\SyliusShipmondoPlugin\DataMapper\ServicePointDataMapper">
             <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="60"/>
         </service>
     </services>

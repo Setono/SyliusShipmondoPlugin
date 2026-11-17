@@ -3,34 +3,32 @@
            xsi:schemaLocation="http://symfony.com/schema/dic/services http://symfony.com/schema/dic/services/services-1.0.xsd">
     <services>
         <!-- RegisterOrderWebhookHandlersPass gives it the handlers of each action -->
-        <service id="setono_sylius_shipmondo.webhook.order_webhook_handlers"
-                 class="Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers">
+        <service id="Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers">
             <argument type="collection"/>
         </service>
 
-        <service id="setono_sylius_shipmondo.webhook.order_resolver"
-                 class="Setono\SyliusShipmondoPlugin\Webhook\OrderResolver">
+        <service id="Setono\SyliusShipmondoPlugin\Webhook\OrderResolver">
             <argument type="service" id="sylius.repository.order"/>
         </service>
 
-        <service id="setono_sylius_shipmondo.webhook.handler.sales_order_shipped"
-                 class="Setono\SyliusShipmondoPlugin\Webhook\Handler\SalesOrderShippedHandler">
+        <service id="Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface"
+                 alias="Setono\SyliusShipmondoPlugin\Webhook\OrderResolver"/>
+
+        <service id="Setono\SyliusShipmondoPlugin\Webhook\Handler\SalesOrderShippedHandler">
             <argument type="service" id="Sylius\Abstraction\StateMachine\StateMachineInterface"/>
             <argument type="service" id="sylius.state_resolver.order"/>
 
             <tag name="setono_sylius_shipmondo.order_webhook_handler" priority="10"/>
         </service>
 
-        <service id="setono_sylius_shipmondo.webhook.handler.sales_order_deleted"
-                 class="Setono\SyliusShipmondoPlugin\Webhook\Handler\SalesOrderDeletedHandler">
+        <service id="Setono\SyliusShipmondoPlugin\Webhook\Handler\SalesOrderDeletedHandler">
             <argument type="service" id="state_machine.setono_sylius_shipmondo__order"/>
-            <argument type="service" id="setono_sylius_shipmondo.canceller.order"/>
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface"/>
 
             <tag name="setono_sylius_shipmondo.order_webhook_handler" priority="20"/>
         </service>
 
-        <service id="setono_sylius_shipmondo.webhook.handler.sales_order_payment"
-                 class="Setono\SyliusShipmondoPlugin\Webhook\Handler\SalesOrderPaymentHandler">
+        <service id="Setono\SyliusShipmondoPlugin\Webhook\Handler\SalesOrderPaymentHandler">
             <argument type="service" id="Sylius\Abstraction\StateMachine\StateMachineInterface"/>
 
             <tag name="setono_sylius_shipmondo.order_webhook_handler" priority="15"/>
