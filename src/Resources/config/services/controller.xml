@@ -2,21 +2,19 @@
 <container xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://symfony.com/schema/dic/services"
            xsi:schemaLocation="http://symfony.com/schema/dic/services http://symfony.com/schema/dic/services/services-1.0.xsd">
     <services>
-        <service id="setono_sylius_shipmondo.controller.debug_webhook"
-                 class="Setono\SyliusShipmondoPlugin\Controller\DebugWebhookController" public="true">
+        <service id="Setono\SyliusShipmondoPlugin\Controller\DebugWebhookController" public="true">
             <argument type="service" id="twig"/>
             <argument>%kernel.environment%</argument>
             <argument>%setono_sylius_shipmondo.webhooks.key%</argument>
         </service>
 
-        <service id="setono_sylius_shipmondo.controller.admin.shipmondo"
-                 class="Setono\SyliusShipmondoPlugin\Controller\Admin\ShipmondoController" public="true">
+        <service id="Setono\SyliusShipmondoPlugin\Controller\Admin\ShipmondoController" public="true">
             <argument type="service" id="setono_sylius_shipmondo.repository.registered_webhooks"/>
             <argument type="service" id="setono_sylius_shipmondo.command_bus"/>
-            <argument type="service" id="setono_sylius_shipmondo.registrar.webhook"/>
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface"/>
             <argument type="service" id="sylius.repository.payment_method"/>
             <argument type="service" id="sylius.repository.shipping_method"/>
-            <argument type="service" id="setono_sylius_shipmondo.client"/>
+            <argument type="service" id="Setono\Shipmondo\Client\Client"/>
             <argument type="service" id="translator"/>
             <argument type="service" id="logger"/>
 
@@ -27,11 +25,10 @@
             <tag name="controller.service_arguments"/>
         </service>
 
-        <service id="setono_sylius_shipmondo.controller.shop.get_pickup_points"
-                 class="Setono\SyliusShipmondoPlugin\Controller\Shop\GetPickupPointsAction" public="true">
+        <service id="Setono\SyliusShipmondoPlugin\Controller\Shop\GetPickupPointsAction" public="true">
             <argument type="service" id="sylius.repository.shipping_method"/>
             <argument type="service" id="sylius.context.cart"/>
-            <argument type="service" id="setono_sylius_shipmondo.client"/>
+            <argument type="service" id="Setono\Shipmondo\Client\Client"/>
             <argument type="service" id="twig"/>
             <argument type="service" id="logger"/>
         </service>

@@ -17,8 +17,6 @@ use Symfony\Component\DependencyInjection\Reference;
 
 final class RegisterOrderWebhookHandlersPassTest extends AbstractCompilerPassTestCase
 {
-    private const HANDLERS = 'setono_sylius_shipmondo.webhook.order_webhook_handlers';
-
     private const TAG = 'setono_sylius_shipmondo.order_webhook_handler';
 
     protected function registerCompilerPass(ContainerBuilder $container): void
@@ -31,7 +29,7 @@ final class RegisterOrderWebhookHandlersPassTest extends AbstractCompilerPassTes
      */
     public function it_maps_each_action_to_the_handlers_subscribed_to_it_by_priority(): void
     {
-        $this->registerService(self::HANDLERS, OrderWebhookHandlers::class)->addArgument([])->setPublic(true);
+        $this->registerService(OrderWebhookHandlers::class, OrderWebhookHandlers::class)->addArgument([])->setPublic(true);
         $this->registerService('shipped', SalesOrderShippedHandler::class)->addTag(self::TAG, ['priority' => 10]);
         $this->registerService('deleted', SalesOrderDeletedHandler::class)->addTag(self::TAG);
         $this->setParameter('payment_handler.class', SalesOrderPaymentHandler::class);
@@ -41,7 +39,7 @@ final class RegisterOrderWebhookHandlersPassTest extends AbstractCompilerPassTes
 
         $this->compile();
 
-        $this->assertContainerBuilderHasServiceDefinitionWithArgument(self::HANDLERS, 0, [
+        $this->assertContainerBuilderHasServiceDefinitionWithArgument(OrderWebhookHandlers::class, 0, [
             'create_shipment' => new IteratorArgument([new Reference('shipped_first'), new Reference('shipped')]),
             'status_update' => new IteratorArgument([new Reference('shipped_first'), new Reference('shipped')]),
             'delete' => new IteratorArgument([new Reference('deleted')]),
@@ -55,7 +53,7 @@ final class RegisterOrderWebhookHandlersPassTest extends AbstractCompilerPassTes
      */
     public function it_rejects_a_tagged_service_that_is_not_an_order_webhook_handler(): void
     {
-        $this->registerService(self::HANDLERS, OrderWebhookHandlers::class)->addArgument([]);
+        $this->registerService(OrderWebhookHandlers::class, OrderWebhookHandlers::class)->addArgument([]);
         $this->registerService('not_a_handler', \stdClass::class)->addTag(self::TAG);
 
         $this->expectException(InvalidArgumentException::class);
@@ -69,7 +67,7 @@ final class RegisterOrderWebhookHandlersPassTest extends AbstractCompilerPassTes
      */
     public function it_rejects_a_tagged_service_whose_class_does_not_exist(): void
     {
-        $this->registerService(self::HANDLERS, OrderWebhookHandlers::class)->addArgument([]);
+        $this->registerService(OrderWebhookHandlers::class, OrderWebhookHandlers::class)->addArgument([]);
         $this->registerService('missing', 'App\Webhook\MissingHandler')->addTag(self::TAG);
 
         $this->expectException(InvalidArgumentException::class);
@@ -87,6 +85,6 @@ final class RegisterOrderWebhookHandlersPassTest extends AbstractCompilerPassTes
 
         $this->compile();
 
-        $this->assertContainerBuilderNotHasService(self::HANDLERS);
+        $this->assertContainerBuilderNotHasService(OrderWebhookHandlers::class);
     }
 }

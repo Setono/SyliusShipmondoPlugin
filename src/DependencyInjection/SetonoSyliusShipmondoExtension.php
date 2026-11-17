@@ -6,7 +6,10 @@ namespace Setono\SyliusShipmondoPlugin\DependencyInjection;
 
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
 use Setono\SyliusShipmondoPlugin\Doctrine\Type\PickupPointType;
+use Setono\SyliusShipmondoPlugin\EventListener\OrderCancellationListener;
+use Setono\SyliusShipmondoPlugin\Message\Middleware\AbsorbDeleteOrderFailureMiddleware;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlerInterface;
+use Setono\SyliusShipmondoPlugin\Webhook\WebhookParser;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Bundle\ResourceBundle\DependencyInjection\Extension\AbstractResourceExtension;
 use Sylius\Bundle\ResourceBundle\SyliusResourceBundle;
@@ -60,7 +63,7 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
                         'middleware' => [
                             'doctrine_transaction',
                             // inside doctrine_transaction, so a sales order deletion it absorbs never rolls a transaction back
-                            'setono_sylius_shipmondo.message.middleware.absorb_delete_order_failure',
+                            AbsorbDeleteOrderFailureMiddleware::class,
                             'router_context',
                         ],
                     ],
@@ -69,7 +72,7 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
             'webhook' => [
                 'routing' => [
                     'shipmondo' => [
-                        'service' => 'setono_sylius_shipmondo.webhook.webhook_parser',
+                        'service' => WebhookParser::class,
                     ],
                 ],
             ],
@@ -86,7 +89,7 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
                         'after' => [
                             'setono_sylius_shipmondo_delete_sales_order' => [
                                 'on' => ['cancel'],
-                                'do' => ['@setono_sylius_shipmondo.event_listener.order_cancellation', '__invoke'],
+                                'do' => ['@' . OrderCancellationListener::class, '__invoke'],
                                 'args' => ['object'],
                             ],
                         ],

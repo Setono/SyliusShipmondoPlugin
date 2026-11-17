@@ -2,13 +2,15 @@
 <container xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://symfony.com/schema/dic/services"
            xsi:schemaLocation="http://symfony.com/schema/dic/services http://symfony.com/schema/dic/services/services-1.0.xsd">
     <services>
-        <service id="setono_sylius_shipmondo.registrar.webhook"
-                 class="Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar">
-            <argument type="service" id="setono_sylius_shipmondo.client"/>
+        <service id="Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar">
+            <argument type="service" id="Setono\Shipmondo\Client\Client"/>
             <argument type="service" id="router"/>
-            <argument type="service" id="setono_sylius_shipmondo.webhook.order_webhook_handlers"/>
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers"/>
             <argument>%setono_sylius_shipmondo.webhooks.key%</argument>
             <argument>%setono_sylius_shipmondo.webhooks.name_prefix%</argument>
         </service>
+
+        <service id="Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface"
+                 alias="Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar"/>
     </services>
 </container>

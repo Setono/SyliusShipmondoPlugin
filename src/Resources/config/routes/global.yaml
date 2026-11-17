@@ -9,10 +9,10 @@ setono_sylius_shipmondo_global_debug_webhook_index:
     path: /shipmondo/debug-webhook
     methods: [GET]
     defaults:
-        _controller: setono_sylius_shipmondo.controller.debug_webhook::index
+        _controller: Setono\SyliusShipmondoPlugin\Controller\DebugWebhookController::index
         
 setono_sylius_shipmondo_global_debug_webhook_decode:
     path: /shipmondo/debug-webhook/decode
     methods: [POST]
     defaults:
-        _controller: setono_sylius_shipmondo.controller.debug_webhook::decode
+        _controller: Setono\SyliusShipmondoPlugin\Controller\DebugWebhookController::decode
