@@ -149,7 +149,7 @@ final class RegisterWebhooksCommand extends Command
     }
 
     /**
-     * The enabled channels' hostnames that Shipmondo can reach, each once
+     * The enabled channels' hostnames that Shipmondo can reach, each once (hostnames are case-insensitive)
      *
      * @return list<string>
      */
@@ -157,7 +157,7 @@ final class RegisterWebhooksCommand extends Command
     {
         $hostnames = [];
         foreach ($this->channelRepository->findEnabled() as $channel) {
-            $hostname = (string) $channel->getHostname();
+            $hostname = strtolower((string) $channel->getHostname());
             if (self::isReachable($hostname)) {
                 $hostnames[] = $hostname;
             }
@@ -168,13 +168,14 @@ final class RegisterWebhooksCommand extends Command
 
     /**
      * Whether Shipmondo can reach the host: it is a hostname, and it doesn't name the shop's own machine, as localhost,
-     * a name under localhost and a loopback address do
+     * a name under localhost and a loopback address (127.0.0.0/8) do, also when fully qualified (with a trailing dot)
      */
     private static function isReachable(string $host): bool
     {
-        $host = strtolower($host);
+        $name = rtrim(strtolower($host), '.');
 
         return false !== filter_var($host, \FILTER_VALIDATE_DOMAIN, \FILTER_FLAG_HOSTNAME) &&
-            'localhost' !== $host && !str_ends_with($host, '.localhost') && !str_starts_with($host, '127.');
+            'localhost' !== $name && !str_ends_with($name, '.localhost') &&
+            !(false !== filter_var($name, \FILTER_VALIDATE_IP, \FILTER_FLAG_IPV4) && str_starts_with($name, '127.'));
     }
 }

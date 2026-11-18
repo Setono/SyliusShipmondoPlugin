@@ -168,7 +168,7 @@ Webhook verification and parsing are delegated to the SDK's `Setono\Shipmondo\We
 (the plugin requires `setono/shipmondo-php-sdk:^2.0` and `firebase/php-jwt:^7.0`). Shipmondo identifies
 each delivery with `SMD-*` request headers, so the registered endpoint no longer carries
 `resource`/`action` query parameters — **re-run `setono:sylius-shipmondo:register-webhooks`** after
-upgrading. The SDK signs and verifies deliveries with HS256, which requires a key of at least 32 bytes,
+upgrading (section 18 says at which hostname). The SDK signs and verifies deliveries with HS256, which requires a key of at least 32 bytes,
 so **`SHIPMONDO_WEBHOOKS_KEY` must now be at least 32 bytes long** (a shorter key is rejected both when
 registering and when verifying).
 
@@ -511,7 +511,7 @@ Only if you extend or call the code involved:
 | 1.x | 2.x |
 |---|---|
 | `Controller\Admin\ShipmondoController::__construct(..., Client $client)` | `__construct(..., Client $client, Symfony\Contracts\Translation\TranslatorInterface $translator, Psr\Log\LoggerInterface $logger)` |
-| `Command\RegisterWebhooksCommand::__construct(MessageBusInterface $commandBus)` | `__construct(MessageBusInterface $commandBus, TranslatorInterface $translator, LoggerInterface $logger)`; it returns `Command::FAILURE` when Shipmondo fails |
+| `Command\RegisterWebhooksCommand::__construct(MessageBusInterface $commandBus)` | `__construct(MessageBusInterface $commandBus, ChannelRepositoryInterface $channelRepository, UrlGeneratorInterface $urlGenerator, TranslatorInterface $translator, LoggerInterface $logger)` (the channel repository and the URL generator are section 18's); it returns `Command::FAILURE` when Shipmondo fails |
 | `Controller\Shop\GetPickupPointsAction::__construct($shippingMethodRepository, $cartContext, $client, $twig)` | `__construct($shippingMethodRepository, $cartContext, $client, $twig, LoggerInterface $logger)` |
 
 New: `Failure\ShipmondoFailure`, which `ShipmondoFailure::of(\Throwable $exception)` sorts by the SDK exception: its
@@ -781,8 +781,11 @@ enabled channels have the shop's hostname, or pass `--hostname`. **If your chann
 
 The admin's "Register webhooks" button is unchanged: it registers the webhooks at the host the admin is on.
 
-**If you construct `RegisterWebhooksCommand` yourself:** its constructor takes the channel repository
-(`sylius.repository.channel`) and the router (a `UrlGeneratorInterface`) after the command bus.
+Only if you extend or call the code involved:
+
+| 1.x | 2.x |
+|---|---|
+| `Command\RegisterWebhooksCommand::__construct(MessageBusInterface $commandBus)` | `__construct(MessageBusInterface $commandBus, Sylius\Component\Channel\Repository\ChannelRepositoryInterface $channelRepository, Symfony\Component\Routing\Generator\UrlGeneratorInterface $urlGenerator, TranslatorInterface $translator, LoggerInterface $logger)`, given `sylius.repository.channel` and `router`; it also returns `Command::FAILURE` when it finds no hostname to register the webhooks at |
 
 ### Unchanged
 

@@ -125,7 +125,9 @@ final class RegisterWebhooksCommandTest extends TestCase
         yield 'empty' => [''];
         yield 'localhost' => ['localhost'];
         yield 'localhost in capitals' => ['LocalHost'];
+        yield 'localhost, fully qualified' => ['localhost.'];
         yield 'a name under localhost' => ['shop.localhost'];
+        yield 'a name under localhost, fully qualified' => ['shop.localhost.'];
         yield 'a loopback address' => ['127.0.0.1'];
         yield 'another loopback address' => ['127.1.2.3'];
         yield 'with a port' => ['shop.example.se:8000'];
@@ -152,7 +154,8 @@ final class RegisterWebhooksCommandTest extends TestCase
      */
     public function it_counts_a_hostname_once_when_several_channels_have_it(): void
     {
-        $this->channels('shop.example.com', 'shop.example.com');
+        // hostnames are case-insensitive
+        $this->channels('shop.example.com', 'shop.example.com', 'Shop.Example.COM');
         $this->dispatchRegistersTheWebhooks();
 
         self::assertSame(Command::SUCCESS, (new CommandTester($this->command()))->execute([], ['interactive' => false]));
@@ -259,6 +262,17 @@ final class RegisterWebhooksCommandTest extends TestCase
         yield 'none' => ['http://localhost', 'localhost'];
         yield 'a loopback address' => ['https://127.0.0.1:8000', '127.0.0.1'];
         yield 'an IPv6 loopback address' => ['http://[::1]', '[::1]'];
+    }
+
+    /**
+     * @test
+     */
+    public function it_registers_the_webhooks_under_a_name_that_only_starts_like_a_loopback_address(): void
+    {
+        $this->dispatchRegistersTheWebhooks();
+
+        self::assertSame(Command::SUCCESS, (new CommandTester($this->command()))->execute(['--hostname' => '127.example.com']));
+        self::assertSame(['https://127.example.com/webhook/shipmondo'], $this->registeredEndpoints);
     }
 
     /**
