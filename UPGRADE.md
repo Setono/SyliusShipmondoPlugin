@@ -37,6 +37,9 @@ For most installations the required changes are:
 - after registering the webhooks, delete in Shipmondo the old ones it leaves, sent to another address than the one it
   registers now, and if several shops share a Shipmondo account, upgrade them all and give each its own
   `SHIPMONDO_WEBHOOKS_KEY` (section 17)
+- note that `setono:sylius-shipmondo:register-webhooks` now registers the webhooks at the channels' hostname, and
+  pass it `--hostname` where it can't ask which one, e.g. in a deploy script, when your channels have several
+  (section 18)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -746,13 +749,40 @@ names changed, so the admin Shipmondo page asks to register them again. The webh
 registering replaces them only when they are sent to the endpoint it registers now. Delete the ones it leaves in
 Shipmondo (Settings > Integrations > Webhooks): the ones for an address the shop no longer has, and the ones for
 another address of the shop, which would send the shop every webhook twice. That happens when they were registered
-with the admin's "Register webhooks" button under one host, and the command generates another endpoint, from the
-router's `default_uri` (`framework.router.default_uri`), or `http://localhost` without one.
+with the admin's "Register webhooks" button under one host, and the command registers them under another (section 18
+says which).
 
 A shop still on 1.x deletes every webhook with the name prefix when it registers, the other shops' included, so
 upgrade every shop that shares the Shipmondo account. A shop that set a name prefix of its own to share the account can
 keep it. If it goes back to the default, registering leaves the webhooks with its old prefix: delete them in
 Shipmondo.
+
+### 18. Registering the webhooks from the command line uses the channels' hostname
+
+In 1.x `setono:sylius-shipmondo:register-webhooks` registered the webhooks at the endpoint the router generates on the
+command line, where there is no request to take the host from: at the router's default URI
+(`framework.router.default_uri`), or at `http://localhost/webhook/shipmondo` when the app doesn't set one. Shipmondo
+can't reach localhost, so it sent the shop no webhooks, and the command said nothing
+([#45](https://github.com/Setono/SyliusShipmondoPlugin/issues/45)). Registering replaces the shop's webhooks (section
+17), so it also replaced the ones that worked. In 2.x the command registers the webhooks at:
+
+1. the hostname passed with the new `--hostname` option, e.g. `--hostname=shop.example.com`, on https;
+2. else the enabled channels' hostname, on https. When the channels have several, the command asks which one, or, when
+   it can't ask (`--no-interaction`), fails and lists them;
+3. else the router's default URI, as in 1.x.
+
+It skips a hostname Shipmondo can't reach, such as `localhost` (the hostname Sylius's fixtures give a channel), a name
+under `localhost` or a `127.x.x.x` address, and one that isn't a hostname, e.g. with a port or a scheme. When it finds
+none, it fails without registering, so the webhooks registered before are kept.
+
+**If you set `framework.router.default_uri` for the command:** the channels' hostname now comes first. Check that your
+enabled channels have the shop's hostname, or pass `--hostname`. **If your channels have several hostnames:** pass
+`--hostname` where the command can't ask, e.g. in a deploy script or a cron job, or it fails.
+
+The admin's "Register webhooks" button is unchanged: it registers the webhooks at the host the admin is on.
+
+**If you construct `RegisterWebhooksCommand` yourself:** its constructor takes the channel repository
+(`sylius.repository.channel`) and the router (a `UrlGeneratorInterface`) after the command bus.
 
 ### Unchanged
 
@@ -762,4 +792,5 @@ cancel-deletes-in-Shipmondo behaviour, how a failed upload is handled, the `canc
 link to the sales order, the checked pickup point, how a failed call to Shipmondo is explained, removing a mapping on
 the admin Shipmondo page, the one rule for a sales order's amounts, choosing the shipment template, the service ids,
 flagging the mappings that no longer exist in Shipmondo, saying when the admin Shipmondo page couldn't fetch a list,
-counting the shipping promotions in the shipping line, and replacing only this shop's webhooks when registering them.
+counting the shipping promotions in the shipping line, replacing only this shop's webhooks when registering them, and
+registering them at the channels' hostname on the command line.
