@@ -131,7 +131,7 @@ final class ShipmondoPageTest extends BrowserTestCase
         foreach ($created as $request) {
             $webhook = ShipmondoApiStub::jsonBody($request);
             self::assertIsString($webhook['name']);
-            self::assertStringStartsWith('Setono Sylius Shipmondo Plugin - [', $webhook['name']);
+            self::assertMatchesRegularExpression('/^Setono Sylius Shipmondo Plugin \[[0-9a-f]{8}\] - \[/', $webhook['name']);
             self::assertSame('http://localhost/webhook/shipmondo', $webhook['endpoint']);
         }
     }

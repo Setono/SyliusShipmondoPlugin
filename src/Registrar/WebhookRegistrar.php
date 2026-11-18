@@ -26,10 +26,19 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
     ) {
     }
 
+    /**
+     * Replaces this shop's webhooks only: other shops on the same Shipmondo account register theirs under the same name
+     * prefix. A webhook is this shop's when it carries the shop's id, e.g. one registered before the shop changed its
+     * address, or when it is sent to the shop's endpoint, e.g. one registered before webhooks carried the shop's id
+     */
     public function register(): void
     {
+        $namePrefixWithShopId = $this->namePrefixWithShopId();
+        $endpoint = $this->endpoint();
+
         $this->client->webhooks()->deleteAll(
-            fn (WebhookResponse $webhook) => str_starts_with($webhook->name, $this->namePrefix),
+            fn (WebhookResponse $webhook) => str_starts_with($webhook->name, $namePrefixWithShopId) ||
+                (str_starts_with($webhook->name, $this->namePrefix) && $webhook->endpoint === $endpoint),
         );
 
         foreach ($this->getWebhooks() as $webhook) {
@@ -62,16 +71,27 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
 
         foreach ($this->handlers->subscribedActions() as $action) {
             yield new Webhook(
-                sprintf('%s - [%s:%s]', $this->namePrefix, u($resource->value)->snake()->toString(), $action->value),
-                $this->urlGenerator->generate(
-                    '_webhook_controller',
-                    ['type' => 'shipmondo'],
-                    UrlGeneratorInterface::ABSOLUTE_URL,
-                ),
+                sprintf('%s - [%s:%s]', $this->namePrefixWithShopId(), u($resource->value)->snake()->toString(), $action->value),
+                $this->endpoint(),
                 $this->webhooksKey,
                 $action,
                 $resource,
             );
         }
+    }
+
+    /**
+     * The name prefix and this shop's id, e.g. "Setono Sylius Shipmondo Plugin [3fd02dbf]". The id tells the shop apart
+     * from the other shops on its Shipmondo account: the first 8 hexadecimal characters of an HMAC with the shop's
+     * webhooks key, so it stays the same when the shop's address changes, and it gives nothing of the key away
+     */
+    private function namePrefixWithShopId(): string
+    {
+        return sprintf('%s [%s]', $this->namePrefix, substr(hash_hmac('sha256', 'shop id', $this->webhooksKey), 0, 8));
+    }
+
+    private function endpoint(): string
+    {
+        return $this->urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL);
     }
 }

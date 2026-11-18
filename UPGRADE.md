@@ -34,6 +34,9 @@ For most installations the required changes are:
   and if you override the admin Shipmondo page's template, flag such mappings too (section 14)
 - if you override the admin Shipmondo page's template, say when a list couldn't be loaded (section 15)
 - note that the shipping line of a sales order now counts the shipping promotions (section 16)
+- after registering the webhooks, delete in Shipmondo the old ones it leaves, sent to another address than the one it
+  registers now, and if several shops share a Shipmondo account, upgrade them all and give each its own
+  `SHIPMONDO_WEBHOOKS_KEY` (section 17)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -465,7 +468,7 @@ one kind of Shipmondo failure (`Failure\ShipmondoFailureKind`), and each caller 
   section 15 for how it tells which list it couldn't fetch). It only catches Shipmondo failures: any other exception
   is a bug, and ends on an error page.
 - **Registering the webhooks** with the admin's "Register webhooks" button returns to the Shipmondo page with an error
-  flash that says why, and that the webhooks may be only partly registered (registration deletes the plugin's webhooks
+  flash that says why, and that the webhooks may be only partly registered (registration deletes the shop's webhooks
   before it creates them), so register them again. `setono:sylius-shipmondo:register-webhooks` prints the same and
   exits with a failure code. Both log the failure as an error. The success flash shows only when registration
   succeeded.
@@ -719,6 +722,38 @@ example). Shipping made free by a promotion is sent as 0.00 at 0. Shipping witho
 **If you listen to `ShippingOrderLineMappedEvent`:** its `adjustment` is still the shipping adjustment, whose amount
 doesn't include the shipping promotions. Read the price from the event's `orderLine`.
 
+### 17. Registering the webhooks replaces only this shop's webhooks
+
+In 1.x registering the webhooks first deleted every webhook in the Shipmondo account whose name starts with the name
+prefix (`setono_sylius_shipmondo.webhooks.name_prefix`, `Setono Sylius Shipmondo Plugin` by default). When two shops
+with the plugin shared a Shipmondo account, registering in one deleted the other's webhooks, and the other silently
+stopped getting webhooks until it registered again
+([#44](https://github.com/Setono/SyliusShipmondoPlugin/issues/44)). In 2.x a webhook's name carries the shop's id,
+e.g. `Setono Sylius Shipmondo Plugin [3fd02dbf] - [orders:delete]`, and registering deletes only the webhooks whose
+name starts with the name prefix and that:
+
+- carry this shop's id, wherever they are sent, e.g. to the shop's address before it changed; or
+- are sent to this shop's webhook endpoint (the `_webhook_controller` route with `type: shipmondo`), e.g. the ones
+  registered before webhooks carried the shop's id.
+
+The shop's id is 8 hexadecimal characters derived from the webhooks key (`SHIPMONDO_WEBHOOKS_KEY`), which give nothing
+of the key away. So **give each shop on a Shipmondo account its own webhooks key**: shops with the same key get the
+same id, and registering in one deletes the other's webhooks again. A new key gives the shop a new id: registering
+then still replaces the webhooks sent to the shop's endpoint, but not ones sent to an earlier address.
+
+**Re-run `setono:sylius-shipmondo:register-webhooks`** after upgrading (section 4 asks for it too): the webhooks'
+names changed, so the admin Shipmondo page asks to register them again. The webhooks registered before carry no id, so
+registering replaces them only when they are sent to the endpoint it registers now. Delete the ones it leaves in
+Shipmondo (Settings > Integrations > Webhooks): the ones for an address the shop no longer has, and the ones for
+another address of the shop, which would send the shop every webhook twice. That happens when they were registered
+with the admin's "Register webhooks" button under one host, and the command generates another endpoint, from the
+router's `default_uri` (`framework.router.default_uri`), or `http://localhost` without one.
+
+A shop still on 1.x deletes every webhook with the name prefix when it registers, the other shops' included, so
+upgrade every shop that shares the Shipmondo account. A shop that set a name prefix of its own to share the account can
+keep it. If it goes back to the default, registering leaves the webhooks with its old prefix: delete them in
+Shipmondo.
+
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
@@ -726,5 +761,5 @@ above: the SDK types, the `sandbox` switch, webhook verification and registratio
 cancel-deletes-in-Shipmondo behaviour, how a failed upload is handled, the `cancelled` Shipmondo state with the
 link to the sales order, the checked pickup point, how a failed call to Shipmondo is explained, removing a mapping on
 the admin Shipmondo page, the one rule for a sales order's amounts, choosing the shipment template, the service ids,
-flagging the mappings that no longer exist in Shipmondo, saying when the admin Shipmondo page couldn't fetch a list, and
-counting the shipping promotions in the shipping line.
+flagging the mappings that no longer exist in Shipmondo, saying when the admin Shipmondo page couldn't fetch a list,
+counting the shipping promotions in the shipping line, and replacing only this shop's webhooks when registering them.

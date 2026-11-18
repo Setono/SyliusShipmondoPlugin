@@ -6,6 +6,7 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Functional\Command;
 
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
 use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
 use Webmozart\Assert\Assert;
@@ -17,22 +18,26 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
     /**
      * @test
      */
-    public function it_replaces_the_plugins_webhooks_in_shipmondo_and_records_the_registration(): void
+    public function it_replaces_this_shops_webhooks_in_shipmondo_and_records_the_registration(): void
     {
+        $endpoint = $this->webhookEndpoint();
+
         $this->shipmondo
             ->respond('GET', 'webhooks', 200, [
-                self::webhook(1, 'Setono Sylius Shipmondo Plugin - [orders:create]'),
-                self::webhook(2, 'Another integration - [orders:create]'),
+                self::webhook(1, 'Setono Sylius Shipmondo Plugin - [orders:create]', $endpoint),
+                self::webhook(2, 'Another integration - [orders:create]', $endpoint),
+                // another shop's on the same Shipmondo account, registered under the same name prefix
+                self::webhook(3, 'Setono Sylius Shipmondo Plugin - [orders:create]', 'https://another-shop.example.com/webhook/shipmondo'),
             ], ['X-Total-Pages' => '1'])
             ->respond('DELETE', 'webhooks/1', 204, null)
-            ->respond('POST', 'webhooks', 201, self::webhook(3, 'Setono Sylius Shipmondo Plugin - [orders:create]'))
+            ->respond('POST', 'webhooks', 201, self::webhook(4, 'Setono Sylius Shipmondo Plugin - [orders:create]', $endpoint))
         ;
 
         $tester = $this->executeCommand(self::COMMAND);
         $tester->assertCommandIsSuccessful();
         self::assertSame('', $tester->getDisplay());
 
-        // only the plugin's own webhooks are removed
+        // only this shop's webhooks are removed: not another integration's, nor another shop's
         self::assertCount(1, $this->shipmondo->requests('DELETE'));
         self::assertCount(1, $this->shipmondo->requests('DELETE', 'webhooks/1'));
 
@@ -40,9 +45,8 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
         foreach ($this->shipmondo->requests('POST', 'webhooks') as $request) {
             $body = ShipmondoApiStub::jsonBody($request);
             self::assertIsString($body['name']);
-            self::assertStringStartsWith('Setono Sylius Shipmondo Plugin - [', $body['name']);
-            self::assertIsString($body['endpoint']);
-            self::assertStringEndsWith('/webhook/shipmondo', $body['endpoint']);
+            self::assertMatchesRegularExpression('/^Setono Sylius Shipmondo Plugin \[[0-9a-f]{8}\] - \[/', $body['name']);
+            self::assertSame($endpoint, $body['endpoint']);
             self::assertSame($this->webhooksKey(), $body['key']);
             self::assertIsString($body['resource_name']);
             self::assertIsString($body['action']);
@@ -97,11 +101,11 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
     /**
      * @return array<string, mixed>
      */
-    private static function webhook(int $id, string $name): array
+    private static function webhook(int $id, string $name, string $endpoint = 'https://localhost/webhook/shipmondo'): array
     {
         return [
             'id' => $id,
-            'endpoint' => 'https://localhost/webhook/shipmondo',
+            'endpoint' => $endpoint,
             'active' => true,
             'name' => $name,
             'action' => 'create',
@@ -126,6 +130,17 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
         Assert::isInstanceOf($registrar, WebhookRegistrarInterface::class);
 
         return $registrar;
+    }
+
+    /**
+     * Where Shipmondo sends this shop's webhooks
+     */
+    private function webhookEndpoint(): string
+    {
+        $urlGenerator = static::getContainer()->get('router');
+        Assert::isInstanceOf($urlGenerator, UrlGeneratorInterface::class);
+
+        return $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL);
     }
 
     private function webhooksKey(): string
