@@ -23,12 +23,9 @@ use Symfony\Component\Routing\RequestContext;
 use Symfony\Contracts\Translation\TranslatorInterface;
 
 /**
- * Registers the webhooks, sent to the shop's webhook endpoint at a hostname Shipmondo can reach: the one passed with
- * --hostname, else the enabled channels' hostname (it asks which, when they have several), both on https, else the
- * router's default URI. On the command line there is no request to take the hostname from, and without
- * framework.router.default_uri the router generates http://localhost, which Shipmondo can't reach. When it finds no
- * such hostname, or the channels have several and it can't ask, it fails without registering, so the webhooks
- * registered before are kept
+ * Registers the webhooks at a hostname Shipmondo can reach, chosen as the help text says. It can't take the hostname
+ * from the router: on the command line there is no request, and without framework.router.default_uri the router
+ * generates http://localhost, which Shipmondo can't reach
  */
 #[AsCommand(
     name: 'setono:sylius-shipmondo:register-webhooks',
@@ -55,12 +52,12 @@ final class RegisterWebhooksCommand extends Command
             ->addOption('hostname', null, InputOption::VALUE_REQUIRED, 'The hostname Shipmondo sends the webhooks to, e.g. shop.example.com')
             ->setHelp(<<<'HELP'
                 The <info>%command.name%</info> command registers the webhooks the plugin handles with Shipmondo. Shipmondo sends them to
-                the shop's webhook endpoint at:
+                the shop's webhook endpoint, /webhook/shipmondo, at:
 
-                  * the hostname passed with <comment>--hostname</comment>, on https;
-                  * else the enabled channels' hostname, on https. When they have several, the command asks which one, or,
-                    when it can't ask, fails and lists them;
-                  * else the router's default URI, <comment>framework.router.default_uri</comment>.
+                  * https://<hostname>, for the hostname passed with <comment>--hostname</comment>;
+                  * else https://<hostname>, for the enabled channels' hostname. When they have several, the command asks
+                    which one, or, when it can't ask, fails and lists them;
+                  * else the router's default URI, <comment>framework.router.default_uri</comment>, path included.
 
                 It skips a hostname Shipmondo can't reach, such as localhost, and fails without registering when it finds
                 none.
@@ -87,9 +84,11 @@ final class RegisterWebhooksCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $routerContext = $this->urlGenerator->getContext();
-        $webhookContext = $this->webhookContext($input, $routerContext);
-        if (is_string($webhookContext)) {
-            (new SymfonyStyle($input, $output))->getErrorStyle()->error($webhookContext);
+
+        try {
+            $webhookContext = $this->webhookContext($input, $routerContext);
+        } catch (NoWebhookHostnameException $e) {
+            (new SymfonyStyle($input, $output))->getErrorStyle()->error($e->getMessage());
 
             return Command::FAILURE;
         }
@@ -119,33 +118,33 @@ final class RegisterWebhooksCommand extends Command
     /**
      * The router context the webhooks' endpoint is generated with, or why there is none
      */
-    private function webhookContext(InputInterface $input, RequestContext $routerContext): RequestContext|string
+    /**
+     * The router context the webhooks' endpoint is generated with: https://<hostname>, at its root, for a hostname
+     * passed or found in the channels, else the router's own context, from framework.router.default_uri
+     *
+     * @throws NoWebhookHostnameException
+     */
+    private function webhookContext(InputInterface $input, RequestContext $routerContext): RequestContext
     {
         $hostname = $input->getOption('hostname');
         if (!is_string($hostname)) {
             $hostnames = $this->channelHostnames();
             if (count($hostnames) > 1) {
-                return sprintf(
-                    'The channels have several hostnames: %s. Choose the one Shipmondo sends the webhooks to with --hostname.',
-                    implode(', ', $hostnames),
-                );
+                throw NoWebhookHostnameException::severalChannelHostnames($hostnames);
             }
 
             $hostname = $hostnames[0] ?? null;
         }
 
         if (null === $hostname) {
-            return self::isReachable($routerContext->getHost()) ? $routerContext : sprintf(
-                'Found no hostname Shipmondo can reach to send the webhooks to: no channel has one, and the router\'s default URI (framework.router.default_uri) has %s. Give a channel the shop\'s hostname, or pass it with --hostname.',
-                $routerContext->getHost(),
-            );
+            return self::isReachable($routerContext->getHost()) ? $routerContext : throw NoWebhookHostnameException::noneReachable($routerContext->getHost());
         }
 
         if (!self::isReachable($hostname)) {
-            return sprintf('Shipmondo can\'t reach the hostname "%s". Pass the shop\'s hostname, e.g. --hostname=shop.example.com.', $hostname);
+            throw NoWebhookHostnameException::unreachable($hostname);
         }
 
-        return (clone $routerContext)->setHost($hostname)->setScheme('https')->setHttpsPort(443);
+        return new RequestContext(host: $hostname, scheme: 'https');
     }
 
     /**

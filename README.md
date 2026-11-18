@@ -215,11 +215,15 @@ Shipmondo sends the webhooks to the shop's webhook endpoint, `/webhook/shipmondo
 the host the admin is on. On the command line there is no request to take the host from, so the command registers it
 at:
 
-1. the hostname passed with `--hostname`, e.g. `--hostname=shop.example.com`, on https;
-2. else the enabled channels' hostname, on https. When the channels have several, the command asks which one, or,
-   when it can't ask (e.g. with `--no-interaction` in a deploy script), fails and lists them: pass one with
-   `--hostname`;
-3. else the router's default URI, `framework.router.default_uri`.
+1. `https://<hostname>`, for the hostname passed with `--hostname`, e.g. `--hostname=shop.example.com` registers
+   `https://shop.example.com/webhook/shipmondo`;
+2. else `https://<hostname>`, for the enabled channels' hostname. When the channels have several, the command asks
+   which one, or, when it can't ask (e.g. with `--no-interaction` in a deploy script), fails and lists them: pass one
+   with `--hostname`;
+3. else the router's default URI, `framework.router.default_uri`, path included.
+
+A hostname is registered at its root, on https's own port: the port and path of `framework.router.default_uri` are
+not added to it.
 
 It skips a hostname Shipmondo can't reach, such as `localhost` (the hostname Sylius's fixtures give a channel), a name
 under `localhost` or a `127.x.x.x` address, and one that isn't a hostname, e.g. with a port or a scheme. When it finds

@@ -152,6 +152,20 @@ final class RegisterWebhooksCommandTest extends TestCase
     /**
      * @test
      */
+    public function it_registers_a_hostname_at_its_root_without_the_path_of_the_routers_default_uri(): void
+    {
+        $this->defaultUri('https://dev.example.com/shop');
+        $this->channels('shop.example.com');
+        $this->dispatchRegistersTheWebhooks();
+
+        self::assertSame(Command::SUCCESS, (new CommandTester($this->command()))->execute([]));
+        self::assertSame(['https://shop.example.com/webhook/shipmondo'], $this->registeredEndpoints);
+        $this->assertTheRouterContextIsPutBack();
+    }
+
+    /**
+     * @test
+     */
     public function it_counts_a_hostname_once_when_several_channels_have_it(): void
     {
         // hostnames are case-insensitive
