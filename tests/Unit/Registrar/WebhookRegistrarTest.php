@@ -10,6 +10,7 @@ use Psr\Http\Client\ClientInterface as HttpClientInterface;
 use Psr\Http\Message\RequestInterface;
 use Setono\Shipmondo\Enum\WebhookAction;
 use Setono\Shipmondo\Enum\WebhookResourceName;
+use Setono\SyliusShipmondoPlugin\Registrar\UnreachableWebhookEndpointException;
 use Setono\SyliusShipmondoPlugin\Registrar\Webhook;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers;
@@ -176,6 +177,70 @@ final class WebhookRegistrarTest extends TestCase
             'POST webhooks',
             'POST webhooks',
         ], $shipmondo->requestLines());
+    }
+
+    /**
+     * Registering replaces this shop's webhooks, so registering them where Shipmondo can't send them would also remove
+     * the ones that work, e.g. when a developer opens the admin at localhost with the production credentials
+     *
+     * @test
+     *
+     * @dataProvider unreachableEndpoints
+     */
+    public function it_registers_no_webhooks_at_an_endpoint_shipmondo_cannot_reach(string $endpoint): void
+    {
+        $shipmondo = new ScriptedHttpClient();
+
+        $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
+        $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn($endpoint);
+
+        $registrar = new WebhookRegistrar(ShipmondoApi::client($shipmondo), $urlGenerator->reveal(), self::handlers(), self::KEY, 'Shop');
+
+        try {
+            $registrar->register();
+            self::fail('The webhooks were registered');
+        } catch (UnreachableWebhookEndpointException $e) {
+            self::assertSame($endpoint, $e->endpoint);
+            self::assertSame(sprintf('The webhooks were not registered: Shipmondo can\'t reach their endpoint, %s.', $endpoint), $e->getMessage());
+        }
+
+        // not even this shop's webhooks were removed
+        self::assertSame([], $shipmondo->requestLines());
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function unreachableEndpoints(): iterable
+    {
+        yield 'localhost' => ['http://localhost:8000/webhook/shipmondo'];
+        // e.g. the address `symfony serve` serves a local app at
+        yield 'a loopback address' => ['https://127.0.0.1:8000/webhook/shipmondo'];
+        yield 'an IPv6 loopback address' => ['http://[::1]/webhook/shipmondo'];
+        yield 'a name under localhost' => ['https://shop.localhost/webhook/shipmondo'];
+        // the router generates a path when its context has no host
+        yield 'no host' => ['/webhook/shipmondo'];
+    }
+
+    /**
+     * @test
+     */
+    public function it_registers_the_webhooks_at_an_endpoint_on_another_port(): void
+    {
+        $endpoint = 'http://shop.example.com:8080/webhook/shipmondo';
+        $shipmondo = (new ScriptedHttpClient())
+            ->respond(200, [])
+            ->respond(201, self::webhook(101, 'Shop [ab9f9937] - [orders:status_update]', $endpoint))
+            ->respond(201, self::webhook(102, 'Shop [ab9f9937] - [orders:create_shipment]', $endpoint))
+            ->respond(201, self::webhook(103, 'Shop [ab9f9937] - [orders:delete]', $endpoint))
+        ;
+
+        $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
+        $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn($endpoint);
+
+        (new WebhookRegistrar(ShipmondoApi::client($shipmondo), $urlGenerator->reveal(), self::handlers(), self::KEY, 'Shop'))->register();
+
+        self::assertSame(['GET webhooks', 'POST webhooks', 'POST webhooks', 'POST webhooks'], $shipmondo->requestLines());
     }
 
     private static function handlers(): OrderWebhookHandlers

@@ -16,7 +16,8 @@ return static function (ContainerConfigurator $container): void {
 
     $container->extension('playwright', [
         'base_url' => 'http://localhost',
-        'intercepted_hosts' => ['localhost'],
+        // shop.example.com: a host Shipmondo could reach, for registering the webhooks, which it refuses at localhost
+        'intercepted_hosts' => ['localhost', 'shop.example.com'],
         'assets' => [
             // served straight from public/ (the bundle assets must be copies, not symlinks: assets:install without --symlink)
             'prefixes' => ['/build', '/bundles'],

@@ -13,6 +13,7 @@ use Setono\SyliusShipmondoPlugin\Message\Command\RegisterWebhooks;
 use Setono\SyliusShipmondoPlugin\Model\PaymentMethodInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
 use Setono\SyliusShipmondoPlugin\Provider\SetupProviderInterface;
+use Setono\SyliusShipmondoPlugin\Registrar\UnreachableWebhookEndpointException;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
 use Setono\SyliusShipmondoPlugin\Repository\RegisteredWebhooksRepositoryInterface;
 use Sylius\Component\Core\Repository\PaymentMethodRepositoryInterface;
@@ -202,6 +203,10 @@ final class ShipmondoController extends AbstractController
         ]);
     }
 
+    /**
+     * The webhooks' endpoint is at the host the admin is opened at, so the registrar refuses it when Shipmondo can't
+     * reach that host, e.g. localhost on a developer's machine
+     */
     public function registerWebhooks(): RedirectResponse
     {
         try {
@@ -209,6 +214,16 @@ final class ShipmondoController extends AbstractController
 
             $this->addFlash('success', 'setono_sylius_shipmondo.webhooks_registered');
         } catch (HandlerFailedException $e) {
+            $unreachable = array_values($e->getWrappedExceptions(UnreachableWebhookEndpointException::class))[0] ?? null;
+            if ($unreachable instanceof UnreachableWebhookEndpointException) {
+                $this->addFlash('error', [
+                    'message' => 'setono_sylius_shipmondo.webhooks_not_registered_at_unreachable_endpoint',
+                    'parameters' => ['%endpoint%' => $unreachable->endpoint],
+                ]);
+
+                return $this->redirectToRoute('setono_sylius_shipmondo_admin_shipmondo_index');
+            }
+
             $failure = ShipmondoFailure::of(array_values($e->getWrappedExceptions(ShipmondoException::class))[0] ?? throw $e);
 
             $this->logger->error('The webhooks could not be registered in Shipmondo', $failure->logContext());

@@ -8,6 +8,7 @@ use Psr\Log\LoggerInterface;
 use Setono\Shipmondo\Exception\ShipmondoException;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
 use Setono\SyliusShipmondoPlugin\Message\Command\RegisterWebhooks;
+use Setono\SyliusShipmondoPlugin\Registrar\WebhookHost;
 use Sylius\Component\Channel\Model\ChannelInterface;
 use Sylius\Component\Channel\Repository\ChannelRepositoryInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -137,10 +138,10 @@ final class RegisterWebhooksCommand extends Command
         }
 
         if (null === $hostname) {
-            return self::isReachable($routerContext->getHost()) ? $routerContext : throw NoWebhookHostnameException::noneReachable($routerContext->getHost());
+            return WebhookHost::isReachable($routerContext->getHost()) ? $routerContext : throw NoWebhookHostnameException::noneReachable($routerContext->getHost());
         }
 
-        if (!self::isReachable($hostname)) {
+        if (!WebhookHost::isReachable($hostname)) {
             throw NoWebhookHostnameException::unreachable($hostname);
         }
 
@@ -157,24 +158,11 @@ final class RegisterWebhooksCommand extends Command
         $hostnames = [];
         foreach ($this->channelRepository->findEnabled() as $channel) {
             $hostname = strtolower((string) $channel->getHostname());
-            if (self::isReachable($hostname)) {
+            if (WebhookHost::isReachable($hostname)) {
                 $hostnames[] = $hostname;
             }
         }
 
         return array_values(array_unique($hostnames));
-    }
-
-    /**
-     * Whether Shipmondo can reach the host: it is a hostname, and it doesn't name the shop's own machine, as localhost,
-     * a name under localhost and a loopback address (127.0.0.0/8) do, also when fully qualified (with a trailing dot)
-     */
-    private static function isReachable(string $host): bool
-    {
-        $name = rtrim(strtolower($host), '.');
-
-        return false !== filter_var($host, \FILTER_VALIDATE_DOMAIN, \FILTER_FLAG_HOSTNAME) &&
-            'localhost' !== $name && !str_ends_with($name, '.localhost') &&
-            !(false !== filter_var($name, \FILTER_VALIDATE_IP, \FILTER_FLAG_IPV4) && str_starts_with($name, '127.'));
     }
 }
