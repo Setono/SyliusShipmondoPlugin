@@ -127,6 +127,8 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
 
         self::assertIsArray($body['payment_details']);
         self::assertSame('55', $body['payment_details']['amount_including_vat']);
+        // the order's one payment, completed with a payment method mapped to the payment gateway, paid it all
+        self::assertSame('55', $body['payment_details']['authorized_amount']);
         self::assertSame(ShopFixtures::CURRENCY_CODE, $body['payment_details']['currency_code']);
         self::assertSame('Bank transfer', $body['payment_details']['payment_method']);
         self::assertSame((string) ShopFixtures::PAYMENT_METHOD_SHIPMONDO_ID, $body['payment_details']['payment_gateway_id']);
