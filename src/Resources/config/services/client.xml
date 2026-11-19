@@ -2,10 +2,13 @@
 <container xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://symfony.com/schema/dic/services"
            xsi:schemaLocation="http://symfony.com/schema/dic/services http://symfony.com/schema/dic/services/services-1.0.xsd">
     <services>
+        <!-- Every call to Shipmondo goes through this client, except the shop's pickup point search (see controller.xml) -->
         <service id="Setono\Shipmondo\Client\Client">
             <argument>%setono_sylius_shipmondo.api.username%</argument>
             <argument>%setono_sylius_shipmondo.api.key%</argument>
             <argument>%setono_sylius_shipmondo.api.sandbox%</argument>
+            <!-- The PSR-18 version of the scoped HTTP client the extension prepends, with its time limits -->
+            <argument type="service" id="psr18.setono_sylius_shipmondo.http_client"/>
         </service>
     </services>
 </container>

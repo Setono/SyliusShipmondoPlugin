@@ -8,7 +8,6 @@ use DAMA\DoctrineTestBundle\Doctrine\DBAL\StaticDriver;
 use Doctrine\DBAL\Connection;
 use Doctrine\ORM\EntityManagerInterface;
 use Doctrine\Persistence\ManagerRegistry;
-use Http\Discovery\Psr18ClientDiscovery;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
@@ -25,9 +24,9 @@ use Webmozart\Assert\Assert;
  * - the schema of the configured DATABASE_URL is (re)created, so the suite only needs a reachable MySQL server
  * - the baseline data every test starts from ({@see ShopFixtures::createBaseline()}) is created
  *
- * It also makes sure no real HTTP client can be discovered. And because the admin and shop layouts load their
- * assets through Webpack Encore, which fails when the frontend has not been built (CI does not run yarn),
- * minimal empty Encore builds are written for the run in that case and removed again when it ends.
+ * And because the admin and shop layouts load their assets through Webpack Encore, which fails when the frontend
+ * has not been built (CI does not run yarn), minimal empty Encore builds are written for the run in that case and
+ * removed again when it ends.
  */
 final class TestApplication
 {
@@ -43,8 +42,6 @@ final class TestApplication
         if (self::$prepared) {
             return;
         }
-
-        Psr18ClientDiscovery::prependStrategy(NoNetworkHttpClientStrategy::class);
 
         self::stubMissingEncoreBuilds($kernel->getProjectDir() . '/public/build');
 

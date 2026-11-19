@@ -76,7 +76,7 @@ Shipmondo didn't accept the store's API credentials (401 or 403). It says nothin
 Shipmondo refused the call with 429 Too Many Requests. Like a credentials failure, it says nothing about the call.
 
 **Temporary failure**:
-A failure expected to pass: a Shipmondo server error or a network problem.
+A failure expected to pass: a Shipmondo server error, a network problem, or Shipmondo not answering in time.
 
 **Not found**:
 Shipmondo has no such record (404). Deleting a sales order that is not found is not a failure: the sales order is gone, as wanted.
@@ -86,7 +86,7 @@ Shipmondo refused the call because of something about it, such as invalid data (
 _Avoid_: validation error
 
 **Unexpected failure**:
-An answer nothing expects (an unreadable success, a redirect), or a failure before Shipmondo answered, such as order data a data mapper can't turn into a sales order.
+An answer nothing expects (an unreadable success, a redirect), or a failure before Shipmondo answered, such as order data a data mapper can't turn into a sales order. A success whose rest didn't arrive, e.g. in time, is an unreadable success too: Shipmondo did what was asked, such as creating a sales order, so trying again could do it twice.
 
 ### Pickup points
 

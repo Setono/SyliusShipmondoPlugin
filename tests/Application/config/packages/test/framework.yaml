@@ -2,3 +2,6 @@ framework:
     test: ~
     session:
         storage_factory_id: session.storage.factory.mock_file
+    http_client:
+        # no HTTP client reaches the network in the tests: the plugin's go to the ShipmondoApiStub, the rest are refused
+        mock_response_factory: Tests\Setono\SyliusShipmondoPlugin\Functional\Support\HttpTransportStub

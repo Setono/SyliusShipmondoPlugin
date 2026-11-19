@@ -1,0 +1,3 @@
+services:
+    # the transport under every Symfony HTTP client in the test environment, see config/packages/test/framework.yaml
+    Tests\Setono\SyliusShipmondoPlugin\Functional\Support\HttpTransportStub: ~

@@ -20,6 +20,22 @@ use Symfony\Component\DependencyInjection\Loader\XmlFileLoader;
 
 final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension implements PrependExtensionInterface
 {
+    /**
+     * The framework scoped HTTP client every call to Shipmondo goes through, except the shop's pickup point search.
+     * FrameworkBundle registers its PSR-18 version as "psr18.<name>"
+     */
+    public const HTTP_CLIENT = 'setono_sylius_shipmondo.http_client';
+
+    /**
+     * The framework scoped HTTP client of the shop's pickup point search, which a customer waits for in checkout
+     */
+    public const PICKUP_POINTS_HTTP_CLIENT = 'setono_sylius_shipmondo.pickup_points_http_client';
+
+    /**
+     * The Shipmondo API, in production and in the sandbox
+     */
+    private const SHIPMONDO_SCOPE = 'https://(app|sandbox)\.shipmondo\.com/';
+
     public function load(array $configs, ContainerBuilder $container): void
     {
         /**
@@ -76,6 +92,25 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
                 ],
             ],
             'workflows' => OrderWorkflow::getConfig(),
+            // A shop changes a limit in its own framework config, naming only what it changes: the rest stays.
+            // retry_failed stays off: the plugin retries on its own terms, and Symfony's retry repeats even a POST,
+            // which can create a sales order twice
+            'http_client' => [
+                'scoped_clients' => [
+                    self::HTTP_CLIENT => [
+                        'scope' => self::SHIPMONDO_SCOPE,
+                        'timeout' => 10, // the longest wait with no data at all
+                        'max_duration' => 30, // the most one request may take
+                        'retry_failed' => false,
+                    ],
+                    self::PICKUP_POINTS_HTTP_CLIENT => [
+                        'scope' => self::SHIPMONDO_SCOPE,
+                        'timeout' => 5,
+                        'max_duration' => 10,
+                        'retry_failed' => false,
+                    ],
+                ],
+            ],
         ]);
 
         // Hook order cancellation so the order's Shipmondo sales order is deleted. Sylius 1.14 runs

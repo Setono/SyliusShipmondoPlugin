@@ -53,6 +53,21 @@ final class ScriptedHttpClient implements HttpClientInterface
         return $this;
     }
 
+    /**
+     * Answers with the status code, but reading the body fails, as when the rest of Shipmondo's answer takes longer
+     * than the HTTP client's time limit: the stream of Symfony's Psr18Client then throws PSR-7's \RuntimeException
+     */
+    public function respondWithAnUnreadableBody(int $statusCode): self
+    {
+        $body = $this->psr17->createStream('{"id":1001}');
+        // a detached stream throws on every read
+        $body->detach();
+
+        $this->answers[] = $this->psr17->createResponse($statusCode)->withBody($body);
+
+        return $this;
+    }
+
     public function sendRequest(RequestInterface $request): ResponseInterface
     {
         $this->requests[] = $request;

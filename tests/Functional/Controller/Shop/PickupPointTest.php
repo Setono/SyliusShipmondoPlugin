@@ -43,6 +43,8 @@ final class PickupPointTest extends FunctionalTestCase
             'zipcode' => '8000',
             'address' => 'Vestergade 1',
         ], self::query($requests[0]));
+        // with the shorter time limits a customer waits for in checkout
+        self::assertSame('setono_sylius_shipmondo.pickup_points_http_client', $this->shipmondo->httpClientOf($requests[0]));
     }
 
     /**

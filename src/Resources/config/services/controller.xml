@@ -27,7 +27,15 @@
         <service id="Setono\SyliusShipmondoPlugin\Controller\Shop\GetPickupPointsAction" public="true">
             <argument type="service" id="sylius.repository.shipping_method"/>
             <argument type="service" id="sylius.context.cart"/>
-            <argument type="service" id="Setono\Shipmondo\Client\Client"/>
+            <!-- Its own Shipmondo client, on the scoped HTTP client with the shorter time limits a customer waits for in checkout -->
+            <argument type="service">
+                <service class="Setono\Shipmondo\Client\Client">
+                    <argument>%setono_sylius_shipmondo.api.username%</argument>
+                    <argument>%setono_sylius_shipmondo.api.key%</argument>
+                    <argument>%setono_sylius_shipmondo.api.sandbox%</argument>
+                    <argument type="service" id="psr18.setono_sylius_shipmondo.pickup_points_http_client"/>
+                </service>
+            </argument>
             <argument type="service" id="twig"/>
             <argument type="service" id="logger"/>
         </service>
