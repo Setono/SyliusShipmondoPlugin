@@ -17,7 +17,8 @@ use function Symfony\Component\String\u;
 use Webmozart\Assert\Assert;
 
 /**
- * Registers the webhooks the webhook handlers handle: one per action on the orders resource that a handler subscribes to
+ * Registers the webhooks the webhook handlers handle: one per action on the orders resource that a handler subscribes
+ * to. It records each registration, which the admin's Shipmondo page reads to say when the webhooks were registered
  */
 final class WebhookRegistrar implements WebhookRegistrarInterface
 {
@@ -39,6 +40,8 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
      *
      * Registers nothing, and so keeps the webhooks registered before, when Shipmondo can't reach the endpoint, e.g.
      * when the admin is opened at localhost
+     *
+     * Records the registration once Shipmondo has registered every webhook
      */
     public function register(): void
     {

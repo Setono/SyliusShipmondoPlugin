@@ -7,6 +7,7 @@ namespace Setono\SyliusShipmondoPlugin\Command;
 use Psr\Log\LoggerInterface;
 use Setono\Shipmondo\Exception\ShipmondoException;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
+use Setono\SyliusShipmondoPlugin\Registrar\UnreachableWebhookEndpointException;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookHost;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
 use Sylius\Component\Channel\Model\ChannelInterface;
@@ -78,7 +79,8 @@ final class RegisterWebhooksCommand extends Command
     }
 
     /**
-     * Fails, and says why, when it finds no hostname to register the webhooks under, and when Shipmondo fails
+     * Fails, and says why, when it finds no hostname to register the webhooks under, when the registrar refuses the
+     * endpoint, and when Shipmondo fails
      */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
@@ -96,6 +98,10 @@ final class RegisterWebhooksCommand extends Command
 
         try {
             $this->webhookRegistrar->register();
+        } catch (UnreachableWebhookEndpointException $e) {
+            (new SymfonyStyle($input, $output))->getErrorStyle()->error($e->getMessage());
+
+            return Command::FAILURE;
         } catch (ShipmondoException $e) {
             $failure = ShipmondoFailure::of($e);
 

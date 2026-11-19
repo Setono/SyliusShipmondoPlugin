@@ -143,8 +143,7 @@ final class WebhookRegistrarTest extends TestCase
      */
     public function it_registers_each_action_a_webhook_handler_handles(): void
     {
-        $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
-        $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn('https://example.com/webhook');
+        $urlGenerator = $this->urlGenerator('https://example.com/webhook');
 
         $registrar = $this->registrar(new ScriptedHttpClient(), $urlGenerator->reveal(), webhooksKey: 'key', namePrefix: 'prefix');
 
@@ -162,8 +161,7 @@ final class WebhookRegistrarTest extends TestCase
      */
     public function it_names_the_webhooks_after_the_shop_whose_webhooks_key_they_carry(): void
     {
-        $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
-        $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn('https://example.com/webhook');
+        $urlGenerator = $this->urlGenerator('https://example.com/webhook');
 
         $names = fn (string $webhooksKey): array => array_map(
             static fn (Webhook $webhook): string => $webhook->name,
@@ -223,8 +221,7 @@ final class WebhookRegistrarTest extends TestCase
             return ShipmondoApi::json(self::webhook(100 + count($created), 'Shop - [created]'));
         });
 
-        $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
-        $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn('https://example.com/webhook/shipmondo');
+        $urlGenerator = $this->urlGenerator('https://example.com/webhook/shipmondo');
 
         $registrar = $this->registrar($httpClient->reveal(), $urlGenerator->reveal());
         $registrar->register();
@@ -274,8 +271,7 @@ final class WebhookRegistrarTest extends TestCase
             ->respond(201, self::webhook(103, 'Shop [ab9f9937] - [orders:delete]', $endpoint))
         ;
 
-        $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
-        $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn($endpoint);
+        $urlGenerator = $this->urlGenerator($endpoint);
 
         $this->registrar($shipmondo, $urlGenerator->reveal())->register();
 
@@ -302,8 +298,7 @@ final class WebhookRegistrarTest extends TestCase
     {
         $shipmondo = new ScriptedHttpClient();
 
-        $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
-        $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn($endpoint);
+        $urlGenerator = $this->urlGenerator($endpoint);
 
         $registrar = $this->registrar($shipmondo, $urlGenerator->reveal());
         $this->registeredWebhooksRepository->add(Argument::any())->shouldNotBeCalled();
@@ -347,8 +342,7 @@ final class WebhookRegistrarTest extends TestCase
             ->respond(201, self::webhook(103, 'Shop [ab9f9937] - [orders:delete]', $endpoint))
         ;
 
-        $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
-        $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn($endpoint);
+        $urlGenerator = $this->urlGenerator($endpoint);
 
         $this->registrar($shipmondo, $urlGenerator->reveal())->register();
 

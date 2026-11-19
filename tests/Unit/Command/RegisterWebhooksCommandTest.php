@@ -10,6 +10,7 @@ use Prophecy\Prophecy\ObjectProphecy;
 use Psr\Log\LogLevel;
 use Setono\Shipmondo\Exception\UnauthorizedException;
 use Setono\SyliusShipmondoPlugin\Command\RegisterWebhooksCommand;
+use Setono\SyliusShipmondoPlugin\Registrar\UnreachableWebhookEndpointException;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
 use Sylius\Component\Channel\Model\Channel;
 use Sylius\Component\Channel\Repository\ChannelRepositoryInterface;
@@ -332,6 +333,29 @@ final class RegisterWebhooksCommandTest extends TestCase
                 'shipmondoError' => 'Invalid credentials',
             ],
         ]], $this->logger->records);
+        $this->assertTheRouterContextIsPutBack();
+    }
+
+    /**
+     * The command registers only at a hostname Shipmondo can reach, so only a registrar that judges the endpoint
+     * otherwise refuses it, e.g. one an app decorated
+     *
+     * @test
+     */
+    public function it_fails_and_explains_why_when_the_registrar_refuses_the_endpoint(): void
+    {
+        $this->channels('shop.example.com');
+        $this->webhookRegistrar->register()->willThrow(new UnreachableWebhookEndpointException('https://shop.example.com/webhook/shipmondo'));
+
+        $commandTester = new CommandTester($this->command());
+
+        self::assertSame(Command::FAILURE, $commandTester->execute([], ['capture_stderr_separately' => true]));
+        self::assertSame('', $commandTester->getDisplay());
+        self::assertStringContainsString(
+            '[ERROR] The webhooks were not registered: Shipmondo can\'t reach their endpoint, https://shop.example.com/webhook/shipmondo.',
+            self::oneLine($commandTester->getErrorOutput()),
+        );
+        self::assertSame([], $this->logger->records);
         $this->assertTheRouterContextIsPutBack();
     }
 

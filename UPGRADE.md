@@ -515,7 +515,7 @@ Only if you extend or call the code involved:
 | 1.x | 2.x |
 |---|---|
 | `Controller\Admin\ShipmondoController::__construct(..., Client $client)` | `__construct(..., Client $client, Symfony\Contracts\Translation\TranslatorInterface $translator, Psr\Log\LoggerInterface $logger)` |
-| `Command\RegisterWebhooksCommand::__construct(MessageBusInterface $commandBus)` | `__construct(WebhookRegistrarInterface $webhookRegistrar, ChannelRepositoryInterface $channelRepository, UrlGeneratorInterface $urlGenerator, TranslatorInterface $translator, LoggerInterface $logger)` (the channel repository and the URL generator are section 18's, the registrar section 20's); it returns `Command::FAILURE` when Shipmondo fails |
+| `Command\RegisterWebhooksCommand::__construct(MessageBusInterface $commandBus)` | `__construct(Registrar\WebhookRegistrarInterface $webhookRegistrar, ChannelRepositoryInterface $channelRepository, UrlGeneratorInterface $urlGenerator, TranslatorInterface $translator, LoggerInterface $logger)` (the channel repository and the URL generator are section 18's, the registrar section 20's); it returns `Command::FAILURE` when Shipmondo fails |
 | `Controller\Shop\GetPickupPointsAction::__construct($shippingMethodRepository, $cartContext, $client, $twig)` | `__construct($shippingMethodRepository, $cartContext, $client, $twig, LoggerInterface $logger)` |
 
 New: `Failure\ShipmondoFailure`, which `ShipmondoFailure::of(\Throwable $exception)` sorts by the SDK exception: its
@@ -809,8 +809,9 @@ In 2.x `WebhookRegistrar::register()` registers nothing when Shipmondo can't rea
 is `localhost`, a name under `localhost`, a `127.x.x.x` address, or not a hostname, e.g. an IPv6 address. It throws
 `Setono\SyliusShipmondoPlugin\Registrar\UnreachableWebhookEndpointException`, which carries the `endpoint`, before it
 asks Shipmondo anything, so the webhooks registered before are kept. The button flashes why. The rule is the one
-`setono:sylius-shipmondo:register-webhooks` chooses a hostname by (section 18), so the command still fails with its own
-advice before it gets that far.
+`setono:sylius-shipmondo:register-webhooks` chooses a hostname by (section 18), so the command fails with its own
+advice before it gets that far. Should a registrar refuse the endpoint anyway, e.g. one you decorated, the command
+prints why and fails.
 
 **If you register the webhooks from your own code** (with `WebhookRegistrarInterface::register()`, see section 20):
 expect the exception, and register the webhooks at the shop's hostname.
@@ -832,11 +833,12 @@ transport.
 In 2.x both call `Registrar\WebhookRegistrarInterface::register()` directly, whatever your Messenger routing, so the
 button flashes how it went, and the command prints it and fails (section 9). `register()` now also records the
 registration, which the admin's Shipmondo page reads to say when the webhooks were registered. It records it once
-Shipmondo has registered every webhook, as the handler did.
+Shipmondo has registered every webhook, as 1.x did.
 
 **If you dispatch `RegisterWebhooks` from your own code:** call `WebhookRegistrarInterface::register()` instead. It
 throws `UnreachableWebhookEndpointException` (section 19) and the SDK's `ShipmondoException` as they are, not wrapped
-in a `HandlerFailedException`. **If your Messenger routing names `RegisterWebhooks`:** remove that route, since the
+in a `HandlerFailedException`. **If you implement or decorate `WebhookRegistrarInterface`:** record the registration in
+`register()`, or call the inner registrar's, or the admin's Shipmondo page says the webhooks aren't registered. **If your Messenger routing names `RegisterWebhooks`:** remove that route, since the
 class no longer exists. Routing `CommandInterface` now routes `UploadOrder` and `DeleteOrder` only.
 
 **If you configure the `setono_sylius_shipmondo.command_bus` bus's middleware yourself:** the plugin no longer puts
