@@ -814,6 +814,9 @@ advice before it gets that far.
 exception (wrapped in a `HandlerFailedException` when it comes through the command bus), and register the webhooks at
 the shop's hostname.
 
+New translation key: `setono_sylius_shipmondo.webhooks_not_registered_at_unreachable_endpoint` in the `flashes` domain
+(it takes `%endpoint%`).
+
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
