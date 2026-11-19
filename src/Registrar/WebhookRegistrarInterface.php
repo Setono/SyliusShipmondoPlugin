@@ -8,6 +8,9 @@ interface WebhookRegistrarInterface
 {
     /**
      * Will register your shop with Shipmondos webhook service
+     *
+     * @throws UnreachableWebhookEndpointException when Shipmondo can't reach the webhooks' endpoint, before anything
+     *                                             is registered
      */
     public function register(): void;
 

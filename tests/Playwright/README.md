@@ -3,12 +3,13 @@
 Browser tests for the plugin's UI in the admin and the shop: a real Chromium, driven through
 [playwright-php/playwright-symfony](https://github.com/playwright-php/playwright-symfony), runs the pages with their
 JavaScript, and every request it makes to `http://localhost` is handled in the PHPUnit process by the test's kernel.
-No web server, no separate database.
+No web server, no separate database. Its requests to `http://shop.example.com` are handled the same way: a host Shipmondo
+could reach, for registering the webhooks, which the plugin refuses at localhost.
 
 | Test | Covers |
 | --- | --- |
 | `Admin/ShippingMethodFormTest` | The pickup point delivery checkbox and carrier select on the shipping method form, `carrier.js` showing the select only while the checkbox is checked, the carrier validation, the grid column |
-| `Admin/ShipmondoPageTest` | Configuration > Shipmondo: the menu entry, mapping payment methods and shipment templates, registering the webhooks, the API error and empty states |
+| `Admin/ShipmondoPageTest` | Configuration > Shipmondo: the menu entry, mapping payment methods and shipment templates, registering the webhooks, but not at localhost, the API error and empty states |
 | `Admin/OrderGridTest` | The "Shipmondo state" column of the order grid |
 | `Admin/OrderCancellationTest` | Cancelling an order deletes its Shipmondo sales order, and the flash message for each outcome |
 | `Shop/PickupPointSelectionTest` | `pickup-point-manager.js` on the shipping step: which methods it asks pickup points for, the list, switching methods, a failing endpoint |

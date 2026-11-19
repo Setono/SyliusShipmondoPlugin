@@ -229,6 +229,19 @@ It skips a hostname Shipmondo can't reach, such as `localhost` (the hostname Syl
 under `localhost` or a `127.x.x.x` address, and one that isn't a hostname, e.g. with a port or a scheme. When it finds
 none, it fails without registering, and the webhooks registered before are kept.
 
+The button follows the same rule: on an admin opened at such a host, e.g. `http://localhost:8000` or the
+`https://127.0.0.1:8000` of `symfony serve`, it registers nothing and says why, and the webhooks registered before are
+kept.
+
+> [!WARNING]
+> **Running a copy of the shop locally?** Registering replaces the shop's webhooks: the ones named with its shop id,
+> which comes from `SHIPMONDO_WEBHOOKS_KEY`. The rule above only catches `localhost` and loopback addresses. Other
+> local addresses pass it, such as `shop.test` (Laravel Valet), `shop.ddev.site` (DDEV) or a LAN address like
+> `192.168.1.20`. With the production credentials and webhooks key, e.g. in a copy of the production `.env`,
+> registering there replaces the production shop's working webhooks with ones Shipmondo can't deliver. Locally, give
+> the shop a `SHIPMONDO_WEBHOOKS_KEY` of its own, or a Shipmondo sandbox account (`SHIPMONDO_SANDBOX=true` with its
+> credentials).
+
 ## Cancelled orders and asynchronous deletion
 
 When an order is cancelled in Sylius, the plugin deletes its sales order in Shipmondo through the `DeleteOrder` command

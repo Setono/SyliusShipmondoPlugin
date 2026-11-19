@@ -29,12 +29,19 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
     /**
      * Replaces this shop's webhooks only: other shops on the same Shipmondo account register theirs under the same name
      * prefix. A webhook is this shop's when it carries the shop's id, e.g. one registered before the shop changed its
-     * address, or when it is sent to the shop's endpoint, e.g. one registered before webhooks carried the shop's id
+     * address, or when it is sent to the shop's endpoint, e.g. one registered before webhooks carried the shop's id.
+     *
+     * Registers nothing, and so keeps the webhooks registered before, when Shipmondo can't reach the endpoint, e.g.
+     * when the admin is opened at localhost
      */
     public function register(): void
     {
-        $namePrefixWithShopId = $this->namePrefixWithShopId();
         $endpoint = $this->endpoint();
+        if (!WebhookHost::isReachable((string) parse_url($endpoint, \PHP_URL_HOST))) {
+            throw new UnreachableWebhookEndpointException($endpoint);
+        }
+
+        $namePrefixWithShopId = $this->namePrefixWithShopId();
 
         $this->client->webhooks()->deleteAll(
             fn (WebhookResponse $webhook) => str_starts_with($webhook->name, $namePrefixWithShopId) ||

@@ -17,6 +17,7 @@ use Setono\SyliusShipmondoPlugin\Controller\Admin\ShipmondoController;
 use Setono\SyliusShipmondoPlugin\Message\Command\RegisterWebhooks;
 use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooks;
 use Setono\SyliusShipmondoPlugin\Provider\SetupProvider;
+use Setono\SyliusShipmondoPlugin\Registrar\UnreachableWebhookEndpointException;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
 use Setono\SyliusShipmondoPlugin\Repository\RegisteredWebhooksRepositoryInterface;
 use Sylius\Component\Core\Model\PaymentMethod as BasePaymentMethod;
@@ -545,6 +546,33 @@ final class ShipmondoControllerTest extends TestCase
                 'shipmondoError' => 'Invalid credentials',
             ],
         ]], $this->logger->records);
+    }
+
+    /**
+     * In a request the webhooks' endpoint is at the host the admin is opened at, e.g. localhost on a developer's
+     * machine. The registrar refuses it before it asks Shipmondo anything
+     *
+     * @test
+     */
+    public function it_explains_that_shipmondo_cannot_reach_the_webhooks_endpoint(): void
+    {
+        $this->commandBus->dispatch(Argument::type(RegisterWebhooks::class))->willThrow(new HandlerFailedException(
+            new Envelope(new RegisterWebhooks()),
+            ['RegisterWebhooksHandler::__invoke' => new UnreachableWebhookEndpointException('https://127.0.0.1:8000/webhook/shipmondo')],
+        ));
+        $this->router->generate('setono_sylius_shipmondo_admin_shipmondo_index', [], UrlGeneratorInterface::ABSOLUTE_PATH)
+            ->willReturn('/admin/shipmondo')
+        ;
+
+        $response = $this->controller()->registerWebhooks();
+
+        self::assertSame('/admin/shipmondo', $response->getTargetUrl());
+        self::assertSame([], $this->session->getFlashBag()->peek('success'));
+        self::assertSame([[
+            'message' => 'setono_sylius_shipmondo.webhooks_not_registered_at_unreachable_endpoint',
+            'parameters' => ['%endpoint%' => 'https://127.0.0.1:8000/webhook/shipmondo'],
+        ]], $this->session->getFlashBag()->peek('error'));
+        self::assertSame([], $this->logger->records);
     }
 
     /**

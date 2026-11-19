@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Tests\Setono\SyliusShipmondoPlugin\Playwright\Admin;
 
 use Playwright\Locator\LocatorInterface;
+use Playwright\Page\PageInterface;
 use function Playwright\Testing\expect;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
@@ -34,6 +35,12 @@ final class ShipmondoPageTest extends BrowserTestCase
     private const HOME_DELIVERY_TEMPLATE_ID = 31411785;
 
     private const PICKUP_PARCEL_TEMPLATE_ID = 31411783;
+
+    /**
+     * A host Shipmondo could reach, which the browser's requests to are handled by the test's kernel too
+     * (playwright.intercepted_hosts)
+     */
+    private const SHOP_HOST = 'shop.example.com';
 
     protected function setUp(): void
     {
@@ -116,12 +123,13 @@ final class ShipmondoPageTest extends BrowserTestCase
         // deleting that one would be a request this test did not stub
         $this->shipmondo->respond('DELETE', 'webhooks/8500473', 204, null);
         $this->shipmondo->respond('POST', 'webhooks', 201, self::shipmondoResponse('webhooks')[1]);
-        $page = $this->visit('/admin/shipmondo');
+        // at the shop's hostname: Shipmondo can't reach localhost
+        $page = $this->visitAt(self::SHOP_HOST, '/admin/shipmondo');
         expect($page->getByText(self::WEBHOOKS_NOT_REGISTERED))->toBeVisible();
 
         $this->clickAndFollowRedirects($page->getByRole('link', ['name' => 'Register webhooks']));
 
-        expect($page)->toHaveURL('http://localhost/admin/shipmondo');
+        expect($page)->toHaveURL('http://shop.example.com/admin/shipmondo');
         expect($this->flash('success'))->toContainText('Webhooks registered successfully');
         expect($page->getByText('Webhooks were registered on'))->toBeVisible();
         expect($page->getByText(self::WEBHOOKS_NOT_REGISTERED))->toBeHidden();
@@ -132,8 +140,30 @@ final class ShipmondoPageTest extends BrowserTestCase
             $webhook = ShipmondoApiStub::jsonBody($request);
             self::assertIsString($webhook['name']);
             self::assertMatchesRegularExpression('/^Setono Sylius Shipmondo Plugin \[[0-9a-f]{8}\] - \[/', $webhook['name']);
-            self::assertSame('http://localhost/webhook/shipmondo', $webhook['endpoint']);
+            self::assertSame('http://shop.example.com/webhook/shipmondo', $webhook['endpoint']);
         }
+    }
+
+    /**
+     * Registering replaces this shop's webhooks, so registering them at localhost, e.g. on a developer's machine with
+     * the production credentials, would also remove the ones that work
+     *
+     * @test
+     */
+    public function the_webhooks_are_not_registered_when_the_admin_is_opened_at_localhost(): void
+    {
+        $this->respondWithGatewaysAndTemplates();
+        $page = $this->visit('/admin/shipmondo');
+
+        $this->clickAndFollowRedirects($page->getByRole('link', ['name' => 'Register webhooks']));
+
+        expect($page)->toHaveURL('http://localhost/admin/shipmondo');
+        expect($this->flash('error'))->toHaveCount(1);
+        expect($this->flash('error'))->toContainText('The webhooks were not registered, because Shipmondo can\'t reach their endpoint, http://localhost/webhook/shipmondo. Open the admin at the shop\'s hostname and register them there. The webhooks registered before are kept.');
+        expect($this->flash('success'))->toHaveCount(0);
+        expect($page->getByText(self::WEBHOOKS_NOT_REGISTERED))->toBeVisible();
+        // not even asked which webhooks Shipmondo has
+        self::assertSame([], $this->shipmondo->requests('GET', 'webhooks'));
     }
 
     /**
@@ -242,12 +272,12 @@ final class ShipmondoPageTest extends BrowserTestCase
         $this->shipmondo->respond('GET', 'payment_gateways', 401, ['error' => 'Invalid API credentials']);
         $this->shipmondo->respond('GET', 'shipment_templates', 401, ['error' => 'Invalid API credentials']);
         $this->shipmondo->respond('GET', 'webhooks', 401, ['error' => 'Invalid API credentials']);
-        $page = $this->visit('/admin/shipmondo');
+        $page = $this->visitAt(self::SHOP_HOST, '/admin/shipmondo');
 
         $this->clickAndFollowRedirects($page->getByRole('link', ['name' => 'Register webhooks']));
 
         self::assertLessThan(500, $this->getLastResponse()?->getStatusCode() ?? 500);
-        expect($page)->toHaveURL('http://localhost/admin/shipmondo');
+        expect($page)->toHaveURL('http://shop.example.com/admin/shipmondo');
         // the page itself can't fetch from Shipmondo either, so it flashes that too
         expect($this->flash('error'))->toHaveCount(2);
         expect($page->getByText('The webhooks could not be registered, so Shipmondo may send only some of them, or none. Register them again once the problem is solved. Shipmondo did not accept the API credentials.'))->toBeVisible();
@@ -263,6 +293,26 @@ final class ShipmondoPageTest extends BrowserTestCase
         self::assertIsArray($texts);
 
         return array_values(array_map('strval', $texts));
+    }
+
+    /**
+     * Opens the page at this host instead of localhost, as the administrator setUp() logged in. The client starts
+     * handling the browser's requests on its first visit, which is to localhost, so the page is opened there first. The
+     * browser sends the session cookie to localhost only, so it gets it for this host too
+     */
+    private function visitAt(string $host, string $path): PageInterface
+    {
+        $this->visit($path);
+
+        $session = static::getPlaywrightClient()->getSession();
+        self::assertNotNull($session);
+        $this->setCookie($session->getName(), $session->getId(), ['domain' => $host, 'httpOnly' => true]);
+
+        $page = $this->getPage();
+        $page->goto(sprintf('http://%s%s', $host, $path));
+        $this->waitUntilLoaded();
+
+        return $page;
     }
 
     private function respondWithGatewaysAndTemplates(): void

@@ -6,6 +6,7 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Functional\Controller\Admin;
 
 use Symfony\Component\DomCrawler\Crawler;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
+use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
 
 /**
@@ -423,16 +424,21 @@ final class ShipmondoControllerTest extends FunctionalTestCase
     /**
      * @test
      */
-    public function it_registers_the_webhooks(): void
+    public function it_registers_the_webhooks_at_the_host_the_admin_is_opened_at(): void
     {
         $this->logIn();
+        $this->openTheAdminAt('shop.example.com');
         $this->respondToWebhookRegistration();
 
         $this->browser->request('GET', '/admin/shipmondo/register-webhooks');
 
         self::assertResponseRedirects('/admin/shipmondo');
         // one per action the plugin's webhook handlers handle
-        self::assertCount(5, $this->shipmondo->requests('POST', 'webhooks'));
+        $endpoints = array_map(
+            static fn ($request): mixed => ShipmondoApiStub::jsonBody($request)['endpoint'],
+            $this->shipmondo->requests('POST', 'webhooks'),
+        );
+        self::assertSame(array_fill(0, 5, 'http://shop.example.com/webhook/shipmondo'), $endpoints);
         self::assertSame(1, self::nullableInt($this->database()->fetchOne('SELECT COUNT(*) FROM setono_sylius_shipmondo__registered_webhooks')));
 
         $this->respondWithGatewaysAndTemplates();
@@ -448,6 +454,7 @@ final class ShipmondoControllerTest extends FunctionalTestCase
     public function it_explains_why_the_webhooks_could_not_be_registered(): void
     {
         $this->logIn();
+        $this->openTheAdminAt('shop.example.com');
         $this->shipmondo->respond('GET', 'webhooks', 401, ['error' => 'Invalid credentials']);
 
         $this->browser->request('GET', '/admin/shipmondo/register-webhooks');
@@ -461,6 +468,43 @@ final class ShipmondoControllerTest extends FunctionalTestCase
         self::assertSelectorTextContains('.message.negative', 'The webhooks could not be registered, so Shipmondo may send only some of them, or none. Register them again once the problem is solved. Shipmondo did not accept the API credentials.');
         self::assertSelectorNotExists('.message.positive');
         self::assertSelectorTextContains('body', 'Either you have not registered webhooks yet');
+    }
+
+    /**
+     * Registering replaces this shop's webhooks, so registering them where Shipmondo can't send them, e.g. on a
+     * developer's machine with the production credentials, would also remove the ones that work
+     *
+     * @test
+     *
+     * @dataProvider hostsShipmondoCannotReach
+     */
+    public function it_registers_no_webhooks_when_the_admin_is_opened_at_a_host_shipmondo_cannot_reach(string $host, string $endpoint): void
+    {
+        $this->logIn();
+        $this->openTheAdminAt($host);
+
+        $this->browser->request('GET', '/admin/shipmondo/register-webhooks');
+
+        self::assertResponseRedirects('/admin/shipmondo');
+        self::assertSame([], $this->shipmondo->requests());
+        self::assertSame(0, self::nullableInt($this->database()->fetchOne('SELECT COUNT(*) FROM setono_sylius_shipmondo__registered_webhooks')));
+
+        $this->respondWithGatewaysAndTemplates();
+        $this->browser->followRedirect();
+
+        self::assertSelectorTextContains('.message.negative', sprintf('The webhooks were not registered, because Shipmondo can\'t reach their endpoint, %s. Open the admin at the shop\'s hostname and register them there. The webhooks registered before are kept.', $endpoint));
+        self::assertSelectorNotExists('.message.positive');
+        self::assertSelectorTextContains('body', 'Either you have not registered webhooks yet');
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function hostsShipmondoCannotReach(): iterable
+    {
+        yield 'localhost' => ['localhost', 'http://localhost/webhook/shipmondo'];
+        // e.g. the address `symfony serve` serves a local app at
+        yield 'a loopback address' => ['127.0.0.1:8000', 'http://127.0.0.1:8000/webhook/shipmondo'];
     }
 
     /**
@@ -479,6 +523,14 @@ final class ShipmondoControllerTest extends FunctionalTestCase
     private function logIn(): void
     {
         $this->loginAs($this->fixtures->admin(), 'admin');
+    }
+
+    /**
+     * The browser sends its requests to this host (and port) instead of localhost
+     */
+    private function openTheAdminAt(string $host): void
+    {
+        $this->browser->setServerParameter('HTTP_HOST', $host);
     }
 
     private function respondWithGatewaysAndTemplates(): void
@@ -508,7 +560,7 @@ final class ShipmondoControllerTest extends FunctionalTestCase
         $this->shipmondo->respond('GET', 'webhooks', 200, [], ['X-Total-Pages' => '1']);
         $this->shipmondo->respond('POST', 'webhooks', 201, [
             'id' => 1,
-            'endpoint' => 'https://localhost/webhook/shipmondo',
+            'endpoint' => 'http://shop.example.com/webhook/shipmondo',
             'active' => true,
             'name' => 'Setono Sylius Shipmondo Plugin - [orders:create]',
             'action' => 'create',
