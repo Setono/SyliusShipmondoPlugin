@@ -49,7 +49,7 @@ For most installations the required changes are:
   (section 21)
 - note that the requests to Shipmondo now have time limits, through two framework scoped HTTP clients the plugin
   prepends and you can override, that the plugin now requires `symfony/http-client` with `framework.http_client`
-  enabled, that your `framework.http_client.default_options` now apply to them, and that when one file of yours sets
+  enabled, that your `framework.http_client.default_options` now apply to them, and that when one file of yours configures
   `default_options.retry_failed` and overrides one of those clients, you repeat `retry_failed: false` there (section 22)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
@@ -265,7 +265,7 @@ for good. In 2.x, `Uploader\OrderUploader` settles every failure on the order:
 | Shipmondo doesn't accept the API credentials: 401 or 403 | `pending` | stops |
 | Shipmondo rate limits the upload: 429 | `pending` | stops |
 | A temporary failure: 5xx, a network error, or Shipmondo not answering in time (section 22) | `pending` | continues |
-| Shipmondo answered with a success, but the rest of its answer didn't arrive, e.g. in time (section 22): Shipmondo created the sales order | `failed` | continues |
+| Shipmondo answered the creation of the sales order with a success, but the rest of its answer didn't arrive, e.g. in time (section 22): Shipmondo created the sales order | `failed` | continues |
 | The order changed while it was uploading, before its `UploadOrder` command was handled | `pending` | continues |
 
 - A synchronous upload run also stops after three rejected uploads with no successful upload between them, because
@@ -476,7 +476,7 @@ one kind of Shipmondo failure (`Failure\ShipmondoFailureKind`), and each caller 
 | `temporary_failure` | Shipmondo answers 5xx, or doesn't answer (a network error, or not in time, see section 22) |
 | `not_found` | Shipmondo answers 404 |
 | `rejected` | Shipmondo answers any other 4xx |
-| `unexpected_failure` | anything else: a success the SDK can't read or whose rest didn't arrive (section 22), a redirect, or a failure that isn't Shipmondo's answer, such as a data mapper that throws |
+| `unexpected_failure` | anything else: a success the SDK can't read, or whose rest didn't arrive for a call that changes something (section 22), a redirect, or a failure that isn't Shipmondo's answer, such as a data mapper that throws |
 
 - **The admin's Shipmondo page** says why it couldn't fetch the payment gateways or the shipment templates, e.g. that
   Shipmondo couldn't be reached, instead of always asking you to check the credentials, and logs it as a warning (see
@@ -935,11 +935,11 @@ don't retry a failed request.
   settings, under the plugin's limits.
 - **Retries stay off.** The plugin retries on its own terms: the next upload run retries an upload that failed
   temporarily (section 6), and a worker retries a sales order deletion (section 5). Symfony's `retry_failed` repeats
-  even a POST on 429, 502 and 503, and repeating the creation of a sales order can create it twice. A
-  `default_options.retry_failed` of yours doesn't reach the plugin's HTTP clients, unless the same config file also
-  names one of them: Symfony then copies the default retry onto that client, whatever the plugin prepends. **So when
-  one file of yours sets `default_options.retry_failed` and overrides one of the plugin's clients, repeat
-  `retry_failed: false` there:**
+  even a POST, e.g. on 429, 502 and 503, and repeating the creation of a sales order can create it twice. A
+  `default_options.retry_failed` of yours doesn't reach the plugin's HTTP clients, unless you configure it (e.g. its
+  `max_retries`, not just `retry_failed: true`) in a config file that also names one of them: Symfony then copies the
+  default retry onto that client, whatever the plugin prepends. **So when one file of yours configures
+  `default_options.retry_failed` and overrides one of the plugin's clients, repeat `retry_failed: false` there:**
 
   ```yaml
   framework:
@@ -959,12 +959,16 @@ don't retry a failed request.
     couldn't be reached, and an upload goes back to pending. Shipmondo may have created the sales order before the time
     ran out, and the next upload run then creates a second one: the duplicate section 6 warns about
     ([#29](https://github.com/Setono/SyliusShipmondoPlugin/issues/29)). The shorter the limit, the likelier that is.
-  - When Shipmondo answers with a success, but the rest of its answer doesn't arrive, e.g. in time, it is an
-    **unexpected failure**: Shipmondo did what was asked, but what it answered is lost. **An upload then fails the
-    order** instead of sending it back to pending, since Shipmondo created the sales order: search Shipmondo for the
-    order number and link the order to that sales order, as in section 6's steps. A sales order deletion counts as
-    failed (section 5) although the sales order is gone, so the order stays uploaded and linked, until the
-    `orders/delete` webhook for that sales order, if Shipmondo sends one, settles it (section 4).
+  - When Shipmondo answers a call that changes something, creating or deleting a sales order, with a success, but
+    the rest of its answer doesn't arrive, e.g. in time, it is an **unexpected failure**: Shipmondo did what was
+    asked, but what it answered is lost. **An upload then fails the order** instead of sending it back to pending,
+    since Shipmondo created the sales order: search Shipmondo for the order number and link the order to that sales
+    order, as in section 6's steps. A sales order deletion counts as failed (section 5) although the sales order is
+    gone, so the order stays uploaded and linked, until the `orders/delete` webhook for that sales order, if Shipmondo
+    sends one, settles it (section 4).
+  - When the success of a read doesn't arrive in full, e.g. of the pickup point search, or of the payment gateways and
+    shipment templates an upload reads, it is a temporary failure, as when Shipmondo doesn't answer at all: reading
+    again changes nothing.
   - When Shipmondo answers with an error status but the rest of its answer doesn't arrive, the failure is sorted by the
     status, as before, without Shipmondo's message.
 
@@ -978,7 +982,10 @@ Only if you extend or call the code involved:
 |---|---|
 | the `Setono\Shipmondo\Client\Client` service discovers its HTTP client | it gets `psr18.setono_sylius_shipmondo.http_client`, its 4th argument |
 | `Controller\Shop\GetPickupPointsAction` gets the `Setono\Shipmondo\Client\Client` service | it gets its own SDK `Client`, an anonymous service on `psr18.setono_sylius_shipmondo.pickup_points_http_client`. **If you decorate or replace the `Setono\Shipmondo\Client\Client` service, that no longer reaches the pickup point search:** replace the action's third argument as well |
-| `Failure\ShipmondoFailure::of()` sorts every `ConnectionException` as `temporary_failure` | a `ConnectionException` that carries a success (`getResponse()`) is an `unexpected_failure`, with that success's `statusCode` |
+| `Failure\ShipmondoFailure::of()` sorts every `ConnectionException` as `temporary_failure` | a `ConnectionException` that carries a success (`getResponse()`) to a call other than a GET is an `unexpected_failure`; it has that success's `statusCode`, also when it is a `temporary_failure` |
+
+New: `DependencyInjection\SetonoSyliusShipmondoExtension::HTTP_CLIENT` and `::PICKUP_POINTS_HTTP_CLIENT`, the names of
+the two HTTP clients (their PSR-18 versions are `psr18.<name>`).
 
 ### Unchanged
 

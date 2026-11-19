@@ -7,7 +7,10 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Functional\HttpClient;
 use Nyholm\Psr7\Factory\Psr17Factory;
 use Psr\Http\Client\ClientInterface as HttpClientInterface;
 use Setono\Shipmondo\Client\Client;
+use Setono\Shipmondo\Exception\ShipmondoException;
 use Setono\SyliusShipmondoPlugin\DependencyInjection\SetonoSyliusShipmondoExtension;
+use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
+use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailureKind;
 use Symfony\Bundle\FrameworkBundle\Test\KernelTestCase;
 use Symfony\Component\HttpClient\Response\MockResponse;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\HttpTransportStub;
@@ -41,7 +44,7 @@ final class ShipmondoHttpClientsTest extends KernelTestCase
      */
     public function the_plugins_http_client_gives_up_on_a_request_to_shipmondo_after_10_seconds_without_data_or_30_in_all(string $host): void
     {
-        $options = $this->send(SetonoSyliusShipmondoExtension::HTTP_CLIENT, $host);
+        $options = $this->optionsSentWith(SetonoSyliusShipmondoExtension::HTTP_CLIENT, $host);
 
         self::assertSame(10.0, $options['timeout']);
         self::assertSame(30.0, $options['max_duration']);
@@ -54,7 +57,7 @@ final class ShipmondoHttpClientsTest extends KernelTestCase
      */
     public function the_pickup_points_http_client_gives_up_after_5_seconds_without_data_or_10_in_all(string $host): void
     {
-        $options = $this->send(SetonoSyliusShipmondoExtension::PICKUP_POINTS_HTTP_CLIENT, $host);
+        $options = $this->optionsSentWith(SetonoSyliusShipmondoExtension::PICKUP_POINTS_HTTP_CLIENT, $host);
 
         self::assertSame(5.0, $options['timeout']);
         self::assertSame(10.0, $options['max_duration']);
@@ -76,7 +79,7 @@ final class ShipmondoHttpClientsTest extends KernelTestCase
      */
     public function the_limits_apply_to_shipmondo_only(string $host): void
     {
-        $options = $this->send(SetonoSyliusShipmondoExtension::HTTP_CLIENT, $host);
+        $options = $this->optionsSentWith(SetonoSyliusShipmondoExtension::HTTP_CLIENT, $host);
 
         self::assertNotSame(10.0, $options['timeout']);
         // Symfony's default, no limit at all
@@ -111,12 +114,36 @@ final class ShipmondoHttpClientsTest extends KernelTestCase
     }
 
     /**
+     * @test
+     */
+    public function a_request_that_runs_into_its_time_limit_is_a_temporary_failure(): void
+    {
+        // what Symfony's HTTP client fails with when Shipmondo doesn't answer within the limit
+        $this->transport->answerWith(new MockResponse('', [
+            'error' => 'Idle timeout reached for "https://app.shipmondo.com/api/public/v3/payment_gateways?page=1".',
+        ]));
+
+        $client = self::getContainer()->get(Client::class);
+        Assert::isInstanceOf($client, Client::class);
+
+        try {
+            $client->paymentGateways()->getPage();
+            self::fail('The call to Shipmondo did not fail');
+        } catch (ShipmondoException $e) {
+            $failure = ShipmondoFailure::of($e);
+        }
+
+        self::assertSame(ShipmondoFailureKind::TemporaryFailure, $failure->kind);
+        self::assertNull($failure->statusCode);
+    }
+
+    /**
      * Sends a request to the host through the PSR-18 version of the plugin's HTTP client, and returns the options the
      * HTTP client sent it with
      *
      * @return array<string, mixed>
      */
-    private function send(string $httpClient, string $host): array
+    private function optionsSentWith(string $httpClient, string $host): array
     {
         $psr18 = self::getContainer()->get('psr18.' . $httpClient);
         Assert::isInstanceOf($psr18, HttpClientInterface::class);

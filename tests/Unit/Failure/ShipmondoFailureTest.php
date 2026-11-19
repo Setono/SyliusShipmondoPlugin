@@ -5,13 +5,11 @@ declare(strict_types=1);
 namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Failure;
 
 use PHPUnit\Framework\TestCase;
-use Psr\Http\Client\ClientInterface as HttpClientInterface;
+use Setono\Shipmondo\Client\Client;
 use Setono\Shipmondo\Exception\ConnectionException;
+use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailureKind;
-use Symfony\Component\HttpClient\MockHttpClient;
-use Symfony\Component\HttpClient\Psr18Client;
-use Symfony\Component\HttpClient\Response\MockResponse;
 use Symfony\Component\Translation\Loader\ArrayLoader;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ScriptedHttpClient;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ShipmondoApi;
@@ -69,36 +67,48 @@ final class ShipmondoFailureTest extends TestCase
     }
 
     /**
-     * @test
-     */
-    public function it_is_a_temporary_failure_when_shipmondo_does_not_answer_in_time(): void
-    {
-        // what Symfony's HTTP client throws when a request runs into its time limit before Shipmondo answers
-        $httpClient = new Psr18Client(new MockHttpClient(new MockResponse('', [
-            'error' => 'Idle timeout reached for "https://sandbox.shipmondo.com/api/public/v3/sales_orders/1001".',
-        ])));
-
-        $failure = ShipmondoFailure::of(self::failedCall($httpClient));
-
-        self::assertSame(ShipmondoFailureKind::TemporaryFailure, $failure->kind);
-        self::assertNull($failure->statusCode);
-        self::assertNull($failure->error);
-    }
-
-    /**
-     * Shipmondo did what was asked, e.g. created a sales order, so trying again could do it twice
+     * Shipmondo did what was asked, so trying again could do it twice, e.g. create a second sales order
      *
      * @test
+     *
+     * @dataProvider callsThatChangeSomething
+     *
+     * @param \Closure(Client): mixed $call
      */
-    public function it_is_an_unexpected_failure_when_a_successful_answer_does_not_arrive_in_full(): void
+    public function it_is_an_unexpected_failure_when_the_success_of_a_call_that_changes_something_does_not_arrive_in_full(\Closure $call, int $statusCode): void
     {
-        $exception = self::failedCall((new ScriptedHttpClient())->respondWithAnUnreadableBody(201));
+        $exception = self::failedCall((new ScriptedHttpClient())->respondWithAnUnreadableBody($statusCode), $call);
         self::assertInstanceOf(ConnectionException::class, $exception);
 
         $failure = ShipmondoFailure::of($exception);
 
         self::assertSame(ShipmondoFailureKind::UnexpectedFailure, $failure->kind);
-        self::assertSame(201, $failure->statusCode);
+        self::assertSame($statusCode, $failure->statusCode);
+        self::assertNull($failure->error);
+    }
+
+    /**
+     * @return iterable<string, array{\Closure(Client): mixed, int}>
+     */
+    public static function callsThatChangeSomething(): iterable
+    {
+        yield 'creating a sales order' => [static fn (Client $client): mixed => $client->salesOrders()->create(new SalesOrderRequest(orderId: '000001001')), 201];
+        yield 'deleting a sales order' => [static function (Client $client): void {
+            $client->salesOrders()->delete(1001);
+        }, 200];
+    }
+
+    /**
+     * Reading again changes nothing, so it is like getting no answer at all
+     *
+     * @test
+     */
+    public function it_is_a_temporary_failure_when_the_success_of_a_read_does_not_arrive_in_full(): void
+    {
+        $failure = ShipmondoFailure::of(self::failedCall((new ScriptedHttpClient())->respondWithAnUnreadableBody(200)));
+
+        self::assertSame(ShipmondoFailureKind::TemporaryFailure, $failure->kind);
+        self::assertSame(200, $failure->statusCode);
         self::assertNull($failure->error);
     }
 
@@ -216,13 +226,17 @@ final class ShipmondoFailureTest extends TestCase
     }
 
     /**
-     * Calls Shipmondo through the real SDK, which answers from the given HTTP client, and returns the exception the
-     * call threw
+     * Calls Shipmondo through the real SDK, which answers from the script, and returns the exception the call threw.
+     * The call reads a sales order, unless another is given
+     *
+     * @param (\Closure(Client): mixed)|null $call
      */
-    private static function failedCall(HttpClientInterface $httpClient): \Throwable
+    private static function failedCall(ScriptedHttpClient $httpClient, ?\Closure $call = null): \Throwable
     {
+        $call ??= static fn (Client $client): mixed => $client->salesOrders()->getById(1001);
+
         try {
-            ShipmondoApi::client($httpClient)->salesOrders()->getById(1001);
+            $call(ShipmondoApi::client($httpClient));
         } catch (\Throwable $e) {
             return $e;
         }

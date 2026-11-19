@@ -59,7 +59,7 @@ final class ShipmondoApiStub
     public function install(ContainerInterface $container): void
     {
         foreach (self::HTTP_CLIENTS as $httpClient) {
-            $container->set('psr18.' . $httpClient, $this->httpClient($httpClient));
+            $container->set('psr18.' . $httpClient, $this->standInFor($httpClient));
         }
     }
 
@@ -111,7 +111,7 @@ final class ShipmondoApiStub
      * The PSR-18 client that stands in for the given HTTP client of the plugin: it answers from this stub, which
      * records that the HTTP client sent the request
      */
-    private function httpClient(string $httpClient): HttpClientInterface
+    private function standInFor(string $httpClient): HttpClientInterface
     {
         return new class($this, $httpClient) implements HttpClientInterface {
             public function __construct(private readonly ShipmondoApiStub $stub, private readonly string $httpClient)
