@@ -44,8 +44,9 @@ For most installations the required changes are:
   localhost, and if you register them from your own code, expect `UnreachableWebhookEndpointException` (section 19)
 - if you dispatch the `RegisterWebhooks` command, call `WebhookRegistrarInterface::register()` instead, and if your
   Messenger routing names it, remove that route (section 20)
-- note that a sales order's authorized amount is now what its gateway payments hold, and none when it has none, and
-  remove any code of yours that deducts gift card or other payments from it (section 21)
+- note that a sales order's authorized amount is now what its gateway payments hold, and is left out when the sales
+  order carries no payment gateway, and remove any code of yours that deducts gift card or other payments from it
+  (section 21)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -659,11 +660,12 @@ you change it, but:
 - the upload of an order whose shipping method allows shipment templates that no longer exist logs a **warning**, and
   chooses the order's shipment template among the others, if any;
 - the upload of an order whose payment method is mapped to a payment gateway that no longer exists logs an **error**,
-  since Shipmondo may not capture the order's payment, and uploads the order with that payment gateway as before.
-  **When you see it, map the payment method to an existing payment gateway**, or remove the mapping.
+  since Shipmondo may not capture the order's payment, and uploads the order with that payment gateway as before. It
+  checks only the payment gateway the sales order carries (section 21). **When you see it, map the payment method to
+  an existing payment gateway**, or remove the mapping.
 
-To tell, the upload now also fetches the payment gateways from Shipmondo when an order's payment method is mapped, once
-per upload run (see section 12). Like any call to Shipmondo during an upload, a failure to fetch them settles the order
+To tell, the upload now also fetches the payment gateways from Shipmondo when the sales order carries one, once per
+upload run (see section 12). Like any call to Shipmondo during an upload, a failure to fetch them settles the order
 by its kind (section 6). A payment method without a mapping now sends no `payment_gateway_id` instead of an empty one;
 Shipmondo accepts both.
 

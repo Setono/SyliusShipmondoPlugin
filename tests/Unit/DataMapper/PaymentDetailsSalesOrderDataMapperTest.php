@@ -41,7 +41,7 @@ final class PaymentDetailsSalesOrderDataMapperTest extends TestCase
     /**
      * @test
      *
-     * @dataProvider countedPaymentStates
+     * @dataProvider authorizedOrCompletedPaymentStates
      */
     public function it_maps_an_order_paid_by_one_gateway_payment(string $state): void
     {
@@ -66,7 +66,7 @@ final class PaymentDetailsSalesOrderDataMapperTest extends TestCase
     /**
      * @return iterable<string, array{string}>
      */
-    public static function countedPaymentStates(): iterable
+    public static function authorizedOrCompletedPaymentStates(): iterable
     {
         yield 'authorized' => [PaymentInterface::STATE_AUTHORIZED];
         yield 'completed' => [PaymentInterface::STATE_COMPLETED];
@@ -242,7 +242,7 @@ final class PaymentDetailsSalesOrderDataMapperTest extends TestCase
         $salesOrder = new SalesOrderRequest();
 
         $this->mapper->map(self::orderTotalling(14077, [
-            self::payment(self::paymentMethod('paypal', 'PayPal', 456), 4000, PaymentInterface::STATE_COMPLETED),
+            self::payment(self::payPal(456), 4000, PaymentInterface::STATE_COMPLETED),
             self::payment(self::card(123), 10077, PaymentInterface::STATE_AUTHORIZED),
         ]), $salesOrder);
 
@@ -328,7 +328,7 @@ final class PaymentDetailsSalesOrderDataMapperTest extends TestCase
      *
      * @test
      *
-     * @dataProvider uncountedPaymentStates
+     * @dataProvider unauthorizedOrCompletedPaymentStates
      */
     public function it_ignores_a_payment_that_is_neither_authorized_nor_completed(string $state): void
     {
@@ -336,7 +336,7 @@ final class PaymentDetailsSalesOrderDataMapperTest extends TestCase
 
         $this->mapper->map(self::orderTotalling(14077, [
             self::payment(self::card(123), 14077, $state),
-            self::payment(self::paymentMethod('paypal', 'PayPal', 456), 14077, $state),
+            self::payment(self::payPal(456), 14077, $state),
         ]), $salesOrder);
 
         self::assertNotNull($salesOrder->paymentDetails);
@@ -351,7 +351,7 @@ final class PaymentDetailsSalesOrderDataMapperTest extends TestCase
     /**
      * @return iterable<string, array{string}>
      */
-    public static function uncountedPaymentStates(): iterable
+    public static function unauthorizedOrCompletedPaymentStates(): iterable
     {
         foreach ([
             PaymentInterface::STATE_CART,
@@ -499,6 +499,11 @@ final class PaymentDetailsSalesOrderDataMapperTest extends TestCase
     private static function mobilePay(?int $paymentGateway): PaymentMethod
     {
         return self::paymentMethod('mobile_pay', 'MobilePay', $paymentGateway);
+    }
+
+    private static function payPal(int $paymentGateway): PaymentMethod
+    {
+        return self::paymentMethod('paypal', 'PayPal', $paymentGateway);
     }
 
     private static function giftCard(): PaymentMethod

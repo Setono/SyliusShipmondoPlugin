@@ -35,13 +35,13 @@ final class PaymentDetailsSalesOrderDataMapper implements SalesOrderDataMapperIn
 
     public function map(OrderInterface $order, SalesOrderRequest $salesOrder): void
     {
-        $countedPayments = self::countedPayments($order);
-        $gatewayPayments = self::gatewayPayments($countedPayments);
+        $authorizedOrCompletedPayments = self::authorizedOrCompletedPayments($order);
+        $gatewayPayments = self::gatewayPayments($authorizedOrCompletedPayments);
 
         $paymentGateway = null;
         $authorizedAmount = null;
         // the payments the payment method is named after: the gateway payments when their payment gateway is sent
-        $payments = $countedPayments;
+        $payments = $authorizedOrCompletedPayments;
 
         if (1 === count($gatewayPayments)) {
             $paymentGateway = array_key_first($gatewayPayments);
@@ -91,27 +91,27 @@ final class PaymentDetailsSalesOrderDataMapper implements SalesOrderDataMapperIn
     /**
      * @return list<PaymentInterface>
      */
-    private static function countedPayments(OrderInterface $order): array
+    private static function authorizedOrCompletedPayments(OrderInterface $order): array
     {
-        $countedPayments = [];
+        $authorizedOrCompletedPayments = [];
         foreach ($order->getPayments() as $payment) {
             if (in_array($payment->getState(), [PaymentInterface::STATE_AUTHORIZED, PaymentInterface::STATE_COMPLETED], true)) {
-                $countedPayments[] = $payment;
+                $authorizedOrCompletedPayments[] = $payment;
             }
         }
 
-        return $countedPayments;
+        return $authorizedOrCompletedPayments;
     }
 
     /**
-     * @param list<PaymentInterface> $countedPayments
+     * @param list<PaymentInterface> $authorizedOrCompletedPayments
      *
      * @return array<int, non-empty-list<PaymentInterface>> the gateway payments by their payment gateway
      */
-    private static function gatewayPayments(array $countedPayments): array
+    private static function gatewayPayments(array $authorizedOrCompletedPayments): array
     {
         $gatewayPayments = [];
-        foreach ($countedPayments as $payment) {
+        foreach ($authorizedOrCompletedPayments as $payment) {
             $paymentGateway = self::paymentMethod($payment)?->getShipmondoId();
             if (null !== $paymentGateway) {
                 $gatewayPayments[$paymentGateway][] = $payment;
