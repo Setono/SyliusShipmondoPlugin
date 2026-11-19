@@ -10,6 +10,8 @@
 
         <service id="Setono\SyliusShipmondoPlugin\Command\RegisterWebhooksCommand">
             <argument type="service" id="setono_sylius_shipmondo.command_bus"/>
+            <argument type="service" id="sylius.repository.channel"/>
+            <argument type="service" id="router"/>
             <argument type="service" id="translator"/>
             <argument type="service" id="logger"/>
 

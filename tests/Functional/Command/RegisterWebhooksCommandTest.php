@@ -7,6 +7,7 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Functional\Command;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use Symfony\Component\Routing\RequestContext;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
 use Webmozart\Assert\Assert;
@@ -80,6 +81,48 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
 
         self::assertCount(10, $this->shipmondo->requests('POST', 'webhooks'));
         self::assertSame([$this->registrar()->getVersion()], $this->registeredVersions());
+    }
+
+    /**
+     * @test
+     */
+    public function it_registers_the_webhooks_under_the_channels_hostname(): void
+    {
+        $this->fixtures->channel->setHostname('shop.example.com');
+        $this->entityManager()->flush();
+
+        $this->shipmondo
+            ->respond('GET', 'webhooks', 200, [], ['X-Total-Pages' => '1'])
+            ->respond('POST', 'webhooks', 201, self::webhook(1, 'Setono Sylius Shipmondo Plugin - [orders:create]'))
+        ;
+
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+
+        $endpoints = array_map(
+            static fn ($request): mixed => ShipmondoApiStub::jsonBody($request)['endpoint'],
+            $this->shipmondo->requests('POST', 'webhooks'),
+        );
+        self::assertSame(array_fill(0, 5, 'https://shop.example.com/webhook/shipmondo'), $endpoints);
+    }
+
+    /**
+     * @test
+     */
+    public function it_fails_without_asking_shipmondo_when_it_finds_no_hostname_shipmondo_can_reach(): void
+    {
+        // the baseline's channel has the hostname localhost, and the router has the context FrameworkBundle gives it
+        // on the command line when the app doesn't set framework.router.default_uri
+        $router = static::getContainer()->get('router');
+        Assert::isInstanceOf($router, UrlGeneratorInterface::class);
+        $router->setContext(RequestContext::fromUri('http://localhost'));
+
+        $tester = $this->executeCommand(self::COMMAND);
+
+        self::assertSame(Command::FAILURE, $tester->getStatusCode());
+        $display = (string) preg_replace('/\s+/', ' ', $tester->getDisplay());
+        self::assertStringContainsString('Found no hostname Shipmondo can reach to send the webhooks to', $display);
+        self::assertSame([], $this->shipmondo->requests());
+        self::assertSame([], $this->registeredVersions());
     }
 
     /**
