@@ -42,6 +42,8 @@ For most installations the required changes are:
   (section 18)
 - note that registering the webhooks now refuses an endpoint Shipmondo can't reach, e.g. from the admin opened at
   localhost, and if you register them from your own code, expect `UnreachableWebhookEndpointException` (section 19)
+- if you dispatch the `RegisterWebhooks` command, call `WebhookRegistrarInterface::register()` instead, and if your
+  Messenger routing names it, remove that route (section 20)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -189,7 +191,7 @@ Class, service and configuration changes, which only matter if you extend or ref
 | `Setono\SyliusShipmondoPlugin\RequestMatcher\HasQueryParameterRequestMatcher` | removed (webhooks are matched on their `SMD-*` headers) |
 | `Webhook\WebhookParser::__construct(string $webhooksKey)` | `__construct(Setono\Shipmondo\Webhook\WebhookParserInterface $shipmondoWebhookParser, string $webhooksKey)` |
 | `Webhook\WebhookConsumer::__construct(RemoteEventFactoryInterface, ManagerRegistry)` | `__construct(Webhook\OrderResolverInterface $orderResolver, Webhook\Handler\OrderWebhookHandlers $handlers, Psr\Log\LoggerInterface $logger, ManagerRegistry $managerRegistry)` |
-| `Registrar\WebhookRegistrar::__construct($client, $urlGenerator, string $webhooksKey, string $namePrefix)` | `__construct($client, $urlGenerator, Webhook\Handler\OrderWebhookHandlers $handlers, string $webhooksKey, string $namePrefix)`; `getWebhooks()` yields one webhook per action on the orders resource that a handler subscribes to |
+| `Registrar\WebhookRegistrar::__construct($client, $urlGenerator, string $webhooksKey, string $namePrefix)` | `__construct($client, $urlGenerator, Webhook\Handler\OrderWebhookHandlers $handlers, Repository\RegisteredWebhooksRepositoryInterface $registeredWebhooksRepository, Sylius\Component\Resource\Factory\FactoryInterface $registeredWebhooksFactory, string $webhooksKey, string $namePrefix)` (the repository and the factory are section 20's); `getWebhooks()` yields one webhook per action on the orders resource that a handler subscribes to |
 | `Registrar\Webhook::$action` / `$resource` are strings | they are the SDK's `WebhookAction` / `WebhookResourceName` enums |
 
 New:
@@ -513,7 +515,7 @@ Only if you extend or call the code involved:
 | 1.x | 2.x |
 |---|---|
 | `Controller\Admin\ShipmondoController::__construct(..., Client $client)` | `__construct(..., Client $client, Symfony\Contracts\Translation\TranslatorInterface $translator, Psr\Log\LoggerInterface $logger)` |
-| `Command\RegisterWebhooksCommand::__construct(MessageBusInterface $commandBus)` | `__construct(MessageBusInterface $commandBus, ChannelRepositoryInterface $channelRepository, UrlGeneratorInterface $urlGenerator, TranslatorInterface $translator, LoggerInterface $logger)` (the channel repository and the URL generator are section 18's); it returns `Command::FAILURE` when Shipmondo fails |
+| `Command\RegisterWebhooksCommand::__construct(MessageBusInterface $commandBus)` | `__construct(WebhookRegistrarInterface $webhookRegistrar, ChannelRepositoryInterface $channelRepository, UrlGeneratorInterface $urlGenerator, TranslatorInterface $translator, LoggerInterface $logger)` (the channel repository and the URL generator are section 18's, the registrar section 20's); it returns `Command::FAILURE` when Shipmondo fails |
 | `Controller\Shop\GetPickupPointsAction::__construct($shippingMethodRepository, $cartContext, $client, $twig)` | `__construct($shippingMethodRepository, $cartContext, $client, $twig, LoggerInterface $logger)` |
 
 New: `Failure\ShipmondoFailure`, which `ShipmondoFailure::of(\Throwable $exception)` sorts by the SDK exception: its
@@ -601,7 +603,7 @@ webhook parser (`Setono\Shipmondo\Webhook\WebhookParser`). **If you reference, d
 | `setono_sylius_shipmondo.event_subscriber.grid.add_shipmondo_state_column_to_order_grid` | `Setono\SyliusShipmondoPlugin\EventSubscriber\Grid\AddShipmondoStateColumnToOrderGridSubscriber` |
 | `setono_sylius_shipmondo.form.type_extension.shipment` | `Setono\SyliusShipmondoPlugin\Form\Extension\ShipmentTypeExtension` |
 | `setono_sylius_shipmondo.form.type_extension.shipping_method` | `Setono\SyliusShipmondoPlugin\Form\Extension\ShippingMethodTypeExtension` |
-| `setono_sylius_shipmondo.message.command_handler.register_webhooks` | `Setono\SyliusShipmondoPlugin\Message\CommandHandler\RegisterWebhooksHandler` |
+| `setono_sylius_shipmondo.message.command_handler.register_webhooks` | removed: the registrar registers the webhooks and records the registration (section 20) |
 | `setono_sylius_shipmondo.message.command_handler.upload_order` | `Setono\SyliusShipmondoPlugin\Message\CommandHandler\UploadOrderHandler` |
 | `setono_sylius_shipmondo.provider.pre_qualified_uploadable_orders` | `Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProvider` |
 | `setono_sylius_shipmondo.registrar.webhook` | `Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar` |
@@ -792,7 +794,7 @@ Only if you extend or call the code involved:
 
 | 1.x | 2.x |
 |---|---|
-| `Command\RegisterWebhooksCommand::__construct(MessageBusInterface $commandBus)` | `__construct(MessageBusInterface $commandBus, Sylius\Component\Channel\Repository\ChannelRepositoryInterface $channelRepository, Symfony\Component\Routing\Generator\UrlGeneratorInterface $urlGenerator, TranslatorInterface $translator, LoggerInterface $logger)`, given `sylius.repository.channel` and `router`; it also returns `Command::FAILURE` when it finds no hostname to register the webhooks at |
+| `Command\RegisterWebhooksCommand::__construct(MessageBusInterface $commandBus)` | `__construct(Registrar\WebhookRegistrarInterface $webhookRegistrar, Sylius\Component\Channel\Repository\ChannelRepositoryInterface $channelRepository, Symfony\Component\Routing\Generator\UrlGeneratorInterface $urlGenerator, TranslatorInterface $translator, LoggerInterface $logger)`, given `sylius.repository.channel` and `router` (the registrar is section 20's); it also returns `Command::FAILURE` when it finds no hostname to register the webhooks at |
 
 ### 19. Registering the webhooks refuses an endpoint Shipmondo can't reach
 
@@ -810,12 +812,44 @@ asks Shipmondo anything, so the webhooks registered before are kept. The button 
 `setono:sylius-shipmondo:register-webhooks` chooses a hostname by (section 18), so the command still fails with its own
 advice before it gets that far.
 
-**If you call `WebhookRegistrarInterface::register()` or dispatch `RegisterWebhooks` from your own code:** expect the
-exception (wrapped in a `HandlerFailedException` when it comes through the command bus), and register the webhooks at
-the shop's hostname.
+**If you register the webhooks from your own code** (with `WebhookRegistrarInterface::register()`, see section 20):
+expect the exception, and register the webhooks at the shop's hostname.
 
 New translation key: `setono_sylius_shipmondo.webhooks_not_registered_at_unreachable_endpoint` in the `flashes` domain
 (it takes `%endpoint%`).
+
+### 20. Registering the webhooks happens right away, not through the command bus
+
+In 1.x the admin's "Register webhooks" button and `setono:sylius-shipmondo:register-webhooks` dispatched
+`Message\Command\RegisterWebhooks` on the `setono_sylius_shipmondo.command_bus` bus. Messenger routes a command by its
+class, so an app that routes it to an asynchronous transport, e.g. with a catch-all `'*': async` route or by routing
+`Message\Command\CommandInterface`, had a worker register the webhooks
+([#64](https://github.com/Setono/SyliusShipmondoPlugin/issues/64)). The button then flashed "Webhooks registered
+successfully" and the command succeeded before anything was registered, also when registering then failed, e.g. with a
+credentials failure. And the worker retried failures that trying again can't fix, until they ended in the failure
+transport.
+
+In 2.x both call `Registrar\WebhookRegistrarInterface::register()` directly, whatever your Messenger routing, so the
+button flashes how it went, and the command prints it and fails (section 9). `register()` now also records the
+registration, which the admin's Shipmondo page reads to say when the webhooks were registered. It records it once
+Shipmondo has registered every webhook, as the handler did.
+
+**If you dispatch `RegisterWebhooks` from your own code:** call `WebhookRegistrarInterface::register()` instead. It
+throws `UnreachableWebhookEndpointException` (section 19) and the SDK's `ShipmondoException` as they are, not wrapped
+in a `HandlerFailedException`. **If your Messenger routing names `RegisterWebhooks`:** remove that route, since the
+class no longer exists. Routing `CommandInterface` now routes `UploadOrder` and `DeleteOrder` only.
+
+**If you configure the `setono_sylius_shipmondo.command_bus` bus's middleware yourself:** the plugin no longer puts
+`router_context` on it. It only carried the router's context to a worker that registered the webhooks.
+
+Only if you extend or call the code involved:
+
+| 1.x | 2.x |
+|---|---|
+| `Message\Command\RegisterWebhooks` and `Message\CommandHandler\RegisterWebhooksHandler` | removed: call `Registrar\WebhookRegistrarInterface::register()`, which also records the registration |
+| `Registrar\WebhookRegistrar::__construct(...)` | takes the `Repository\RegisteredWebhooksRepositoryInterface` and the `Sylius\Component\Resource\Factory\FactoryInterface` of the `registered_webhooks` resource (`setono_sylius_shipmondo.repository.registered_webhooks` and `setono_sylius_shipmondo.factory.registered_webhooks`) after `$handlers` (section 4) |
+| `Controller\Admin\ShipmondoController::__construct($registeredWebhooksRepository, MessageBusInterface $commandBus, $webhookRegistrar, ...)` | takes no command bus |
+| `Command\RegisterWebhooksCommand::__construct(MessageBusInterface $commandBus, ...)` | takes a `Registrar\WebhookRegistrarInterface` in its place |
 
 ### Unchanged
 
@@ -826,5 +860,5 @@ link to the sales order, the checked pickup point, how a failed call to Shipmond
 the admin Shipmondo page, the one rule for a sales order's amounts, choosing the shipment template, the service ids,
 flagging the mappings that no longer exist in Shipmondo, saying when the admin Shipmondo page couldn't fetch a list,
 counting the shipping promotions in the shipping line, replacing only this shop's webhooks when registering them,
-registering them at the channels' hostname on the command line, and registering nothing at an endpoint Shipmondo
-can't reach.
+registering them at the channels' hostname on the command line, registering nothing at an endpoint Shipmondo
+can't reach, and registering them right away instead of through the command bus.

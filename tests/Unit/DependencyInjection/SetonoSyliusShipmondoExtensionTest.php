@@ -158,7 +158,6 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
                         'middleware' => [
                             'doctrine_transaction',
                             AbsorbDeleteOrderFailureMiddleware::class,
-                            'router_context',
                         ],
                     ],
                 ],

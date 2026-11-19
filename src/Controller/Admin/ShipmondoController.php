@@ -9,7 +9,6 @@ use Setono\Shipmondo\Exception\ShipmondoException;
 use Setono\Shipmondo\Response\PaymentGateway\PaymentGateway;
 use Setono\Shipmondo\Response\ShipmentTemplate\ShipmentTemplate;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
-use Setono\SyliusShipmondoPlugin\Message\Command\RegisterWebhooks;
 use Setono\SyliusShipmondoPlugin\Model\PaymentMethodInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
 use Setono\SyliusShipmondoPlugin\Provider\SetupProviderInterface;
@@ -22,8 +21,6 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\RedirectResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
-use Symfony\Component\Messenger\Exception\HandlerFailedException;
-use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Contracts\Translation\TranslatorInterface;
 use Webmozart\Assert\Assert;
 
@@ -31,7 +28,6 @@ final class ShipmondoController extends AbstractController
 {
     public function __construct(
         private readonly RegisteredWebhooksRepositoryInterface $registeredWebhooksRepository,
-        private readonly MessageBusInterface $commandBus,
         private readonly WebhookRegistrarInterface $webhookRegistrar,
         private readonly PaymentMethodRepositoryInterface $paymentMethodRepository,
         private readonly ShippingMethodRepositoryInterface $shippingMethodRepository,
@@ -204,27 +200,23 @@ final class ShipmondoController extends AbstractController
     }
 
     /**
-     * The webhooks' endpoint is at the host the admin is opened at, so the registrar refuses it when Shipmondo can't
-     * reach that host, e.g. localhost on a developer's machine
+     * Registers the webhooks right away, whatever the app's Messenger routing, so the flash says how it went. The
+     * webhooks' endpoint is at the host the admin is opened at, so the registrar refuses it when Shipmondo can't reach
+     * that host, e.g. localhost on a developer's machine
      */
     public function registerWebhooks(): RedirectResponse
     {
         try {
-            $this->commandBus->dispatch(new RegisterWebhooks());
+            $this->webhookRegistrar->register();
 
             $this->addFlash('success', 'setono_sylius_shipmondo.webhooks_registered');
-        } catch (HandlerFailedException $e) {
-            $unreachable = array_values($e->getWrappedExceptions(UnreachableWebhookEndpointException::class))[0] ?? null;
-            if ($unreachable instanceof UnreachableWebhookEndpointException) {
-                $this->addFlash('error', [
-                    'message' => 'setono_sylius_shipmondo.webhooks_not_registered_at_unreachable_endpoint',
-                    'parameters' => ['%endpoint%' => $unreachable->endpoint],
-                ]);
-
-                return $this->redirectToRoute('setono_sylius_shipmondo_admin_shipmondo_index');
-            }
-
-            $failure = ShipmondoFailure::of(array_values($e->getWrappedExceptions(ShipmondoException::class))[0] ?? throw $e);
+        } catch (UnreachableWebhookEndpointException $e) {
+            $this->addFlash('error', [
+                'message' => 'setono_sylius_shipmondo.webhooks_not_registered_at_unreachable_endpoint',
+                'parameters' => ['%endpoint%' => $e->endpoint],
+            ]);
+        } catch (ShipmondoException $e) {
+            $failure = ShipmondoFailure::of($e);
 
             $this->logger->error('The webhooks could not be registered in Shipmondo', $failure->logContext());
             $this->addFailureFlash('setono_sylius_shipmondo.webhooks_not_registered', $failure);

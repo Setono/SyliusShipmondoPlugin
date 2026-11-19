@@ -209,7 +209,9 @@ page or on the command line:
 php bin/console setono:sylius-shipmondo:register-webhooks
 ```
 
-Register them again whenever the plugin's webhook handlers change, e.g. after upgrading the plugin.
+Both register them right away, whatever your Messenger routing, and say how it went: the button with a flash message,
+the command in its output and exit code. Register them again whenever the plugin's webhook handlers change, e.g. after
+upgrading the plugin.
 
 Shipmondo sends the webhooks to the shop's webhook endpoint, `/webhook/shipmondo`. The admin's button registers it at
 the host the admin is on. On the command line there is no request to take the host from, so the command registers it

@@ -8,9 +8,13 @@ use Setono\Shipmondo\Client\ClientInterface;
 use Setono\Shipmondo\Enum\WebhookResourceName;
 use Setono\Shipmondo\Request\Webhook\WebhookRequest;
 use Setono\Shipmondo\Response\Webhook\Webhook as WebhookResponse;
+use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooksInterface;
+use Setono\SyliusShipmondoPlugin\Repository\RegisteredWebhooksRepositoryInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers;
+use Sylius\Component\Resource\Factory\FactoryInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use function Symfony\Component\String\u;
+use Webmozart\Assert\Assert;
 
 /**
  * Registers the webhooks the webhook handlers handle: one per action on the orders resource that a handler subscribes to
@@ -21,6 +25,8 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
         private readonly ClientInterface $client,
         private readonly UrlGeneratorInterface $urlGenerator,
         private readonly OrderWebhookHandlers $handlers,
+        private readonly RegisteredWebhooksRepositoryInterface $registeredWebhooksRepository,
+        private readonly FactoryInterface $registeredWebhooksFactory,
         private readonly string $webhooksKey,
         private readonly string $namePrefix,
     ) {
@@ -57,6 +63,8 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
                 $webhook->resource,
             ));
         }
+
+        $this->recordRegistration();
     }
 
     public function getVersion(): string
@@ -85,6 +93,27 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
                 $resource,
             );
         }
+    }
+
+    /**
+     * Records that the current webhooks are registered, and when. It runs once Shipmondo has answered every call, so a
+     * registration that failed part of the way isn't recorded
+     */
+    private function recordRegistration(): void
+    {
+        $version = $this->getVersion();
+
+        $registeredWebhooks = $this->registeredWebhooksRepository->findOneByVersion($version);
+        if (null === $registeredWebhooks) {
+            $registeredWebhooks = $this->registeredWebhooksFactory->createNew();
+            Assert::isInstanceOf($registeredWebhooks, RegisteredWebhooksInterface::class);
+
+            $registeredWebhooks->setVersion($version);
+        }
+
+        $registeredWebhooks->setRegisteredAt(new \DateTimeImmutable());
+
+        $this->registeredWebhooksRepository->add($registeredWebhooks);
     }
 
     /**
