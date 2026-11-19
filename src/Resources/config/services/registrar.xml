@@ -6,6 +6,8 @@
             <argument type="service" id="Setono\Shipmondo\Client\Client"/>
             <argument type="service" id="router"/>
             <argument type="service" id="Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers"/>
+            <argument type="service" id="setono_sylius_shipmondo.repository.registered_webhooks"/>
+            <argument type="service" id="setono_sylius_shipmondo.factory.registered_webhooks"/>
             <argument>%setono_sylius_shipmondo.webhooks.key%</argument>
             <argument>%setono_sylius_shipmondo.webhooks.name_prefix%</argument>
         </service>

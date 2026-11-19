@@ -10,7 +10,6 @@
 
         <service id="Setono\SyliusShipmondoPlugin\Controller\Admin\ShipmondoController" public="true">
             <argument type="service" id="setono_sylius_shipmondo.repository.registered_webhooks"/>
-            <argument type="service" id="setono_sylius_shipmondo.command_bus"/>
             <argument type="service" id="Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface"/>
             <argument type="service" id="sylius.repository.payment_method"/>
             <argument type="service" id="sylius.repository.shipping_method"/>

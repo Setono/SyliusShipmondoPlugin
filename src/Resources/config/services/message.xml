@@ -28,13 +28,5 @@
             </argument>
             <argument type="service" id="logger"/>
         </service>
-
-        <service id="Setono\SyliusShipmondoPlugin\Message\CommandHandler\RegisterWebhooksHandler">
-            <argument type="service" id="setono_sylius_shipmondo.repository.registered_webhooks"/>
-            <argument type="service" id="Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface"/>
-            <argument type="service" id="setono_sylius_shipmondo.factory.registered_webhooks"/>
-
-            <tag name="messenger.message_handler"/>
-        </service>
     </services>
 </container>

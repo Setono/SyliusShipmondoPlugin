@@ -64,7 +64,6 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
                             'doctrine_transaction',
                             // inside doctrine_transaction, so a sales order deletion it absorbs never rolls a transaction back
                             AbsorbDeleteOrderFailureMiddleware::class,
-                            'router_context',
                         ],
                     ],
                 ],

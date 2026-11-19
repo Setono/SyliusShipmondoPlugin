@@ -10,7 +10,7 @@ use Prophecy\PhpUnit\ProphecyTrait;
 use Psr\Log\LogLevel;
 use Setono\Shipmondo\Exception\UnauthorizedException;
 use Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder;
-use Setono\SyliusShipmondoPlugin\Message\Command\RegisterWebhooks;
+use Setono\SyliusShipmondoPlugin\Message\Command\UploadOrder;
 use Setono\SyliusShipmondoPlugin\Message\CommandHandler\DeleteOrderHandler;
 use Setono\SyliusShipmondoPlugin\Message\Middleware\AbsorbDeleteOrderFailureMiddleware;
 use Symfony\Component\Messenger\Envelope;
@@ -146,7 +146,7 @@ final class AbsorbDeleteOrderFailureMiddlewareTest extends TestCase
         $this->expectException(HandlerFailedException::class);
 
         try {
-            $this->handle(new Envelope(new RegisterWebhooks()), transactionNestingLevel: 1);
+            $this->handle(new Envelope(new UploadOrder(42)), transactionNestingLevel: 1);
         } finally {
             self::assertSame([], $this->logger->records);
         }

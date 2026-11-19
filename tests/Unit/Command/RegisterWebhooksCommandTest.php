@@ -5,20 +5,17 @@ declare(strict_types=1);
 namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Command;
 
 use PHPUnit\Framework\TestCase;
-use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
 use Psr\Log\LogLevel;
 use Setono\Shipmondo\Exception\UnauthorizedException;
 use Setono\SyliusShipmondoPlugin\Command\RegisterWebhooksCommand;
-use Setono\SyliusShipmondoPlugin\Message\Command\RegisterWebhooks;
+use Setono\SyliusShipmondoPlugin\Registrar\UnreachableWebhookEndpointException;
+use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
 use Sylius\Component\Channel\Model\Channel;
 use Sylius\Component\Channel\Repository\ChannelRepositoryInterface;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
-use Symfony\Component\Messenger\Envelope;
-use Symfony\Component\Messenger\Exception\HandlerFailedException;
-use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Generator\UrlGenerator;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Routing\RequestContext;
@@ -32,8 +29,8 @@ final class RegisterWebhooksCommandTest extends TestCase
 {
     use ProphecyTrait;
 
-    /** @var ObjectProphecy<MessageBusInterface> */
-    private ObjectProphecy $commandBus;
+    /** @var ObjectProphecy<WebhookRegistrarInterface> */
+    private ObjectProphecy $webhookRegistrar;
 
     /** @var ObjectProphecy<ChannelRepositoryInterface> */
     private ObjectProphecy $channelRepository;
@@ -53,7 +50,7 @@ final class RegisterWebhooksCommandTest extends TestCase
     private RecordingLogger $logger;
 
     /**
-     * The endpoint the webhooks are registered with: the one the router generates while the command is dispatched
+     * The endpoint the webhooks are registered with: the one the router generates while the registrar registers them
      *
      * @var list<string>
      */
@@ -61,7 +58,7 @@ final class RegisterWebhooksCommandTest extends TestCase
 
     protected function setUp(): void
     {
-        $this->commandBus = $this->prophesize(MessageBusInterface::class);
+        $this->webhookRegistrar = $this->prophesize(WebhookRegistrarInterface::class);
         $this->channelRepository = $this->prophesize(ChannelRepositoryInterface::class);
         $this->channelRepository->findEnabled()->willReturn([]);
         $this->logger = new RecordingLogger();
@@ -78,7 +75,7 @@ final class RegisterWebhooksCommandTest extends TestCase
     public function it_registers_the_webhooks_under_the_channels_hostname(): void
     {
         $this->channels('shop.example.com');
-        $this->dispatchRegistersTheWebhooks();
+        $this->registrarRegistersTheWebhooks();
 
         $command = $this->command();
         $commandTester = new CommandTester($command);
@@ -99,7 +96,7 @@ final class RegisterWebhooksCommandTest extends TestCase
     public function it_skips_a_channel_hostname_that_shipmondo_cannot_reach(?string $unreachableHostname): void
     {
         $this->channels($unreachableHostname, 'shop.example.com');
-        $this->dispatchRegistersTheWebhooks();
+        $this->registrarRegistersTheWebhooks();
 
         self::assertSame(Command::SUCCESS, (new CommandTester($this->command()))->execute([], ['interactive' => false]));
         self::assertSame(['https://shop.example.com/webhook/shipmondo'], $this->registeredEndpoints);
@@ -142,7 +139,7 @@ final class RegisterWebhooksCommandTest extends TestCase
         // e.g. the address `symfony serve` serves a local app at
         $this->defaultUri('https://127.0.0.1:8000');
         $this->channels('shop.example.com');
-        $this->dispatchRegistersTheWebhooks();
+        $this->registrarRegistersTheWebhooks();
 
         self::assertSame(Command::SUCCESS, (new CommandTester($this->command()))->execute([]));
         self::assertSame(['https://shop.example.com/webhook/shipmondo'], $this->registeredEndpoints);
@@ -156,7 +153,7 @@ final class RegisterWebhooksCommandTest extends TestCase
     {
         $this->defaultUri('https://dev.example.com/shop');
         $this->channels('shop.example.com');
-        $this->dispatchRegistersTheWebhooks();
+        $this->registrarRegistersTheWebhooks();
 
         self::assertSame(Command::SUCCESS, (new CommandTester($this->command()))->execute([]));
         self::assertSame(['https://shop.example.com/webhook/shipmondo'], $this->registeredEndpoints);
@@ -170,7 +167,7 @@ final class RegisterWebhooksCommandTest extends TestCase
     {
         // hostnames are case-insensitive
         $this->channels('shop.example.com', 'shop.example.com', 'Shop.Example.COM');
-        $this->dispatchRegistersTheWebhooks();
+        $this->registrarRegistersTheWebhooks();
 
         self::assertSame(Command::SUCCESS, (new CommandTester($this->command()))->execute([], ['interactive' => false]));
         self::assertSame(['https://shop.example.com/webhook/shipmondo'], $this->registeredEndpoints);
@@ -182,7 +179,7 @@ final class RegisterWebhooksCommandTest extends TestCase
     public function it_fails_without_registering_when_the_channels_have_several_hostnames_and_it_cannot_ask_which(): void
     {
         $this->channels('shop.example.com', 'shop.example.se');
-        $this->dispatchRegistersTheWebhooks();
+        $this->registrarRegistersTheWebhooks();
 
         $commandTester = new CommandTester($this->command());
 
@@ -203,7 +200,7 @@ final class RegisterWebhooksCommandTest extends TestCase
     {
         // each hostname is offered once, also when several channels have it
         $this->channels('shop.example.com', 'shop.example.com', 'shop.example.se');
-        $this->dispatchRegistersTheWebhooks();
+        $this->registrarRegistersTheWebhooks();
 
         $commandTester = new CommandTester($this->command());
         $commandTester->setInputs(['shop.example.se']);
@@ -221,7 +218,7 @@ final class RegisterWebhooksCommandTest extends TestCase
     public function it_registers_the_webhooks_under_the_hostname_it_is_given_instead_of_the_channels(): void
     {
         $this->channels('shop.example.com', 'shop.example.se');
-        $this->dispatchRegistersTheWebhooks();
+        $this->registrarRegistersTheWebhooks();
 
         $commandTester = new CommandTester($this->command());
 
@@ -237,7 +234,7 @@ final class RegisterWebhooksCommandTest extends TestCase
     {
         $this->channels(null, 'localhost');
         $this->defaultUri('http://shop.example.com:8080');
-        $this->dispatchRegistersTheWebhooks();
+        $this->registrarRegistersTheWebhooks();
 
         self::assertSame(Command::SUCCESS, (new CommandTester($this->command()))->execute([]));
         self::assertSame(['http://shop.example.com:8080/webhook/shipmondo'], $this->registeredEndpoints);
@@ -253,7 +250,7 @@ final class RegisterWebhooksCommandTest extends TestCase
     {
         $this->channels(null, 'localhost');
         $this->defaultUri($defaultUri);
-        $this->dispatchRegistersTheWebhooks();
+        $this->registrarRegistersTheWebhooks();
 
         $commandTester = new CommandTester($this->command());
 
@@ -283,7 +280,7 @@ final class RegisterWebhooksCommandTest extends TestCase
      */
     public function it_registers_the_webhooks_under_a_name_that_only_starts_like_a_loopback_address(): void
     {
-        $this->dispatchRegistersTheWebhooks();
+        $this->registrarRegistersTheWebhooks();
 
         self::assertSame(Command::SUCCESS, (new CommandTester($this->command()))->execute(['--hostname' => '127.example.com']));
         self::assertSame(['https://127.example.com/webhook/shipmondo'], $this->registeredEndpoints);
@@ -297,7 +294,7 @@ final class RegisterWebhooksCommandTest extends TestCase
     public function it_fails_without_registering_when_it_is_given_a_hostname_shipmondo_cannot_reach(string $hostname): void
     {
         $this->channels('shop.example.com');
-        $this->dispatchRegistersTheWebhooks();
+        $this->registrarRegistersTheWebhooks();
 
         $commandTester = new CommandTester($this->command());
 
@@ -316,9 +313,7 @@ final class RegisterWebhooksCommandTest extends TestCase
     {
         $this->channels('shop.example.com');
         $exception = new UnauthorizedException(ShipmondoApi::json(['error' => 'Invalid credentials'], 401));
-        $this->commandBus->dispatch(Argument::type(RegisterWebhooks::class))
-            ->willThrow(new HandlerFailedException(new Envelope(new RegisterWebhooks()), ['RegisterWebhooksHandler::__invoke' => $exception]))
-        ;
+        $this->webhookRegistrar->register()->willThrow($exception);
 
         $commandTester = new CommandTester($this->command());
 
@@ -342,18 +337,41 @@ final class RegisterWebhooksCommandTest extends TestCase
     }
 
     /**
+     * The command registers only at a hostname Shipmondo can reach, so only a registrar that judges the endpoint
+     * otherwise refuses it, e.g. one an app decorated
+     *
+     * @test
+     */
+    public function it_fails_and_explains_why_when_the_registrar_refuses_the_endpoint(): void
+    {
+        $this->channels('shop.example.com');
+        $this->webhookRegistrar->register()->willThrow(new UnreachableWebhookEndpointException('https://shop.example.com/webhook/shipmondo'));
+
+        $commandTester = new CommandTester($this->command());
+
+        self::assertSame(Command::FAILURE, $commandTester->execute([], ['capture_stderr_separately' => true]));
+        self::assertSame('', $commandTester->getDisplay());
+        self::assertStringContainsString(
+            '[ERROR] The webhooks were not registered: Shipmondo can\'t reach their endpoint, https://shop.example.com/webhook/shipmondo.',
+            self::oneLine($commandTester->getErrorOutput()),
+        );
+        self::assertSame([], $this->logger->records);
+        $this->assertTheRouterContextIsPutBack();
+    }
+
+    /**
      * @test
      */
     public function it_lets_a_failure_that_is_not_shipmondos_through(): void
     {
         $this->channels('shop.example.com');
-        $failure = new HandlerFailedException(new Envelope(new RegisterWebhooks()), ['RegisterWebhooksHandler::__invoke' => new \LogicException('A bug')]);
-        $this->commandBus->dispatch(Argument::type(RegisterWebhooks::class))->willThrow($failure);
+        $failure = new \LogicException('A bug');
+        $this->webhookRegistrar->register()->willThrow($failure);
 
         try {
             (new CommandTester($this->command()))->execute([]);
             self::fail('The failure was not let through');
-        } catch (HandlerFailedException $e) {
+        } catch (\LogicException $e) {
             self::assertSame($failure, $e);
         }
 
@@ -364,7 +382,7 @@ final class RegisterWebhooksCommandTest extends TestCase
     private function command(): RegisterWebhooksCommand
     {
         return new RegisterWebhooksCommand(
-            $this->commandBus->reveal(),
+            $this->webhookRegistrar->reveal(),
             $this->channelRepository->reveal(),
             $this->urlGenerator,
             Translations::translator(),
@@ -406,16 +424,14 @@ final class RegisterWebhooksCommandTest extends TestCase
         self::assertEquals(RequestContext::fromUri($this->defaultUri), $this->routerContext, 'The router context is unchanged');
     }
 
-    private function dispatchRegistersTheWebhooks(): void
+    private function registrarRegistersTheWebhooks(): void
     {
         $urlGenerator = $this->urlGenerator;
         $registeredEndpoints = &$this->registeredEndpoints;
 
         // Prophecy binds a callback to the double, so it captures what it needs instead of using $this
-        $this->commandBus->dispatch(Argument::type(RegisterWebhooks::class))->will(static function () use ($urlGenerator, &$registeredEndpoints): Envelope {
+        $this->webhookRegistrar->register()->will(static function () use ($urlGenerator, &$registeredEndpoints): void {
             $registeredEndpoints[] = $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL);
-
-            return new Envelope(new RegisterWebhooks());
         });
     }
 

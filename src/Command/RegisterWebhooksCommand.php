@@ -7,8 +7,9 @@ namespace Setono\SyliusShipmondoPlugin\Command;
 use Psr\Log\LoggerInterface;
 use Setono\Shipmondo\Exception\ShipmondoException;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
-use Setono\SyliusShipmondoPlugin\Message\Command\RegisterWebhooks;
+use Setono\SyliusShipmondoPlugin\Registrar\UnreachableWebhookEndpointException;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookHost;
+use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
 use Sylius\Component\Channel\Model\ChannelInterface;
 use Sylius\Component\Channel\Repository\ChannelRepositoryInterface;
 use Symfony\Component\Console\Attribute\AsCommand;
@@ -17,8 +18,6 @@ use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Input\InputOption;
 use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\Console\Style\SymfonyStyle;
-use Symfony\Component\Messenger\Exception\HandlerFailedException;
-use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Routing\RequestContext;
 use Symfony\Contracts\Translation\TranslatorInterface;
@@ -38,7 +37,7 @@ final class RegisterWebhooksCommand extends Command
      * @param ChannelRepositoryInterface<ChannelInterface> $channelRepository
      */
     public function __construct(
-        private readonly MessageBusInterface $commandBus,
+        private readonly WebhookRegistrarInterface $webhookRegistrar,
         private readonly ChannelRepositoryInterface $channelRepository,
         private readonly UrlGeneratorInterface $urlGenerator,
         private readonly TranslatorInterface $translator,
@@ -80,7 +79,8 @@ final class RegisterWebhooksCommand extends Command
     }
 
     /**
-     * Fails, and says why, when it finds no hostname to register the webhooks under, and when Shipmondo fails
+     * Fails, and says why, when it finds no hostname to register the webhooks under, when the registrar refuses the
+     * endpoint, and when Shipmondo fails
      */
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
@@ -97,9 +97,13 @@ final class RegisterWebhooksCommand extends Command
         $this->urlGenerator->setContext($webhookContext);
 
         try {
-            $this->commandBus->dispatch(new RegisterWebhooks());
-        } catch (HandlerFailedException $e) {
-            $failure = ShipmondoFailure::of(array_values($e->getWrappedExceptions(ShipmondoException::class))[0] ?? throw $e);
+            $this->webhookRegistrar->register();
+        } catch (UnreachableWebhookEndpointException $e) {
+            (new SymfonyStyle($input, $output))->getErrorStyle()->error($e->getMessage());
+
+            return Command::FAILURE;
+        } catch (ShipmondoException $e) {
+            $failure = ShipmondoFailure::of($e);
 
             $this->logger->error('The webhooks could not be registered in Shipmondo', $failure->logContext());
             (new SymfonyStyle($input, $output))->getErrorStyle()->error($this->translator->trans(
@@ -116,9 +120,6 @@ final class RegisterWebhooksCommand extends Command
         return Command::SUCCESS;
     }
 
-    /**
-     * The router context the webhooks' endpoint is generated with, or why there is none
-     */
     /**
      * The router context the webhooks' endpoint is generated with: https://<hostname>, at its root, for a hostname
      * passed or found in the channels, else the router's own context, from framework.router.default_uri

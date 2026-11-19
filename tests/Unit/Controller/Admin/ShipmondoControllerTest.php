@@ -14,7 +14,6 @@ use Setono\Shipmondo\Exception\UnauthorizedException;
 use Setono\Shipmondo\Response\PaymentGateway\PaymentGateway;
 use Setono\Shipmondo\Response\ShipmentTemplate\ShipmentTemplate;
 use Setono\SyliusShipmondoPlugin\Controller\Admin\ShipmondoController;
-use Setono\SyliusShipmondoPlugin\Message\Command\RegisterWebhooks;
 use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooks;
 use Setono\SyliusShipmondoPlugin\Provider\SetupProvider;
 use Setono\SyliusShipmondoPlugin\Registrar\UnreachableWebhookEndpointException;
@@ -30,9 +29,6 @@ use Symfony\Component\HttpFoundation\RequestStack;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpFoundation\Session\Session;
 use Symfony\Component\HttpFoundation\Session\Storage\MockArraySessionStorage;
-use Symfony\Component\Messenger\Envelope;
-use Symfony\Component\Messenger\Exception\HandlerFailedException;
-use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Routing\RouterInterface;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\PaymentMethod;
@@ -50,9 +46,6 @@ final class ShipmondoControllerTest extends TestCase
 
     /** @var ObjectProphecy<RegisteredWebhooksRepositoryInterface> */
     private ObjectProphecy $registeredWebhooksRepository;
-
-    /** @var ObjectProphecy<MessageBusInterface> */
-    private ObjectProphecy $commandBus;
 
     /** @var ObjectProphecy<WebhookRegistrarInterface> */
     private ObjectProphecy $webhookRegistrar;
@@ -87,7 +80,6 @@ final class ShipmondoControllerTest extends TestCase
     protected function setUp(): void
     {
         $this->registeredWebhooksRepository = $this->prophesize(RegisteredWebhooksRepositoryInterface::class);
-        $this->commandBus = $this->prophesize(MessageBusInterface::class);
         $this->webhookRegistrar = $this->prophesize(WebhookRegistrarInterface::class);
         $this->paymentMethodRepository = $this->prophesize(PaymentMethodRepositoryInterface::class);
         $this->shippingMethodRepository = $this->prophesize(ShippingMethodRepositoryInterface::class);
@@ -500,10 +492,7 @@ final class ShipmondoControllerTest extends TestCase
      */
     public function it_registers_the_webhooks_and_redirects_back_to_the_shipmondo_page(): void
     {
-        $this->commandBus->dispatch(Argument::type(RegisterWebhooks::class))
-            ->willReturn(new Envelope(new RegisterWebhooks()))
-            ->shouldBeCalledOnce()
-        ;
+        $this->webhookRegistrar->register()->shouldBeCalledOnce();
         $this->router->generate('setono_sylius_shipmondo_admin_shipmondo_index', [], UrlGeneratorInterface::ABSOLUTE_PATH)
             ->willReturn('/admin/shipmondo')
         ;
@@ -521,9 +510,7 @@ final class ShipmondoControllerTest extends TestCase
     public function it_explains_why_the_webhooks_could_not_be_registered(): void
     {
         $exception = new UnauthorizedException(ShipmondoApi::json(['error' => 'Invalid credentials'], 401));
-        $this->commandBus->dispatch(Argument::type(RegisterWebhooks::class))
-            ->willThrow(new HandlerFailedException(new Envelope(new RegisterWebhooks()), ['RegisterWebhooksHandler::__invoke' => $exception]))
-        ;
+        $this->webhookRegistrar->register()->willThrow($exception);
         $this->router->generate('setono_sylius_shipmondo_admin_shipmondo_index', [], UrlGeneratorInterface::ABSOLUTE_PATH)
             ->willReturn('/admin/shipmondo')
         ;
@@ -556,10 +543,7 @@ final class ShipmondoControllerTest extends TestCase
      */
     public function it_explains_that_shipmondo_cannot_reach_the_webhooks_endpoint(): void
     {
-        $this->commandBus->dispatch(Argument::type(RegisterWebhooks::class))->willThrow(new HandlerFailedException(
-            new Envelope(new RegisterWebhooks()),
-            ['RegisterWebhooksHandler::__invoke' => new UnreachableWebhookEndpointException('https://127.0.0.1:8000/webhook/shipmondo')],
-        ));
+        $this->webhookRegistrar->register()->willThrow(new UnreachableWebhookEndpointException('https://127.0.0.1:8000/webhook/shipmondo'));
         $this->router->generate('setono_sylius_shipmondo_admin_shipmondo_index', [], UrlGeneratorInterface::ABSOLUTE_PATH)
             ->willReturn('/admin/shipmondo')
         ;
@@ -580,13 +564,13 @@ final class ShipmondoControllerTest extends TestCase
      */
     public function it_leaves_a_registration_failure_that_is_not_shipmondos_to_fail_loudly(): void
     {
-        $failure = new HandlerFailedException(new Envelope(new RegisterWebhooks()), ['RegisterWebhooksHandler::__invoke' => new \LogicException('A bug')]);
-        $this->commandBus->dispatch(Argument::type(RegisterWebhooks::class))->willThrow($failure);
+        $failure = new \LogicException('A bug');
+        $this->webhookRegistrar->register()->willThrow($failure);
 
         try {
             $this->controller()->registerWebhooks();
             self::fail('The failure was not let through');
-        } catch (HandlerFailedException $e) {
+        } catch (\LogicException $e) {
             self::assertSame($failure, $e);
         }
 
@@ -696,7 +680,6 @@ final class ShipmondoControllerTest extends TestCase
 
         $controller = new ShipmondoController(
             $this->registeredWebhooksRepository->reveal(),
-            $this->commandBus->reveal(),
             $this->webhookRegistrar->reveal(),
             $this->paymentMethodRepository->reveal(),
             $this->shippingMethodRepository->reveal(),

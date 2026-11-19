@@ -5,15 +5,23 @@ declare(strict_types=1);
 namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Registrar;
 
 use PHPUnit\Framework\TestCase;
+use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
+use Prophecy\Prophecy\ObjectProphecy;
 use Psr\Http\Client\ClientInterface as HttpClientInterface;
 use Psr\Http\Message\RequestInterface;
 use Setono\Shipmondo\Enum\WebhookAction;
 use Setono\Shipmondo\Enum\WebhookResourceName;
+use Setono\Shipmondo\Exception\ShipmondoException;
+use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooks;
+use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooksInterface;
 use Setono\SyliusShipmondoPlugin\Registrar\UnreachableWebhookEndpointException;
 use Setono\SyliusShipmondoPlugin\Registrar\Webhook;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar;
+use Setono\SyliusShipmondoPlugin\Repository\RegisteredWebhooksRepositoryInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers;
+use Sylius\Component\Resource\Factory\Factory;
+use Sylius\Component\Resource\Factory\FactoryInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ScriptedHttpClient;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ShipmondoApi;
@@ -27,15 +35,117 @@ final class WebhookRegistrarTest extends TestCase
 
     private const ANOTHER_SHOPS_KEY = 'another-shops-webhooks-key-of-32-bytes!';
 
+    /** @var ObjectProphecy<RegisteredWebhooksRepositoryInterface> */
+    private ObjectProphecy $registeredWebhooksRepository;
+
+    private FactoryInterface $registeredWebhooksFactory;
+
+    protected function setUp(): void
+    {
+        $this->registeredWebhooksRepository = $this->prophesize(RegisteredWebhooksRepositoryInterface::class);
+        $this->registeredWebhooksRepository->findOneByVersion(Argument::any())->willReturn(null);
+        $this->registeredWebhooksRepository->add(Argument::any())->will(static function (): void {});
+        $this->registeredWebhooksFactory = new Factory(RegisteredWebhooks::class);
+    }
+
+    /**
+     * The admin's Shipmondo page finds the registration by the registrar's version, to say when the webhooks were
+     * registered
+     *
+     * @test
+     */
+    public function it_records_the_registration_once_shipmondo_has_registered_the_webhooks(): void
+    {
+        $shipmondo = self::shipmondoRegisters('https://shop.example.com/webhook/shipmondo');
+        $registrar = $this->registrar($shipmondo, $this->urlGenerator('https://shop.example.com/webhook/shipmondo')->reveal());
+
+        /** @var list<RegisteredWebhooksInterface> $recorded */
+        $recorded = [];
+        $this->registeredWebhooksRepository->add(Argument::type(RegisteredWebhooksInterface::class))->will(static function (array $args) use ($shipmondo, &$recorded): void {
+            // Shipmondo has answered every call
+            self::assertCount(4, $shipmondo->requestLines());
+            self::assertInstanceOf(RegisteredWebhooksInterface::class, $args[0]);
+            $recorded[] = $args[0];
+        });
+
+        $before = new \DateTimeImmutable();
+        $registrar->register();
+
+        self::assertCount(1, $recorded);
+        self::assertSame($registrar->getVersion(), $recorded[0]->getVersion());
+        self::assertNotNull($recorded[0]->getRegisteredAt());
+        self::assertGreaterThanOrEqual($before, $recorded[0]->getRegisteredAt());
+        self::assertLessThanOrEqual(new \DateTimeImmutable(), $recorded[0]->getRegisteredAt());
+    }
+
+    /**
+     * @test
+     */
+    public function it_updates_the_registration_of_webhooks_registered_before(): void
+    {
+        $registrar = $this->registrar(self::shipmondoRegisters('https://shop.example.com/webhook/shipmondo'), $this->urlGenerator('https://shop.example.com/webhook/shipmondo')->reveal());
+
+        $registeredBefore = new RegisteredWebhooks();
+        $registeredBefore->setVersion($registrar->getVersion());
+        $registeredBefore->setRegisteredAt(new \DateTimeImmutable('2020-01-01'));
+        $this->registeredWebhooksRepository->findOneByVersion($registrar->getVersion())->willReturn($registeredBefore);
+        $this->registeredWebhooksRepository->add(Argument::any())->shouldBeCalledOnce();
+        $this->registeredWebhooksRepository->add($registeredBefore)->shouldBeCalledOnce();
+
+        $before = new \DateTimeImmutable();
+        $registrar->register();
+
+        self::assertSame($registrar->getVersion(), $registeredBefore->getVersion());
+        self::assertGreaterThanOrEqual($before, $registeredBefore->getRegisteredAt());
+    }
+
+    /**
+     * Registering deletes the shop's webhooks before it creates them, so a failure part of the way leaves only some of
+     * them registered
+     *
+     * @test
+     */
+    public function it_records_nothing_when_shipmondo_fails_to_register_a_webhook(): void
+    {
+        $endpoint = 'https://shop.example.com/webhook/shipmondo';
+        $shipmondo = (new ScriptedHttpClient())
+            ->respond(200, [])
+            ->respond(201, self::webhook(101, 'Shop [ab9f9937] - [orders:status_update]', $endpoint))
+            ->respond(422, ['error' => 'Endpoint is invalid'])
+        ;
+
+        $this->registeredWebhooksRepository->add(Argument::any())->shouldNotBeCalled();
+
+        try {
+            $this->registrar($shipmondo, $this->urlGenerator($endpoint)->reveal())->register();
+            self::fail('The registration did not fail');
+        } catch (ShipmondoException) {
+        }
+
+        self::assertSame(['GET webhooks', 'POST webhooks', 'POST webhooks'], $shipmondo->requestLines());
+    }
+
+    /**
+     * @test
+     */
+    public function it_throws_when_the_factory_does_not_create_registered_webhooks(): void
+    {
+        $this->registeredWebhooksFactory = new Factory(\stdClass::class);
+        $this->registeredWebhooksRepository->add(Argument::any())->shouldNotBeCalled();
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->registrar(self::shipmondoRegisters('https://shop.example.com/webhook/shipmondo'), $this->urlGenerator('https://shop.example.com/webhook/shipmondo')->reveal())->register();
+    }
+
     /**
      * @test
      */
     public function it_registers_each_action_a_webhook_handler_handles(): void
     {
-        $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
-        $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn('https://example.com/webhook');
+        $urlGenerator = $this->urlGenerator('https://example.com/webhook');
 
-        $registrar = new WebhookRegistrar(ShipmondoApi::client(new ScriptedHttpClient()), $urlGenerator->reveal(), self::handlers(), 'key', 'prefix');
+        $registrar = $this->registrar(new ScriptedHttpClient(), $urlGenerator->reveal(), webhooksKey: 'key', namePrefix: 'prefix');
 
         // 3fd02dbf is the shop's id, derived from its webhooks key ('key')
         self::assertEquals([
@@ -51,12 +161,11 @@ final class WebhookRegistrarTest extends TestCase
      */
     public function it_names_the_webhooks_after_the_shop_whose_webhooks_key_they_carry(): void
     {
-        $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
-        $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn('https://example.com/webhook');
+        $urlGenerator = $this->urlGenerator('https://example.com/webhook');
 
         $names = fn (string $webhooksKey): array => array_map(
             static fn (Webhook $webhook): string => $webhook->name,
-            iterator_to_array((new WebhookRegistrar(ShipmondoApi::client(new ScriptedHttpClient()), $urlGenerator->reveal(), self::handlers(), $webhooksKey, 'Shop'))->getWebhooks(), false),
+            iterator_to_array($this->registrar(new ScriptedHttpClient(), $urlGenerator->reveal(), webhooksKey: $webhooksKey)->getWebhooks(), false),
         );
 
         self::assertSame([
@@ -76,7 +185,7 @@ final class WebhookRegistrarTest extends TestCase
      */
     public function it_registers_no_webhooks_without_webhook_handlers(): void
     {
-        $registrar = new WebhookRegistrar(ShipmondoApi::client(new ScriptedHttpClient()), $this->prophesize(UrlGeneratorInterface::class)->reveal(), new OrderWebhookHandlers([]), 'key', 'prefix');
+        $registrar = $this->registrar(new ScriptedHttpClient(), $this->prophesize(UrlGeneratorInterface::class)->reveal(), new OrderWebhookHandlers([]));
 
         self::assertSame([], iterator_to_array($registrar->getWebhooks()));
     }
@@ -112,10 +221,9 @@ final class WebhookRegistrarTest extends TestCase
             return ShipmondoApi::json(self::webhook(100 + count($created), 'Shop - [created]'));
         });
 
-        $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
-        $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn('https://example.com/webhook/shipmondo');
+        $urlGenerator = $this->urlGenerator('https://example.com/webhook/shipmondo');
 
-        $registrar = new WebhookRegistrar(ShipmondoApi::client($httpClient->reveal()), $urlGenerator->reveal(), self::handlers(), self::KEY, 'Shop');
+        $registrar = $this->registrar($httpClient->reveal(), $urlGenerator->reveal());
         $registrar->register();
 
         $expected = [];
@@ -163,10 +271,9 @@ final class WebhookRegistrarTest extends TestCase
             ->respond(201, self::webhook(103, 'Shop [ab9f9937] - [orders:delete]', $endpoint))
         ;
 
-        $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
-        $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn($endpoint);
+        $urlGenerator = $this->urlGenerator($endpoint);
 
-        (new WebhookRegistrar(ShipmondoApi::client($shipmondo), $urlGenerator->reveal(), self::handlers(), self::KEY, 'Shop'))->register();
+        $this->registrar($shipmondo, $urlGenerator->reveal())->register();
 
         self::assertSame([
             'GET webhooks',
@@ -191,10 +298,10 @@ final class WebhookRegistrarTest extends TestCase
     {
         $shipmondo = new ScriptedHttpClient();
 
-        $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
-        $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn($endpoint);
+        $urlGenerator = $this->urlGenerator($endpoint);
 
-        $registrar = new WebhookRegistrar(ShipmondoApi::client($shipmondo), $urlGenerator->reveal(), self::handlers(), self::KEY, 'Shop');
+        $registrar = $this->registrar($shipmondo, $urlGenerator->reveal());
+        $this->registeredWebhooksRepository->add(Argument::any())->shouldNotBeCalled();
 
         try {
             $registrar->register();
@@ -204,7 +311,7 @@ final class WebhookRegistrarTest extends TestCase
             self::assertSame(sprintf('The webhooks were not registered: Shipmondo can\'t reach their endpoint, %s.', $endpoint), $e->getMessage());
         }
 
-        // not even this shop's webhooks were removed
+        // not even this shop's webhooks were removed, and the registration recorded before still says when they were
         self::assertSame([], $shipmondo->requestLines());
     }
 
@@ -235,12 +342,53 @@ final class WebhookRegistrarTest extends TestCase
             ->respond(201, self::webhook(103, 'Shop [ab9f9937] - [orders:delete]', $endpoint))
         ;
 
+        $urlGenerator = $this->urlGenerator($endpoint);
+
+        $this->registrar($shipmondo, $urlGenerator->reveal())->register();
+
+        self::assertSame(['GET webhooks', 'POST webhooks', 'POST webhooks', 'POST webhooks'], $shipmondo->requestLines());
+    }
+
+    private function registrar(
+        HttpClientInterface $shipmondo,
+        UrlGeneratorInterface $urlGenerator,
+        ?OrderWebhookHandlers $handlers = null,
+        string $webhooksKey = self::KEY,
+        string $namePrefix = 'Shop',
+    ): WebhookRegistrar {
+        return new WebhookRegistrar(
+            ShipmondoApi::client($shipmondo),
+            $urlGenerator,
+            $handlers ?? self::handlers(),
+            $this->registeredWebhooksRepository->reveal(),
+            $this->registeredWebhooksFactory,
+            $webhooksKey,
+            $namePrefix,
+        );
+    }
+
+    /**
+     * Shipmondo answers a registration at the endpoint: it has none of the shop's webhooks, and creates the three
+     */
+    private static function shipmondoRegisters(string $endpoint): ScriptedHttpClient
+    {
+        return (new ScriptedHttpClient())
+            ->respond(200, [])
+            ->respond(201, self::webhook(101, 'Shop [ab9f9937] - [orders:status_update]', $endpoint))
+            ->respond(201, self::webhook(102, 'Shop [ab9f9937] - [orders:create_shipment]', $endpoint))
+            ->respond(201, self::webhook(103, 'Shop [ab9f9937] - [orders:delete]', $endpoint))
+        ;
+    }
+
+    /**
+     * @return ObjectProphecy<UrlGeneratorInterface>
+     */
+    private function urlGenerator(string $endpoint): ObjectProphecy
+    {
         $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
         $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn($endpoint);
 
-        (new WebhookRegistrar(ShipmondoApi::client($shipmondo), $urlGenerator->reveal(), self::handlers(), self::KEY, 'Shop'))->register();
-
-        self::assertSame(['GET webhooks', 'POST webhooks', 'POST webhooks', 'POST webhooks'], $shipmondo->requestLines());
+        return $urlGenerator;
     }
 
     private static function handlers(): OrderWebhookHandlers
