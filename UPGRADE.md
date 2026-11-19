@@ -44,6 +44,9 @@ For most installations the required changes are:
   localhost, and if you register them from your own code, expect `UnreachableWebhookEndpointException` (section 19)
 - if you dispatch the `RegisterWebhooks` command, call `WebhookRegistrarInterface::register()` instead, and if your
   Messenger routing names it, remove that route (section 20)
+- note that a sales order's authorized amount is now what its gateway payments hold, and is left out when the sales
+  order carries no payment gateway, and remove any code of yours that deducts gift card or other payments from it
+  (section 21)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -657,11 +660,12 @@ you change it, but:
 - the upload of an order whose shipping method allows shipment templates that no longer exist logs a **warning**, and
   chooses the order's shipment template among the others, if any;
 - the upload of an order whose payment method is mapped to a payment gateway that no longer exists logs an **error**,
-  since Shipmondo may not capture the order's payment, and uploads the order with that payment gateway as before.
-  **When you see it, map the payment method to an existing payment gateway**, or remove the mapping.
+  since Shipmondo may not capture the order's payment, and uploads the order with that payment gateway as before. It
+  checks only the payment gateway the sales order carries (section 21). **When you see it, map the payment method to
+  an existing payment gateway**, or remove the mapping.
 
-To tell, the upload now also fetches the payment gateways from Shipmondo when an order's payment method is mapped, once
-per upload run (see section 12). Like any call to Shipmondo during an upload, a failure to fetch them settles the order
+To tell, the upload now also fetches the payment gateways from Shipmondo when the sales order carries one, once per
+upload run (see section 12). Like any call to Shipmondo during an upload, a failure to fetch them settles the order
 by its kind (section 6). A payment method without a mapping now sends no `payment_gateway_id` instead of an empty one;
 Shipmondo accepts both.
 
@@ -853,6 +857,41 @@ Only if you extend or call the code involved:
 | `Controller\Admin\ShipmondoController::__construct($registeredWebhooksRepository, MessageBusInterface $commandBus, $webhookRegistrar, ...)` | takes no command bus |
 | `Command\RegisterWebhooksCommand::__construct(MessageBusInterface $commandBus, ...)` | takes a `Registrar\WebhookRegistrarInterface` in its place |
 
+### 21. The sales order's authorized amount is what its gateway payments hold
+
+In 1.x the payment details of a sales order took the authorized amount from the order total, and the payment method and
+payment gateway from the order's first payment, whatever its state
+([#15](https://github.com/Setono/SyliusShipmondoPlugin/issues/15)). So an order of 140.77 paid with a 30.00 gift card
+and 110.77 authorized by a card payment claimed an authorization of 140.77, and a capture of it asked the payment
+provider for more than it held. An order paid with gift cards alone claimed an authorization that no payment gateway
+held. And an order whose first payment failed, and which the customer then paid with another payment method, was sent
+with the failed payment's method and payment gateway.
+
+In 2.x only the order's authorized and completed payments count; a new, processing, failed, cancelled or refunded
+payment is ignored. A **gateway payment** is one of them made with a payment method mapped to a payment gateway (a
+stale mapping included, see section 14):
+
+- when the gateway payments all go through one payment gateway, `payment_gateway_id` is that payment gateway, and
+  `authorized_amount` is the sum of their amounts (110.77 in the example);
+- when they go through several payment gateways, the sales order carries neither, since it carries only one payment
+  gateway, and the upload logs a **warning** naming the order and its payment gateways: Shipmondo can't capture the
+  order's payment;
+- when there is no gateway payment, e.g. an order paid with gift cards alone, or by a payment method mapped to no
+  payment gateway, the sales order carries neither, and nothing is logged. **A shop that maps no payment method to a
+  payment gateway sent the order total as `authorized_amount` before, and now sends none.**
+
+`payment_method` (a label in Shipmondo) is the name of the method of the largest gateway payment through the payment
+gateway that is sent, or else of the largest authorized or completed payment, the earliest of them on a tie. It is left
+out when the order has no authorized or completed payment. The error about a stale payment gateway (section 14) is
+logged for the payment gateway that is sent. `amount_including_vat`, `amount_excluding_vat`, `vat_amount`,
+`vat_percent` and `currency_code` still describe the order total.
+
+**If you adjust `authorizedAmount` yourself**, e.g. in a `SalesOrderMappedEvent` listener or a decorator of
+`SalesOrderDataMapperInterface` that deducts the gift card payments, **remove that in the same deploy as this
+upgrade**. The plugin now leaves them out itself, so a listener that deducts them again sends too little (80.77 in the
+example, and Shipmondo captures 30.00 less than the card payment holds). And for an order paid with gift cards alone
+`authorizedAmount` is now `null`, which a deduction may turn into a negative amount.
+
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
@@ -863,4 +902,5 @@ the admin Shipmondo page, the one rule for a sales order's amounts, choosing the
 flagging the mappings that no longer exist in Shipmondo, saying when the admin Shipmondo page couldn't fetch a list,
 counting the shipping promotions in the shipping line, replacing only this shop's webhooks when registering them,
 registering them at the channels' hostname on the command line, registering nothing at an endpoint Shipmondo
-can't reach, and registering them right away instead of through the command bus.
+can't reach, registering them right away instead of through the command bus, and taking the authorized amount, the
+payment method and the payment gateway from the payments that paid the order.
