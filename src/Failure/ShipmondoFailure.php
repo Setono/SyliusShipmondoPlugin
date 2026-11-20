@@ -37,7 +37,12 @@ final class ShipmondoFailure implements TranslatableInterface
 
     private function __construct(public readonly ShipmondoFailureKind $kind, public readonly \Throwable $exception)
     {
-        $this->statusCode = $exception instanceof ResponseAwareException ? $exception->getResponse()->getStatusCode() : null;
+        $response = match (true) {
+            $exception instanceof ResponseAwareException, $exception instanceof ConnectionException => $exception->getResponse(),
+            default => null,
+        };
+
+        $this->statusCode = $response?->getStatusCode();
         $this->error = $exception instanceof ResponseAwareException ? $exception->getError() : null;
     }
 
@@ -46,11 +51,20 @@ final class ShipmondoFailure implements TranslatableInterface
         return new self(match (true) {
             $exception instanceof UnauthorizedException, $exception instanceof ForbiddenException => ShipmondoFailureKind::CredentialsFailure,
             $exception instanceof TooManyRequestsException => ShipmondoFailureKind::RateLimited,
+            // Shipmondo answered a call that changes something with a success, so it did what was asked, e.g. created a
+            // sales order, but the rest of its answer didn't arrive, e.g. in time: trying again could do it twice.
+            // When a read ends so, reading again changes nothing, as when Shipmondo didn't answer at all
+            $exception instanceof ConnectionException && null !== $exception->getResponse() && !self::isRead($exception) => ShipmondoFailureKind::UnexpectedFailure,
             $exception instanceof ServerErrorException, $exception instanceof ConnectionException => ShipmondoFailureKind::TemporaryFailure,
             $exception instanceof NotFoundException => ShipmondoFailureKind::NotFound,
             $exception instanceof ClientErrorException => ShipmondoFailureKind::Rejected,
             default => ShipmondoFailureKind::UnexpectedFailure,
         }, $exception);
+    }
+
+    private static function isRead(ConnectionException $exception): bool
+    {
+        return 'GET' === $exception->getRequest()->getMethod();
     }
 
     /**

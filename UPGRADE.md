@@ -47,6 +47,10 @@ For most installations the required changes are:
 - note that a sales order's authorized amount is now what its gateway payments hold, and is left out when the sales
   order carries no payment gateway, and remove any code of yours that deducts gift card or other payments from it
   (section 21)
+- note that the requests to Shipmondo now have time limits, through two framework scoped HTTP clients the plugin
+  prepends and you can override, that the plugin now requires `symfony/http-client` with `framework.http_client`
+  enabled, that your `framework.http_client.default_options` now apply to them, and that when one file of yours configures
+  `default_options.retry_failed` and overrides one of those clients, you repeat `retry_failed: false` there (section 22)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -59,7 +63,7 @@ The renamed SDK classes and the other class changes only matter if you extend th
 composer require setono/sylius-shipmondo-plugin:^2.0
 ```
 
-This pulls in `setono/shipmondo-php-sdk:^2.0` (2.0.0-beta.3 or later).
+This pulls in `setono/shipmondo-php-sdk:^2.0` (2.0.0-beta.4 or later).
 
 ### 2. Define the `SHIPMONDO_SANDBOX` environment variable (required)
 
@@ -260,7 +264,8 @@ for good. In 2.x, `Uploader\OrderUploader` settles every failure on the order:
 | The order can't be turned into a sales order (a data mapper throws), or another unexpected error, such as a non-error status (e.g. an unfollowed redirect) or an answer the SDK can't read | `failed` | continues |
 | Shipmondo doesn't accept the API credentials: 401 or 403 | `pending` | stops |
 | Shipmondo rate limits the upload: 429 | `pending` | stops |
-| A temporary failure: 5xx, a network error or a timeout | `pending` | continues |
+| A temporary failure: 5xx, a network error, or Shipmondo not answering in time (section 22) | `pending` | continues |
+| Shipmondo answered the creation of the sales order with a success, but the rest of its answer didn't arrive, e.g. in time (section 22): Shipmondo created the sales order | `failed` | continues |
 | The order changed while it was uploading, before its `UploadOrder` command was handled | `pending` | continues |
 
 - A synchronous upload run also stops after three rejected uploads with no successful upload between them, because
@@ -468,10 +473,10 @@ one kind of Shipmondo failure (`Failure\ShipmondoFailureKind`), and each caller 
 |---|---|
 | `credentials_failure` | Shipmondo answers 401 or 403 |
 | `rate_limited` | Shipmondo answers 429 |
-| `temporary_failure` | Shipmondo answers 5xx, or doesn't answer (a network error or a timeout) |
+| `temporary_failure` | Shipmondo answers 5xx, or doesn't answer (a network error, or not in time, see section 22) |
 | `not_found` | Shipmondo answers 404 |
 | `rejected` | Shipmondo answers any other 4xx |
-| `unexpected_failure` | anything else: a success the SDK can't read, a redirect, or a failure that isn't Shipmondo's answer, such as a data mapper that throws |
+| `unexpected_failure` | anything else: a success the SDK can't read, or whose rest didn't arrive for a call that changes something (section 22), a redirect, or a failure that isn't Shipmondo's answer, such as a data mapper that throws |
 
 - **The admin's Shipmondo page** says why it couldn't fetch the payment gateways or the shipment templates, e.g. that
   Shipmondo couldn't be reached, instead of always asking you to check the credentials, and logs it as a warning (see
@@ -705,8 +710,8 @@ failed, the shipment templates weren't fetched either, so both tables said so, a
 - the error flash names what couldn't be fetched, and why: one flash for both lists when they failed for the same
   reason, such as a credentials failure, and one per list otherwise. Each failure is logged as a warning.
 
-When Shipmondo doesn't answer, the page now waits for both calls, so it can take up to twice the HTTP client's timeout
-before it shows.
+When Shipmondo doesn't answer, the page now waits for both calls, so it can take up to twice the HTTP client's time
+limit (section 22) before it shows.
 
 **If you override `@SetonoSyliusShipmondoPlugin/admin/shipmondo/index.html.twig`:** it gets two new booleans,
 `paymentGatewaysFetched` and `shipmentTemplatesFetched`. When one is false, its list and its stale mappings are empty:
@@ -892,6 +897,96 @@ upgrade**. The plugin now leaves them out itself, so a listener that deducts the
 example, and Shipmondo captures 30.00 less than the card payment holds). And for an order paid with gift cards alone
 `authorizedAmount` is now `null`, which a deduction may turn into a negative amount.
 
+### 22. Requests to Shipmondo have time limits
+
+In 1.x the plugin built the Shipmondo SDK client without an HTTP client, so the SDK used whichever PSR-18 client it
+discovered among the shop's packages. Symfony's gave up on a request only after `default_socket_timeout` (60 s by
+default) without any data, and had no limit on a request as a whole, and Guzzle's had no limit at all
+([#31](https://github.com/Setono/SyliusShipmondoPlugin/issues/31)). A slow Shipmondo stalled the shop's pickup point
+search while a customer waited in checkout, the upload run and Messenger workers, the admin Shipmondo page, registering
+the webhooks, and cancelling an order in the admin, which deletes its sales order inside Sylius's cancel transaction.
+
+In 2.x the plugin prepends two framework scoped HTTP clients. Its Shipmondo client (the `Setono\Shipmondo\Client\Client`
+service) sends its requests through `HttpClient\ShipmondoHttpClient`, which sends a pickup point search through the
+PSR-18 version of the one and every other call through the PSR-18 version of the other:
+
+| HTTP client | Used by | `timeout`: the longest wait with no data at all | `max_duration`: the most one request may take |
+|---|---|---|---|
+| `setono_sylius_shipmondo.http_client` | every call to Shipmondo but the pickup point search: uploads, sales order deletions, the admin Shipmondo page, webhook registration | 10 s | 30 s |
+| `setono_sylius_shipmondo.pickup_points_http_client` | the shop's pickup point search | 5 s | 10 s |
+
+Both are scoped to the Shipmondo API in production and in the sandbox (`https://(app|sandbox)\.shipmondo\.com/`) and
+don't retry a failed request.
+
+- **The plugin requires `symfony/http-client`**, and `framework.http_client` must be enabled, which it is by default
+  once `symfony/http-client` is installed. With `framework.http_client.enabled: false` the container doesn't build
+  (a non-existent service `psr18.setono_sylius_shipmondo.http_client`).
+- **To change a limit**, name only what you change in your own framework config. The configs merge per key, so the
+  plugin's scope, the other limit and the retries staying off are kept:
+
+  ```yaml
+  framework:
+      http_client:
+          scoped_clients:
+              setono_sylius_shipmondo.http_client:
+                  max_duration: 60
+  ```
+
+- **Your `framework.http_client.default_options` apply to the requests to Shipmondo now**, e.g. a proxy, headers or TLS
+  settings, under the plugin's limits.
+- **Retries stay off.** The plugin retries on its own terms: the next upload run retries an upload that failed
+  temporarily (section 6), and a worker retries a sales order deletion (section 5). Symfony's `retry_failed` repeats
+  even a POST, e.g. on 429, 502 and 503, and repeating the creation of a sales order can create it twice. A
+  `default_options.retry_failed` of yours doesn't reach the plugin's HTTP clients, unless you configure it (e.g. its
+  `max_retries`, not just `retry_failed: true`) in a config file that also names one of them: Symfony then copies the
+  default retry onto that client, whatever the plugin prepends. **So when one file of yours configures
+  `default_options.retry_failed` and overrides one of the plugin's clients, repeat `retry_failed: false` there:**
+
+  ```yaml
+  framework:
+      http_client:
+          default_options:
+              retry_failed:
+                  max_retries: 3
+          scoped_clients:
+              setono_sylius_shipmondo.http_client:
+                  max_duration: 60
+                  retry_failed: false
+  ```
+
+- **A request that runs into its limit** is a Shipmondo failure like any other (section 9):
+  - When Shipmondo doesn't answer in time, it is a **temporary failure**, as a network error is: the shop's pickup point
+    endpoint answers HTTP 502 and the picker says the pickup points couldn't be loaded, the admin says Shipmondo
+    couldn't be reached, and an upload goes back to pending. Shipmondo may have created the sales order before the time
+    ran out, and the next upload run then creates a second one: the duplicate section 6 warns about
+    ([#29](https://github.com/Setono/SyliusShipmondoPlugin/issues/29)). The shorter the limit, the likelier that is.
+  - When Shipmondo answers a call that changes something, creating or deleting a sales order, with a success, but
+    the rest of its answer doesn't arrive, e.g. in time, it is an **unexpected failure**: Shipmondo did what was
+    asked, but what it answered is lost. **An upload then fails the order** instead of sending it back to pending,
+    since Shipmondo created the sales order: search Shipmondo for the order number and link the order to that sales
+    order, as in section 6's steps. A sales order deletion counts as failed (section 5) although the sales order is
+    gone, so the order stays uploaded and linked, until the `orders/delete` webhook for that sales order, if Shipmondo
+    sends one, settles it (section 4).
+  - When the success of a read doesn't arrive in full, e.g. of the pickup point search, or of the payment gateways and
+    shipment templates an upload reads, it is a temporary failure, as when Shipmondo doesn't answer at all: reading
+    again changes nothing.
+  - When Shipmondo answers with an error status but the rest of its answer doesn't arrive, the failure is sorted by the
+    status, as before, without Shipmondo's message.
+
+This needs `setono/shipmondo-php-sdk` 2.0.0-beta.4 or later, which reads the whole of Shipmondo's answer in the call, so
+a failure while Shipmondo is still answering is an exception too, and which tells a success whose answer didn't arrive
+in full (`ConnectionException::getResponse()`) from no answer at all.
+
+Only if you extend or call the code involved:
+
+| 1.x | 2.x |
+|---|---|
+| the `Setono\Shipmondo\Client\Client` service discovers its HTTP client | it gets the new `HttpClient\ShipmondoHttpClient` service, its 4th argument, which sends a pickup point search through `psr18.setono_sylius_shipmondo.pickup_points_http_client` and every other call through `psr18.setono_sylius_shipmondo.http_client` |
+| `Failure\ShipmondoFailure::of()` sorts every `ConnectionException` as `temporary_failure` | a `ConnectionException` that carries a success (`getResponse()`) to a call other than a GET is an `unexpected_failure`; it has that success's `statusCode`, also when it is a `temporary_failure` |
+
+New: `DependencyInjection\SetonoSyliusShipmondoExtension::HTTP_CLIENT` and `::PICKUP_POINTS_HTTP_CLIENT`, the names of
+the two HTTP clients (their PSR-18 versions are `psr18.<name>`).
+
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
@@ -902,5 +997,6 @@ the admin Shipmondo page, the one rule for a sales order's amounts, choosing the
 flagging the mappings that no longer exist in Shipmondo, saying when the admin Shipmondo page couldn't fetch a list,
 counting the shipping promotions in the shipping line, replacing only this shop's webhooks when registering them,
 registering them at the channels' hostname on the command line, registering nothing at an endpoint Shipmondo
-can't reach, registering them right away instead of through the command bus, and taking the authorized amount, the
-payment method and the payment gateway from the payments that paid the order.
+can't reach, registering them right away instead of through the command bus, taking the authorized amount, the
+payment method and the payment gateway from the payments that paid the order, and the time limits on the requests to
+Shipmondo.

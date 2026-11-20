@@ -44,6 +44,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
 
         $requests = $this->shipmondo->requests('POST', 'sales_orders');
         self::assertCount(2, $requests);
+        self::assertSame('setono_sylius_shipmondo.http_client', $this->shipmondo->httpClientOf($requests[0]));
 
         $uploaded = [];
         foreach ($requests as $request) {

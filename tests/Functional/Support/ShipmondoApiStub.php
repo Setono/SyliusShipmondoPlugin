@@ -8,19 +8,29 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use Psr\Http\Client\ClientInterface as HttpClientInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
-use Setono\Shipmondo\Client\Client;
+use Setono\SyliusShipmondoPlugin\DependencyInjection\SetonoSyliusShipmondoExtension;
+use Symfony\Component\DependencyInjection\ContainerInterface;
 use Tests\Setono\SyliusShipmondoPlugin\Support\NetworkException;
 
 /**
- * Stands in for the Shipmondo API at the HTTP boundary: the real SDK client builds the requests and maps
- * the responses, but the PSR-18 transport is this stub, so nothing ever leaves the process.
+ * Stands in for the Shipmondo API at the HTTP boundary: the plugin's real SDK client builds the requests and maps
+ * the responses, but the PSR-18 transport of the plugin's HTTP clients is this stub ({@see self::install()}), so
+ * nothing ever leaves the process.
  *
  * Responses are registered per "METHOD path" (the path relative to the API base, without the query string).
  * A request nobody registered a response for is recorded as unexpected and answered with an exception, so
  * a test can assert that only the intended calls were made.
  */
-final class ShipmondoApiStub implements HttpClientInterface
+final class ShipmondoApiStub
 {
+    /**
+     * The plugin's HTTP clients, whose PSR-18 versions the stub replaces
+     */
+    private const HTTP_CLIENTS = [
+        SetonoSyliusShipmondoExtension::HTTP_CLIENT,
+        SetonoSyliusShipmondoExtension::PICKUP_POINTS_HTTP_CLIENT,
+    ];
+
     private readonly Psr17Factory $psr17;
 
     /** @var array<string, list<ResponseInterface|null>> null fails to connect */
@@ -29,20 +39,36 @@ final class ShipmondoApiStub implements HttpClientInterface
     /** @var list<RequestInterface> */
     private array $requests = [];
 
+    /** @var \SplObjectStorage<RequestInterface, string> the HTTP client that sent each request */
+    private \SplObjectStorage $httpClients;
+
     /** @var list<string> */
     private array $unexpectedRequests = [];
 
     public function __construct()
     {
         $this->psr17 = new Psr17Factory();
+        $this->httpClients = new \SplObjectStorage();
     }
 
     /**
-     * A real SDK client that talks to this stub instead of the network
+     * Replaces the PSR-18 versions of the plugin's HTTP clients with this stub, so the plugin's Shipmondo client, as
+     * the container builds it, sends its requests here. Must happen before any service that depends on them is
+     * instantiated
      */
-    public function client(): Client
+    public function install(ContainerInterface $container): void
     {
-        return new Client('functional-test', 'functional-test', true, $this, $this->psr17, $this->psr17);
+        foreach (self::HTTP_CLIENTS as $httpClient) {
+            $container->set('psr18.' . $httpClient, $this->standInFor($httpClient));
+        }
+    }
+
+    /**
+     * The plugin's HTTP client that sent the request, e.g. "setono_sylius_shipmondo.pickup_points_http_client"
+     */
+    public function httpClientOf(RequestInterface $request): string
+    {
+        return $this->httpClients[$request];
     }
 
     /**
@@ -81,9 +107,33 @@ final class ShipmondoApiStub implements HttpClientInterface
         return $this;
     }
 
-    public function sendRequest(RequestInterface $request): ResponseInterface
+    /**
+     * The PSR-18 client that stands in for the given HTTP client of the plugin: it answers from this stub, which
+     * records that the HTTP client sent the request
+     */
+    private function standInFor(string $httpClient): HttpClientInterface
+    {
+        return new class($this, $httpClient) implements HttpClientInterface {
+            public function __construct(private readonly ShipmondoApiStub $stub, private readonly string $httpClient)
+            {
+            }
+
+            public function sendRequest(RequestInterface $request): ResponseInterface
+            {
+                return $this->stub->answer($request, $this->httpClient);
+            }
+        };
+    }
+
+    /**
+     * Answers a request one of the plugin's HTTP clients sent
+     *
+     * @internal only for the PSR-18 clients {@see self::install()} installs
+     */
+    public function answer(RequestInterface $request, string $httpClient): ResponseInterface
     {
         $this->requests[] = $request;
+        $this->httpClients[$request] = $httpClient;
 
         $key = self::key($request->getMethod(), self::path($request));
         if (!isset($this->responses[$key])) {

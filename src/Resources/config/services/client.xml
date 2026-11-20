@@ -6,6 +6,13 @@
             <argument>%setono_sylius_shipmondo.api.username%</argument>
             <argument>%setono_sylius_shipmondo.api.key%</argument>
             <argument>%setono_sylius_shipmondo.api.sandbox%</argument>
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\HttpClient\ShipmondoHttpClient"/>
+        </service>
+
+        <!-- The PSR-18 versions of the two scoped HTTP clients the extension prepends, with their time limits -->
+        <service id="Setono\SyliusShipmondoPlugin\HttpClient\ShipmondoHttpClient">
+            <argument type="service" id="psr18.setono_sylius_shipmondo.http_client"/>
+            <argument type="service" id="psr18.setono_sylius_shipmondo.pickup_points_http_client"/>
         </service>
     </services>
 </container>

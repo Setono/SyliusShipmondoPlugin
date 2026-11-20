@@ -9,7 +9,6 @@ use Doctrine\ORM\EntityManagerInterface;
 use Playwright\Locator\LocatorInterface;
 use Playwright\Page\PageInterface;
 use Playwright\Symfony\Test\PlaywrightTestCase;
-use Setono\Shipmondo\Client\Client;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Model\PaymentMethodInterface;
 use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
@@ -116,12 +115,12 @@ abstract class BrowserTestCase extends PlaywrightTestCase
     }
 
     /**
-     * Replaces the plugin's Shipmondo client with a real SDK client whose HTTP transport is the stub. Must happen
-     * before any service that depends on the client is instantiated.
+     * Replaces the PSR-18 versions of the plugin's HTTP clients with the stub, so the plugin's Shipmondo client sends
+     * its requests to it. Must happen before any service that depends on them is instantiated.
      */
     private function installShipmondoStub(): void
     {
-        static::getContainer()->set(Client::class, $this->shipmondo->client());
+        $this->shipmondo->install(static::getContainer());
     }
 
     /**

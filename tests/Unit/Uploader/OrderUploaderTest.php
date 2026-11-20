@@ -294,6 +294,35 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
+     * Unlike when Shipmondo doesn't answer at all, the next upload run would create a second sales order
+     *
+     * @test
+     */
+    public function it_fails_the_order_when_shipmondo_created_the_sales_order_but_the_rest_of_its_answer_did_not_arrive(): void
+    {
+        $order = $this->order(1, self::UPLOADING);
+        $this->shipmondo->respondWithAnUnreadableBody(201);
+
+        self::assertSame(UploadOutcome::UnexpectedFailure, $this->uploader()->uploadOrder($order));
+
+        self::assertSame(self::FAILED, $order->getShipmondoState());
+        self::assertSame([[
+            'level' => LogLevel::ERROR,
+            'message' => self::UNEXPECTED_FAILURE_MESSAGE,
+            'context' => [
+                'order' => '#001',
+                'outcome' => 'unexpected_failure',
+                'state' => self::FAILED,
+                'salesOrder' => null,
+                'exception' => ConnectionException::class,
+                'shipmondoFailure' => 'unexpected_failure',
+                'shipmondoStatusCode' => 201,
+                'shipmondoError' => null,
+            ],
+        ]], $this->logRecords());
+    }
+
+    /**
      * @test
      */
     public function it_fails_the_order_when_the_sdk_cannot_read_shipmondos_answer_since_the_sales_order_may_exist(): void

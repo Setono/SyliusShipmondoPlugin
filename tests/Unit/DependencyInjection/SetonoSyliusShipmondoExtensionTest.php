@@ -5,13 +5,16 @@ declare(strict_types=1);
 namespace Tests\Setono\SyliusShipmondoPlugin\Unit\DependencyInjection;
 
 use Matthias\SymfonyDependencyInjectionTest\PhpUnit\AbstractExtensionTestCase;
+use Setono\Shipmondo\Client\Client;
 use Setono\SyliusShipmondoPlugin\Canceller\OrderCanceller;
 use Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface;
+use Setono\SyliusShipmondoPlugin\Controller\Shop\GetPickupPointsAction;
 use Setono\SyliusShipmondoPlugin\DataMapper\CompositeSalesOrderDataMapper;
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
 use Setono\SyliusShipmondoPlugin\DependencyInjection\SetonoSyliusShipmondoExtension;
 use Setono\SyliusShipmondoPlugin\Doctrine\Type\PickupPointType;
 use Setono\SyliusShipmondoPlugin\EventListener\OrderCancellationListener;
+use Setono\SyliusShipmondoPlugin\HttpClient\ShipmondoHttpClient;
 use Setono\SyliusShipmondoPlugin\Message\Middleware\AbsorbDeleteOrderFailureMiddleware;
 use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooks;
 use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProvider;
@@ -30,6 +33,7 @@ use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Symfony\Component\DependencyInjection\Compiler\ResolveClassPass;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
+use Symfony\Component\DependencyInjection\Reference;
 
 /**
  * See examples of tests and configuration options here: https://github.com/SymfonyTest/SymfonyDependencyInjectionTest
@@ -126,6 +130,28 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
     /**
      * @test
      */
+    public function the_shipmondo_client_sends_its_requests_through_the_plugins_two_http_clients(): void
+    {
+        $this->load();
+
+        $this->assertContainerBuilderHasServiceDefinitionWithArgument(Client::class, 3, new Reference(ShipmondoHttpClient::class));
+        $this->assertContainerBuilderHasServiceDefinitionWithArgument(ShipmondoHttpClient::class, 0, new Reference('psr18.setono_sylius_shipmondo.http_client'));
+        $this->assertContainerBuilderHasServiceDefinitionWithArgument(ShipmondoHttpClient::class, 1, new Reference('psr18.setono_sylius_shipmondo.pickup_points_http_client'));
+    }
+
+    /**
+     * @test
+     */
+    public function the_shops_pickup_point_search_uses_the_shipmondo_client(): void
+    {
+        $this->load();
+
+        $this->assertContainerBuilderHasServiceDefinitionWithArgument(GetPickupPointsAction::class, 2, new Reference(Client::class));
+    }
+
+    /**
+     * @test
+     */
     public function it_autoconfigures_data_mappers_and_webhook_handlers(): void
     {
         $this->load();
@@ -170,6 +196,22 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
                 ],
             ],
             'workflows' => OrderWorkflow::getConfig(),
+            'http_client' => [
+                'scoped_clients' => [
+                    'setono_sylius_shipmondo.http_client' => [
+                        'scope' => 'https://(app|sandbox)\.shipmondo\.com/',
+                        'timeout' => 10,
+                        'max_duration' => 30,
+                        'retry_failed' => false,
+                    ],
+                    'setono_sylius_shipmondo.pickup_points_http_client' => [
+                        'scope' => 'https://(app|sandbox)\.shipmondo\.com/',
+                        'timeout' => 5,
+                        'max_duration' => 10,
+                        'retry_failed' => false,
+                    ],
+                ],
+            ],
         ]], $this->container->getExtensionConfig('framework'));
 
         self::assertSame([[
