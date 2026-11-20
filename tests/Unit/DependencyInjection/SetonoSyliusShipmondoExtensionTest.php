@@ -14,6 +14,7 @@ use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
 use Setono\SyliusShipmondoPlugin\DependencyInjection\SetonoSyliusShipmondoExtension;
 use Setono\SyliusShipmondoPlugin\Doctrine\Type\PickupPointType;
 use Setono\SyliusShipmondoPlugin\EventListener\OrderCancellationListener;
+use Setono\SyliusShipmondoPlugin\HttpClient\ShipmondoHttpClient;
 use Setono\SyliusShipmondoPlugin\Message\Middleware\AbsorbDeleteOrderFailureMiddleware;
 use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooks;
 use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProvider;
@@ -129,33 +130,23 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
     /**
      * @test
      */
-    public function the_shipmondo_client_sends_its_requests_through_the_plugins_http_client(): void
+    public function the_shipmondo_client_sends_its_requests_through_the_plugins_two_http_clients(): void
     {
         $this->load();
 
-        $this->assertContainerBuilderHasServiceDefinitionWithArgument(Client::class, 3, new Reference('psr18.setono_sylius_shipmondo.http_client'));
+        $this->assertContainerBuilderHasServiceDefinitionWithArgument(Client::class, 3, new Reference(ShipmondoHttpClient::class));
+        $this->assertContainerBuilderHasServiceDefinitionWithArgument(ShipmondoHttpClient::class, 0, new Reference('psr18.setono_sylius_shipmondo.http_client'));
+        $this->assertContainerBuilderHasServiceDefinitionWithArgument(ShipmondoHttpClient::class, 1, new Reference('psr18.setono_sylius_shipmondo.pickup_points_http_client'));
     }
 
     /**
      * @test
      */
-    public function the_shops_pickup_point_search_has_its_own_shipmondo_client_on_the_pickup_points_http_client(): void
+    public function the_shops_pickup_point_search_uses_the_shipmondo_client(): void
     {
         $this->load();
 
-        // an anonymous service, whose id starts with a dot, so nothing else can reference it
-        $reference = $this->container->getDefinition(GetPickupPointsAction::class)->getArgument(2);
-        self::assertInstanceOf(Reference::class, $reference);
-        self::assertStringStartsWith('.', (string) $reference);
-
-        $client = $this->container->getDefinition((string) $reference);
-        self::assertSame(Client::class, $client->getClass());
-        self::assertEquals([
-            '%setono_sylius_shipmondo.api.username%',
-            '%setono_sylius_shipmondo.api.key%',
-            '%setono_sylius_shipmondo.api.sandbox%',
-            new Reference('psr18.setono_sylius_shipmondo.pickup_points_http_client'),
-        ], array_values($client->getArguments()));
+        $this->assertContainerBuilderHasServiceDefinitionWithArgument(GetPickupPointsAction::class, 2, new Reference(Client::class));
     }
 
     /**

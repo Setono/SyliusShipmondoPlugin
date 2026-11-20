@@ -13,7 +13,7 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 use Tests\Setono\SyliusShipmondoPlugin\Support\NetworkException;
 
 /**
- * Stands in for the Shipmondo API at the HTTP boundary: the plugin's real SDK clients build the requests and map
+ * Stands in for the Shipmondo API at the HTTP boundary: the plugin's real SDK client builds the requests and maps
  * the responses, but the PSR-18 transport of the plugin's HTTP clients is this stub ({@see self::install()}), so
  * nothing ever leaves the process.
  *
@@ -52,8 +52,8 @@ final class ShipmondoApiStub
     }
 
     /**
-     * Replaces the PSR-18 versions of the plugin's HTTP clients with this stub, so the plugin's Shipmondo clients, as
-     * the container builds them, send their requests here. Must happen before any service that depends on them is
+     * Replaces the PSR-18 versions of the plugin's HTTP clients with this stub, so the plugin's Shipmondo client, as
+     * the container builds it, sends its requests here. Must happen before any service that depends on them is
      * instantiated
      */
     public function install(ContainerInterface $container): void

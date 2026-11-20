@@ -906,8 +906,9 @@ default) without any data, and had no limit on a request as a whole, and Guzzle'
 search while a customer waited in checkout, the upload run and Messenger workers, the admin Shipmondo page, registering
 the webhooks, and cancelling an order in the admin, which deletes its sales order inside Sylius's cancel transaction.
 
-In 2.x the plugin prepends two framework scoped HTTP clients, and its Shipmondo clients send their requests through
-their PSR-18 versions:
+In 2.x the plugin prepends two framework scoped HTTP clients. Its Shipmondo client (the `Setono\Shipmondo\Client\Client`
+service) sends its requests through `HttpClient\ShipmondoHttpClient`, which sends a pickup point search through the
+PSR-18 version of the one and every other call through the PSR-18 version of the other:
 
 | HTTP client | Used by | `timeout`: the longest wait with no data at all | `max_duration`: the most one request may take |
 |---|---|---|---|
@@ -980,8 +981,7 @@ Only if you extend or call the code involved:
 
 | 1.x | 2.x |
 |---|---|
-| the `Setono\Shipmondo\Client\Client` service discovers its HTTP client | it gets `psr18.setono_sylius_shipmondo.http_client`, its 4th argument |
-| `Controller\Shop\GetPickupPointsAction` gets the `Setono\Shipmondo\Client\Client` service | it gets its own SDK `Client`, an anonymous service on `psr18.setono_sylius_shipmondo.pickup_points_http_client`. **If you decorate or replace the `Setono\Shipmondo\Client\Client` service, that no longer reaches the pickup point search:** replace the action's third argument as well |
+| the `Setono\Shipmondo\Client\Client` service discovers its HTTP client | it gets the new `HttpClient\ShipmondoHttpClient` service, its 4th argument, which sends a pickup point search through `psr18.setono_sylius_shipmondo.pickup_points_http_client` and every other call through `psr18.setono_sylius_shipmondo.http_client` |
 | `Failure\ShipmondoFailure::of()` sorts every `ConnectionException` as `temporary_failure` | a `ConnectionException` that carries a success (`getResponse()`) to a call other than a GET is an `unexpected_failure`; it has that success's `statusCode`, also when it is a `temporary_failure` |
 
 New: `DependencyInjection\SetonoSyliusShipmondoExtension::HTTP_CLIENT` and `::PICKUP_POINTS_HTTP_CLIENT`, the names of

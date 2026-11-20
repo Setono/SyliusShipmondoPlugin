@@ -29,8 +29,8 @@ use Webmozart\Assert\Assert;
 /**
  * Boots the real test application against MySQL (DATABASE_URL), starting from the baseline shop
  * ({@see ShopFixtures}), with the Shipmondo API stubbed at the HTTP boundary: the PSR-18 versions of the plugin's
- * HTTP clients are replaced with {@see ShipmondoApiStub}, so the plugin's Shipmondo clients, as the container builds
- * them, send their requests to the stub.
+ * HTTP clients are replaced with {@see ShipmondoApiStub}, so the plugin's Shipmondo client, as the container builds
+ * it, sends its requests to the stub.
  *
  * Every test runs inside a transaction that dama/doctrine-test-bundle rolls back afterwards. DAMA needs DBAL
  * savepoints for that, so in these tests the application's nested transactions use savepoints. Tests that depend

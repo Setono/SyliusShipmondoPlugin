@@ -1,6 +1,6 @@
 # Request time limits through framework scoped HTTP clients
 
-Every request to Shipmondo needs a time limit, and the shop's pickup point search, which a customer waits for in checkout, a shorter one than the rest. The plugin prepends two framework scoped HTTP clients, `setono_sylius_shipmondo.http_client` and `setono_sylius_shipmondo.pickup_points_http_client`, and gives the SDK clients their PSR-18 versions, instead of adding plugin options for the limits or an option that names a PSR-18 client service. Shops change a limit in framework config they already know, override one key and keep the rest, reach every other HTTP option (a proxy, TLS settings), see the calls in the Symfony profiler, and the plugin adds no options of its own.
+Every request to Shipmondo needs a time limit, and the shop's pickup point search, which a customer waits for in checkout, a shorter one than the rest. The plugin prepends two framework scoped HTTP clients, `setono_sylius_shipmondo.http_client` and `setono_sylius_shipmondo.pickup_points_http_client`, and gives the SDK client a PSR-18 client of its own that sends the pickup point search through the PSR-18 version of the one and every other call through the other's, instead of adding plugin options for the limits or an option that names a PSR-18 client service. Shops change a limit in framework config they already know, override one key and keep the rest, reach every other HTTP option (a proxy, TLS settings), see the calls in the Symfony profiler, and the plugin adds no options of its own.
 
 ## Considered Options
 

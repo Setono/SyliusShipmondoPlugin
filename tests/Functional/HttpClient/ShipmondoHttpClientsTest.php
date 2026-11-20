@@ -8,6 +8,7 @@ use Nyholm\Psr7\Factory\Psr17Factory;
 use Psr\Http\Client\ClientInterface as HttpClientInterface;
 use Setono\Shipmondo\Client\Client;
 use Setono\Shipmondo\Exception\ShipmondoException;
+use Setono\Shipmondo\Request\PickupPointSearch;
 use Setono\SyliusShipmondoPlugin\DependencyInjection\SetonoSyliusShipmondoExtension;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailureKind;
@@ -111,6 +112,23 @@ final class ShipmondoHttpClientsTest extends KernelTestCase
         self::assertStringStartsWith('https://app.shipmondo.com/api/public/v3/payment_gateways', $requests[0]['url']);
         self::assertSame(10.0, $requests[0]['options']['timeout']);
         self::assertSame(30.0, $requests[0]['options']['max_duration']);
+    }
+
+    /**
+     * @test
+     */
+    public function the_shipmondo_client_sends_a_pickup_point_search_through_the_pickup_points_http_client(): void
+    {
+        $client = self::getContainer()->get(Client::class);
+        Assert::isInstanceOf($client, Client::class);
+
+        $client->pickupPoints()->search(new PickupPointSearch(carrierCode: 'gls', countryCode: 'DK', zipCode: '8000'));
+
+        $requests = $this->transport->requests();
+        self::assertCount(1, $requests);
+        self::assertStringStartsWith('https://app.shipmondo.com/api/public/v3/pickup_points', $requests[0]['url']);
+        self::assertSame(5.0, $requests[0]['options']['timeout']);
+        self::assertSame(10.0, $requests[0]['options']['max_duration']);
     }
 
     /**

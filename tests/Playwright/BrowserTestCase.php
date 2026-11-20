@@ -115,8 +115,8 @@ abstract class BrowserTestCase extends PlaywrightTestCase
     }
 
     /**
-     * Replaces the PSR-18 versions of the plugin's HTTP clients with the stub, so the plugin's Shipmondo clients send
-     * their requests to it. Must happen before any service that depends on them is instantiated.
+     * Replaces the PSR-18 versions of the plugin's HTTP clients with the stub, so the plugin's Shipmondo client sends
+     * its requests to it. Must happen before any service that depends on them is instantiated.
      */
     private function installShipmondoStub(): void
     {
