@@ -1131,8 +1131,10 @@ recorded in [ADR 0003](docs/adr/0003-a-sales-order-lookup-settles-every-unlinked
 
 - **An `unlinked` order that is cancelled in Sylius is settled by its lookup too** (section 7): the sales order the lookup
   finds is deleted, and the order becomes `cancelled`; with none found, it becomes `cancelled` right away; with several,
-  it stays `unlinked`. Cancelling it in the admin flashes that its sales order will be deleted once an upload run
-  finds it.
+  it stays `unlinked`. The cancel changes the order, so its lookup waits ten minutes from the cancel, and then for the
+  next upload run, and with several matches nothing is deleted. So cancelling it in the admin flashes that its sales
+  order will be deleted once an upload run finds it, at least ten minutes later, and to cancel it in Shipmondo when the
+  order must not be packed before then, or still shows as Unlinked later.
 - **A lookup that fails leaves the order `unlinked`**, logs the failure, and the next run tries again. A credentials
   failure stops the upload run, as for an upload. A 429 stops the lookups, which have their own rate limit in Shipmondo
   (about 100 searches a minute), but the pending orders are still uploaded. **Either way, the command fails**, so your
