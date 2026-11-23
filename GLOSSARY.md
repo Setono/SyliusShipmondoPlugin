@@ -15,7 +15,7 @@ Creating the sales order for a Sylius order in Shipmondo.
 _Avoid_: Dispatch, sync, export, push
 
 **Upload run**:
-One pass of the order upload, which uploads every pending order that qualifies for upload. It stops early after an upload that hits a credentials failure or is rate limited, or after three rejected uploads with no upload between them, and the remaining orders stay pending for the next run.
+One pass of the order upload, which looks up the sales orders of the unlinked orders and then uploads every pending order that qualifies for upload. It stops early after an upload that hits a credentials failure or is rate limited, or after three rejected uploads with no upload between them, and the remaining orders stay pending for the next run.
 _Avoid_: Sync, batch
 
 **Shipmondo state**:
@@ -35,18 +35,22 @@ Shipmondo has a sales order for the order, and the order is linked to it. Only a
 _Avoid_: Dispatched, synced
 
 **Unlinked**:
-Shipmondo most likely has a sales order for the order, but the order isn't linked to it: its upload was an unread success, so which sales order Shipmondo created is unknown.
+Shipmondo may have a sales order for the order, but the order isn't linked to it. Either its upload was an unread success, so Shipmondo created a sales order but which is unknown, or the call that creates the sales order failed temporarily, so Shipmondo may have created one before the failure. It stays unlinked until a sales order lookup settles it.
 _Avoid_: Unconfirmed, lost
+
+**Sales order lookup**:
+Finding the sales order Shipmondo created for an unlinked order, by the exact order id its upload sent. An upload run looks up each order that has been unlinked for at least ten minutes, since Shipmondo lists a new sales order only after a short delay. One sales order found: the order is linked to it and becomes uploaded. None: someone deleted it in Shipmondo, so the order goes back to pending and is uploaded again, as when a linked order's sales order is deleted. Several: the order stays unlinked, since some may be another shop's. A lookup that fails is tried again by the next upload run.
+_Avoid_: Search, sync, reconcile
 
 **Failed**:
 The order's upload can't succeed as it is: Shipmondo rejected it, or the order's data couldn't be turned into a sales order. Shipmondo has no sales order for it. It stays failed until an admin retries its upload, which makes it pending again.
 _Avoid_: Error, broken
 
 **Cancelled**:
-The Sylius order was cancelled, and Shipmondo has no sales order for it: it was never uploaded, or its sales order was deleted. Nothing more happens to it. An order that is cancelled in Sylius becomes cancelled right away when it is pending or failed, once its sales order is deleted when it is uploaded, once its sales order is found in Shipmondo and deleted, or isn't found, when it is unlinked, and once its upload is settled when it is uploading.
+The Sylius order was cancelled, and Shipmondo has no sales order for it: it was never uploaded, or its sales order was deleted. Nothing more happens to it. An order that is cancelled in Sylius becomes cancelled right away when it is pending or failed, once its sales order is deleted when it is uploaded, once a sales order lookup finds its sales order and it is deleted, or finds none, when it is unlinked, and once its upload is settled when it is uploading.
 
 **Upload outcome**:
-How one upload went: uploaded, a Shipmondo failure, the order changed while it was uploading (back to pending), or skipped because the order wasn't uploading. It decides the order's Shipmondo state: an upload that is an unread success makes the order unlinked, an upload that is rejected or not found, or fails unexpectedly in any other way, makes it failed, and any other Shipmondo failure puts it back to pending.
+How one upload went: uploaded, a Shipmondo failure, the order changed while it was uploading (back to pending), or skipped because the order wasn't uploading. It decides the order's Shipmondo state: an upload that is an unread success, or whose call that creates the sales order fails temporarily, makes the order unlinked; an upload that is rejected or not found, or fails unexpectedly in any other way, makes it failed; and any other Shipmondo failure puts it back to pending.
 
 **Rejected upload**:
 An upload that Shipmondo rejected or answered with not found. The order becomes failed, and the upload counts toward the upload run's stop rule.

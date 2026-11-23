@@ -1,5 +1,7 @@
 # An unread success makes the order unlinked, not failed
 
+_Partly superseded by [ADR 0003](0003-a-sales-order-lookup-settles-every-unlinked-order.md): a temporary failure to create the sales order makes the order unlinked too, and a sales order lookup settles every unlinked order._
+
 When Shipmondo answers the upload of an order with a success that is cut off or can't be read, Shipmondo has created the sales order, but the plugin doesn't know its id. Such an upload used to make the order failed, like any unexpected failure. But the plugin acts on a failed order as one Shipmondo has no sales order for: a Sylius cancel makes it cancelled right away, without touching Shipmondo, and an admin can retry its upload, which would create a second sales order that could be shipped twice. So an unread success is its own kind of Shipmondo failure, and it makes the order unlinked, a Shipmondo state of its own. Failed always means Shipmondo has no sales order. Nothing moves an order out of unlinked until the plugin can look its sales order up in Shipmondo by order number. A Sylius cancel leaves an unlinked order unlinked and tells the admin to cancel the sales order in Shipmondo by hand.
 
 ## Considered Options
