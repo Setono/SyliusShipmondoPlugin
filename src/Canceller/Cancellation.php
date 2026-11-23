@@ -36,6 +36,12 @@ enum Cancellation
     case LeftToUpload;
 
     /**
+     * The order is unlinked: Shipmondo most likely has a sales order for it, but which is unknown, so it can't be
+     * deleted, and the order stays unlinked. Its sales order has to be cancelled in Shipmondo by hand
+     */
+    case LeftUnlinked;
+
+    /**
      * The order isn't cancelled in Sylius, or a guard a store added holds it back, so nothing happened
      */
     case NotCancelled;

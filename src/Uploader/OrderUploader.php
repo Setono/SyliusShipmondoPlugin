@@ -68,7 +68,8 @@ final class OrderUploader implements OrderUploaderInterface
             }
 
             $rejectedInARow = match ($outcome) {
-                UploadOutcome::Uploaded => 0,
+                // Shipmondo accepted the order, even when its answer couldn't be read, so nothing shop-wide is wrong
+                UploadOutcome::Uploaded, UploadOutcome::UnreadSuccess => 0,
                 UploadOutcome::Rejected => $rejectedInARow + 1,
                 default => $rejectedInARow,
             };
@@ -173,7 +174,7 @@ final class OrderUploader implements OrderUploaderInterface
      *
      * The order may even have been cancelled. Its cancellation left it to its upload, because the order was uploading,
      * so it becomes cancelled here, once it is pending or failed, or once the sales order Shipmondo just created is
-     * deleted
+     * deleted. An unlinked order stays unlinked, since which sales order Shipmondo created is unknown
      */
     private function settle(
         OrderInterface $order,
@@ -188,6 +189,7 @@ final class OrderUploader implements OrderUploaderInterface
 
             $this->orderWorkflow->apply($order, match ($outcome) {
                 UploadOutcome::Uploaded => OrderWorkflow::TRANSITION_COMPLETE_UPLOAD,
+                UploadOutcome::UnreadSuccess => OrderWorkflow::TRANSITION_COMPLETE_UPLOAD_UNLINKED,
                 UploadOutcome::Rejected, UploadOutcome::UnexpectedFailure => OrderWorkflow::TRANSITION_FAIL,
                 default => OrderWorkflow::TRANSITION_RETRY,
             }, [OrderWorkflow::CONTEXT_SALES_ORDER_ID => $salesOrderId]);
@@ -223,6 +225,7 @@ final class OrderUploader implements OrderUploaderInterface
             ShipmondoFailureKind::TemporaryFailure => UploadOutcome::TemporaryFailure,
             ShipmondoFailureKind::NotFound, ShipmondoFailureKind::Rejected => UploadOutcome::Rejected,
             ShipmondoFailureKind::UnexpectedFailure => UploadOutcome::UnexpectedFailure,
+            ShipmondoFailureKind::UnreadSuccess => UploadOutcome::UnreadSuccess,
         };
     }
 
@@ -230,6 +233,7 @@ final class OrderUploader implements OrderUploaderInterface
     {
         [$level, $message] = match ($outcome) {
             UploadOutcome::Uploaded => [LogLevel::INFO, 'The order {order} was uploaded to Shipmondo as the sales order {salesOrder}'],
+            UploadOutcome::UnreadSuccess => [LogLevel::ERROR, 'Shipmondo answered the upload of the order {order} with a success that was cut off or could not be read, so Shipmondo most likely has a sales order for it, but which is unknown. The order is unlinked: find its sales order in Shipmondo'],
             UploadOutcome::Rejected => [LogLevel::ERROR, 'Shipmondo rejected the upload of the order {order}, so the order is failed'],
             UploadOutcome::UnexpectedFailure => [LogLevel::ERROR, 'The upload of the order {order} failed unexpectedly, so the order is failed'],
             UploadOutcome::CredentialsFailure => [LogLevel::ERROR, 'Shipmondo did not accept the API credentials when uploading the order {order}, so the order goes back to pending'],

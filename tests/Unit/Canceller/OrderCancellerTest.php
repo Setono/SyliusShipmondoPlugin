@@ -8,6 +8,7 @@ use PHPUnit\Framework\TestCase;
 use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
+use Psr\Log\LogLevel;
 use Setono\SyliusShipmondoPlugin\Canceller\Cancellation;
 use Setono\SyliusShipmondoPlugin\Canceller\OrderCanceller;
 use Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder;
@@ -21,6 +22,7 @@ use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Workflow\Event\GuardEvent;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\Orders;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\RecordingLogger;
 
 /**
  * Exercises the canceller with the real order state machine (including its guard) and real orders
@@ -37,10 +39,13 @@ final class OrderCancellerTest extends TestCase
      */
     private EventDispatcher $eventDispatcher;
 
+    private RecordingLogger $logger;
+
     protected function setUp(): void
     {
         $this->commandBus = $this->prophesize(MessageBusInterface::class);
         $this->eventDispatcher = new EventDispatcher();
+        $this->logger = new RecordingLogger();
     }
 
     /**
@@ -110,6 +115,27 @@ final class OrderCancellerTest extends TestCase
         self::assertSame(Cancellation::LeftToUpload, $this->canceller()->cancel($order));
 
         self::assertSame(OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO, $order->getShipmondoState());
+        self::assertSame([], $this->logger->records);
+    }
+
+    /**
+     * Shipmondo most likely has a sales order for it, but which is unknown, so it can't be deleted
+     *
+     * @test
+     */
+    public function it_leaves_an_unlinked_order_unlinked_and_says_its_sales_order_has_to_be_cancelled_in_shipmondo(): void
+    {
+        $order = self::cancelledOrder(OrderInterface::SHIPMONDO_STATE_UNLINKED);
+        $this->commandBus->dispatch(Argument::cetera())->shouldNotBeCalled();
+
+        self::assertSame(Cancellation::LeftUnlinked, $this->canceller()->cancel($order));
+
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame([[
+            'level' => LogLevel::ERROR,
+            'message' => 'The order {order} was cancelled, but it is unlinked: Shipmondo most likely has a sales order for it, but which is unknown, so it can\'t be deleted. Find the sales order in Shipmondo and cancel it there',
+            'context' => ['order' => '#042'],
+        ]], $this->logger->records);
     }
 
     /**
@@ -153,14 +179,15 @@ final class OrderCancellerTest extends TestCase
 
     private function canceller(): OrderCanceller
     {
-        return new OrderCanceller($this->commandBus->reveal(), OrderWorkflow::getWorkflow($this->eventDispatcher));
+        return new OrderCanceller($this->commandBus->reveal(), OrderWorkflow::getWorkflow($this->eventDispatcher), $this->logger);
     }
 
     /**
-     * An order with the id 42 that is cancelled in Sylius. An uploaded order is linked to the sales order 1001
+     * An order with the id 42 and the number #042 that is cancelled in Sylius. An uploaded order is linked to the sales
+     * order 1001
      */
     private static function cancelledOrder(string $shipmondoState): Order
     {
-        return Orders::create($shipmondoState, 1001, OrderInterface::STATE_CANCELLED, 42);
+        return Orders::create($shipmondoState, 1001, OrderInterface::STATE_CANCELLED, 42, '#042');
     }
 }

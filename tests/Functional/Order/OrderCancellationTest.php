@@ -131,6 +131,26 @@ final class OrderCancellationTest extends FunctionalTestCase
     }
 
     /**
+     * Shipmondo most likely has a sales order for it, but which is unknown, so it can't be deleted
+     *
+     * @test
+     */
+    public function it_leaves_an_unlinked_order_unlinked_and_tells_the_admin_to_cancel_its_sales_order_in_shipmondo(): void
+    {
+        $order = $this->orderIn(OrderInterface::SHIPMONDO_STATE_UNLINKED);
+
+        $this->cancelInAdmin($order);
+
+        self::assertResponseRedirects(sprintf('/admin/orders/%d', self::id($order)));
+        $row = $this->orderRow(self::id($order));
+        self::assertSame([OrderInterface::STATE_CANCELLED, OrderInterface::SHIPMONDO_STATE_UNLINKED, null], [$row['state'], $row['shipmondo_state'], $row['shipmondo_id']]);
+        self::assertSame([], $this->shipmondo->requests());
+
+        $this->browser->followRedirect();
+        self::assertSelectorTextContains('.message.negative', 'The order was cancelled, but Shipmondo most likely has a sales order for it that could not be deleted, because the store does not know which sales order it is. Find the order in Shipmondo and cancel it there.');
+    }
+
+    /**
      * Its upload makes the order cancelled once the upload is settled
      *
      * @test

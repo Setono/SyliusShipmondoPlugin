@@ -7,6 +7,7 @@ namespace Setono\SyliusShipmondoPlugin\Failure;
 use Setono\Shipmondo\Exception\ClientErrorException;
 use Setono\Shipmondo\Exception\ConnectionException;
 use Setono\Shipmondo\Exception\ForbiddenException;
+use Setono\Shipmondo\Exception\MalformedResponseException;
 use Setono\Shipmondo\Exception\NotFoundException;
 use Setono\Shipmondo\Exception\ResponseAwareException;
 use Setono\Shipmondo\Exception\ServerErrorException;
@@ -51,10 +52,8 @@ final class ShipmondoFailure implements TranslatableInterface
         return new self(match (true) {
             $exception instanceof UnauthorizedException, $exception instanceof ForbiddenException => ShipmondoFailureKind::CredentialsFailure,
             $exception instanceof TooManyRequestsException => ShipmondoFailureKind::RateLimited,
-            // Shipmondo answered a call that changes something with a success, so it did what was asked, e.g. created a
-            // sales order, but the rest of its answer didn't arrive, e.g. in time: trying again could do it twice.
-            // When a read ends so, reading again changes nothing, as when Shipmondo didn't answer at all
-            $exception instanceof ConnectionException && null !== $exception->getResponse() && !self::isRead($exception) => ShipmondoFailureKind::UnexpectedFailure,
+            self::isUnreadSuccess($exception) => ShipmondoFailureKind::UnreadSuccess,
+            // a read whose success was cut off is like one Shipmondo didn't answer: reading again changes nothing
             $exception instanceof ServerErrorException, $exception instanceof ConnectionException => ShipmondoFailureKind::TemporaryFailure,
             $exception instanceof NotFoundException => ShipmondoFailureKind::NotFound,
             $exception instanceof ClientErrorException => ShipmondoFailureKind::Rejected,
@@ -62,9 +61,20 @@ final class ShipmondoFailure implements TranslatableInterface
         }, $exception);
     }
 
-    private static function isRead(ConnectionException $exception): bool
+    /**
+     * Whether Shipmondo answered a call that changes something with a success, so it did what was asked, e.g. created a
+     * sales order, but its answer was cut off, e.g. because it didn't arrive in time, or the SDK couldn't read it
+     */
+    private static function isUnreadSuccess(\Throwable $exception): bool
     {
-        return 'GET' === $exception->getRequest()->getMethod();
+        $request = match (true) {
+            $exception instanceof ConnectionException && null !== $exception->getResponse() => $exception->getRequest(),
+            // the SDK throws it only for a success
+            $exception instanceof MalformedResponseException => $exception->getRequest(),
+            default => null,
+        };
+
+        return null !== $request && 'GET' !== $request->getMethod();
     }
 
     /**

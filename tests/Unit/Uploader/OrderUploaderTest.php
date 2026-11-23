@@ -17,6 +17,7 @@ use Setono\Shipmondo\Exception\ConnectionException;
 use Setono\Shipmondo\Exception\ForbiddenException;
 use Setono\Shipmondo\Exception\InternalServerErrorException;
 use Setono\Shipmondo\Exception\MalformedResponseException;
+use Setono\Shipmondo\Exception\MappingException;
 use Setono\Shipmondo\Exception\NotFoundException;
 use Setono\Shipmondo\Exception\TooManyRequestsException;
 use Setono\Shipmondo\Exception\UnauthorizedException;
@@ -75,6 +76,8 @@ final class OrderUploaderTest extends TestCase
 
     private const FAILED = OrderInterface::SHIPMONDO_STATE_FAILED;
 
+    private const UNLINKED = OrderInterface::SHIPMONDO_STATE_UNLINKED;
+
     private const CANCELLED = OrderInterface::SHIPMONDO_STATE_CANCELLED;
 
     private const CANCELLED_WHILE_UPLOADING_MESSAGE = 'The order {order} was cancelled while it was uploading, so it becomes cancelled once Shipmondo has no sales order for it';
@@ -86,6 +89,8 @@ final class OrderUploaderTest extends TestCase
     private const RATE_LIMITED_MESSAGE = 'Shipmondo rate limited the upload of the order {order}, so the order goes back to pending';
 
     private const TEMPORARY_FAILURE_MESSAGE = 'The upload of the order {order} failed temporarily, so the order goes back to pending';
+
+    private const UNREAD_SUCCESS_MESSAGE = 'Shipmondo answered the upload of the order {order} with a success that was cut off or could not be read, so Shipmondo most likely has a sales order for it, but which is unknown. The order is unlinked: find its sales order in Shipmondo';
 
     private const UNEXPECTED_FAILURE_MESSAGE = 'The upload of the order {order} failed unexpectedly, so the order is failed';
 
@@ -298,24 +303,24 @@ final class OrderUploaderTest extends TestCase
      *
      * @test
      */
-    public function it_fails_the_order_when_shipmondo_created_the_sales_order_but_the_rest_of_its_answer_did_not_arrive(): void
+    public function it_makes_the_order_unlinked_when_shipmondo_created_the_sales_order_but_the_rest_of_its_answer_did_not_arrive(): void
     {
         $order = $this->order(1, self::UPLOADING);
         $this->shipmondo->respondWithAnUnreadableBody(201);
 
-        self::assertSame(UploadOutcome::UnexpectedFailure, $this->uploader()->uploadOrder($order));
+        self::assertSame(UploadOutcome::UnreadSuccess, $this->uploader()->uploadOrder($order));
 
-        self::assertSame(self::FAILED, $order->getShipmondoState());
+        self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
         self::assertSame([[
             'level' => LogLevel::ERROR,
-            'message' => self::UNEXPECTED_FAILURE_MESSAGE,
+            'message' => self::UNREAD_SUCCESS_MESSAGE,
             'context' => [
                 'order' => '#001',
-                'outcome' => 'unexpected_failure',
-                'state' => self::FAILED,
+                'outcome' => 'unread_success',
+                'state' => self::UNLINKED,
                 'salesOrder' => null,
                 'exception' => ConnectionException::class,
-                'shipmondoFailure' => 'unexpected_failure',
+                'shipmondoFailure' => 'unread_success',
                 'shipmondoStatusCode' => 201,
                 'shipmondoError' => null,
             ],
@@ -324,29 +329,64 @@ final class OrderUploaderTest extends TestCase
 
     /**
      * @test
+     *
+     * @dataProvider unreadableSalesOrders
+     *
+     * @param class-string<\Throwable> $exception
      */
-    public function it_fails_the_order_when_the_sdk_cannot_read_shipmondos_answer_since_the_sales_order_may_exist(): void
+    public function it_makes_the_order_unlinked_when_the_sdk_cannot_read_the_sales_order_shipmondo_created(string $body, string $exception): void
     {
         $order = $this->order(1, self::UPLOADING);
-        $this->shipmondo->respond(201, body: 'not JSON');
+        $this->shipmondo->respond(201, body: $body);
 
-        self::assertSame(UploadOutcome::UnexpectedFailure, $this->uploader()->uploadOrder($order));
+        self::assertSame(UploadOutcome::UnreadSuccess, $this->uploader()->uploadOrder($order));
 
-        self::assertSame(self::FAILED, $order->getShipmondoState());
+        self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
         self::assertSame([[
             'level' => LogLevel::ERROR,
-            'message' => self::UNEXPECTED_FAILURE_MESSAGE,
+            'message' => self::UNREAD_SUCCESS_MESSAGE,
             'context' => [
                 'order' => '#001',
-                'outcome' => 'unexpected_failure',
-                'state' => self::FAILED,
+                'outcome' => 'unread_success',
+                'state' => self::UNLINKED,
                 'salesOrder' => null,
-                'exception' => MalformedResponseException::class,
-                'shipmondoFailure' => 'unexpected_failure',
+                'exception' => $exception,
+                'shipmondoFailure' => 'unread_success',
                 'shipmondoStatusCode' => 201,
                 'shipmondoError' => null,
             ],
         ]], $this->logRecords());
+    }
+
+    /**
+     * @return iterable<string, array{string, class-string<\Throwable>}>
+     */
+    public static function unreadableSalesOrders(): iterable
+    {
+        yield 'not JSON' => ['not JSON', MalformedResponseException::class];
+        yield 'not a sales order' => ['{"sales_order":1001}', MappingException::class];
+    }
+
+    /**
+     * Shipmondo most likely has a sales order for it, but which is unknown, so it can't be deleted
+     *
+     * @test
+     */
+    public function it_leaves_an_order_that_was_cancelled_while_it_was_uploading_unlinked_when_the_answer_to_its_upload_cannot_be_read(): void
+    {
+        $order = $this->order(1, self::UPLOADING);
+        $this->cancelWhenReadAgain($order);
+        $this->shipmondo->respondWithAnUnreadableBody(201);
+
+        self::assertSame(UploadOutcome::UnreadSuccess, $this->uploader()->uploadOrder($order));
+
+        self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame(['POST sales_orders'], $this->shipmondo->requestLines());
+        self::assertSame([
+            [LogLevel::ERROR, self::UNREAD_SUCCESS_MESSAGE],
+            [LogLevel::INFO, self::CANCELLED_WHILE_UPLOADING_MESSAGE],
+            [LogLevel::ERROR, 'The order {order} was cancelled, but it is unlinked: Shipmondo most likely has a sales order for it, but which is unknown, so it can\'t be deleted. Find the sales order in Shipmondo and cancel it there'],
+        ], array_map(static fn (array $record): array => [$record['level'], $record['message']], $this->logger->records));
     }
 
     /**
@@ -746,6 +786,34 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
+     * Shipmondo accepted the order, even though its answer couldn't be read, so nothing shop-wide is wrong
+     *
+     * @test
+     */
+    public function it_starts_counting_rejected_uploads_over_after_an_upload_whose_answer_cannot_be_read(): void
+    {
+        $orders = [$this->order(1), $this->order(2), $this->order(3), $this->order(4), $this->order(5), $this->order(6)];
+        $notTried = $this->order(7);
+        $this->shipmondo
+            ->respond(422)
+            ->respond(422)
+            ->respondWithAnUnreadableBody(201)
+            ->respond(422)
+            ->respond(422)
+            ->respond(422)
+        ;
+        $this->entityManager->refresh($notTried, Argument::cetera())->shouldNotBeCalled();
+
+        self::assertSame(UploadOutcome::Rejected, $this->uploader()->upload());
+
+        self::assertSame(['#001', '#002', '#003', '#004', '#005', '#006'], $this->uploadedOrderNumbers());
+        self::assertSame(
+            [self::FAILED, self::FAILED, self::UNLINKED, self::FAILED, self::FAILED, self::FAILED, self::PENDING],
+            array_map(static fn (Order $order): string => $order->getShipmondoState(), [...$orders, $notTried]),
+        );
+    }
+
+    /**
      * @test
      *
      * @dataProvider envelopesWithoutAnOutcome
@@ -859,7 +927,7 @@ final class OrderUploaderTest extends TestCase
             ])),
         ]);
 
-        $orderCanceller = new OrderCanceller($commandBus, $orderWorkflow);
+        $orderCanceller = new OrderCanceller($commandBus, $orderWorkflow, $this->logger);
         $uploader = new OrderUploader(
             $provider->reveal(),
             $commandBus,

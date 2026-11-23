@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Failure;
 
+use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Setono\Shipmondo\Client\Client;
 use Setono\Shipmondo\Exception\ConnectionException;
+use Setono\Shipmondo\Exception\MalformedResponseException;
+use Setono\Shipmondo\Exception\MappingException;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailureKind;
@@ -75,16 +78,46 @@ final class ShipmondoFailureTest extends TestCase
      *
      * @param \Closure(Client): mixed $call
      */
-    public function it_is_an_unexpected_failure_when_the_success_of_a_call_that_changes_something_does_not_arrive_in_full(\Closure $call, int $statusCode): void
+    public function it_is_an_unread_success_when_the_success_of_a_call_that_changes_something_is_cut_off(\Closure $call, int $statusCode): void
     {
         $exception = self::failedCall((new ScriptedHttpClient())->respondWithAnUnreadableBody($statusCode), $call);
         self::assertInstanceOf(ConnectionException::class, $exception);
 
         $failure = ShipmondoFailure::of($exception);
 
-        self::assertSame(ShipmondoFailureKind::UnexpectedFailure, $failure->kind);
+        self::assertSame(ShipmondoFailureKind::UnreadSuccess, $failure->kind);
         self::assertSame($statusCode, $failure->statusCode);
         self::assertNull($failure->error);
+    }
+
+    /**
+     * @test
+     *
+     * @dataProvider callsThatChangeSomething
+     *
+     * @param \Closure(Client): mixed $call
+     */
+    public function it_is_an_unread_success_when_the_sdk_cannot_read_the_success_of_a_call_that_changes_something(\Closure $call, int $statusCode): void
+    {
+        $exception = self::failedCall((new ScriptedHttpClient())->respond($statusCode, body: 'not JSON'), $call);
+        self::assertInstanceOf(MalformedResponseException::class, $exception);
+
+        $failure = ShipmondoFailure::of($exception);
+
+        self::assertSame(ShipmondoFailureKind::UnreadSuccess, $failure->kind);
+        self::assertSame($statusCode, $failure->statusCode);
+        self::assertNull($failure->error);
+    }
+
+    /**
+     * @test
+     */
+    public function it_is_an_unread_success_when_the_sdk_cannot_map_the_sales_order_shipmondo_created(): void
+    {
+        $exception = self::failedCall((new ScriptedHttpClient())->respond(201, ['sales_order' => 1001]), self::createSalesOrder());
+        self::assertInstanceOf(MappingException::class, $exception);
+
+        self::assertSame(ShipmondoFailureKind::UnreadSuccess, ShipmondoFailure::of($exception)->kind);
     }
 
     /**
@@ -92,7 +125,7 @@ final class ShipmondoFailureTest extends TestCase
      */
     public static function callsThatChangeSomething(): iterable
     {
-        yield 'creating a sales order' => [static fn (Client $client): mixed => $client->salesOrders()->create(new SalesOrderRequest(orderId: '000001001')), 201];
+        yield 'creating a sales order' => [self::createSalesOrder(), 201];
         yield 'deleting a sales order' => [static function (Client $client): void {
             $client->salesOrders()->delete(1001);
         }, 200];
@@ -127,13 +160,26 @@ final class ShipmondoFailureTest extends TestCase
     /**
      * @test
      */
-    public function it_is_an_unexpected_failure_when_the_sdk_cannot_read_a_successful_answer(): void
+    public function it_is_an_unexpected_failure_when_the_sdk_cannot_read_the_success_of_a_read(): void
     {
         $failure = ShipmondoFailure::of(self::failedCall((new ScriptedHttpClient())->respond(200, body: 'not JSON')));
 
         self::assertSame(ShipmondoFailureKind::UnexpectedFailure, $failure->kind);
         self::assertSame(200, $failure->statusCode);
         self::assertNull($failure->error);
+    }
+
+    /**
+     * Without the request, nothing says whether the success answered a call that changes something
+     *
+     * @test
+     */
+    public function it_is_an_unexpected_failure_when_an_unreadable_success_does_not_say_which_call_it_answered(): void
+    {
+        $failure = ShipmondoFailure::of(new MalformedResponseException((new Psr17Factory())->createResponse(201)));
+
+        self::assertSame(ShipmondoFailureKind::UnexpectedFailure, $failure->kind);
+        self::assertSame(201, $failure->statusCode);
     }
 
     /**
@@ -173,16 +219,21 @@ final class ShipmondoFailureTest extends TestCase
      */
     public function every_kind_explains_itself(ShipmondoFailureKind $kind, string $explanation): void
     {
-        $statusCode = [
-            'credentials_failure' => 401,
-            'rate_limited' => 429,
-            'temporary_failure' => 500,
-            'not_found' => 404,
-            'rejected' => 422,
-            'unexpected_failure' => 302,
-        ][$kind->value];
+        $statusCode = match ($kind) {
+            ShipmondoFailureKind::CredentialsFailure => 401,
+            ShipmondoFailureKind::RateLimited => 429,
+            ShipmondoFailureKind::TemporaryFailure => 500,
+            ShipmondoFailureKind::NotFound => 404,
+            ShipmondoFailureKind::Rejected => 422,
+            ShipmondoFailureKind::UnexpectedFailure => 302,
+            // a created sales order that can't be read
+            ShipmondoFailureKind::UnreadSuccess => 201,
+        };
 
-        $failure = ShipmondoFailure::of(self::failedCall((new ScriptedHttpClient())->respond($statusCode, ['error' => 'Invalid or not found parameter(s)'])));
+        $failure = ShipmondoFailure::of(self::failedCall(
+            (new ScriptedHttpClient())->respond($statusCode, ['error' => 'Invalid or not found parameter(s)']),
+            ShipmondoFailureKind::UnreadSuccess === $kind ? self::createSalesOrder() : null,
+        ));
 
         self::assertSame($kind, $failure->kind);
         self::assertSame($explanation, $failure->trans(Translations::translator()));
@@ -199,6 +250,7 @@ final class ShipmondoFailureTest extends TestCase
         yield 'not found' => [ShipmondoFailureKind::NotFound, 'Shipmondo could not find what was asked for: Invalid or not found parameter(s)'];
         yield 'rejected' => [ShipmondoFailureKind::Rejected, 'Shipmondo refused the request: Invalid or not found parameter(s)'];
         yield 'unexpected failure' => [ShipmondoFailureKind::UnexpectedFailure, 'Something unexpected went wrong when calling Shipmondo: Invalid or not found parameter(s)'];
+        yield 'unread success' => [ShipmondoFailureKind::UnreadSuccess, 'Shipmondo did what was asked, but its answer was cut off or could not be read: Invalid or not found parameter(s)'];
     }
 
     /**
@@ -223,6 +275,14 @@ final class ShipmondoFailureTest extends TestCase
         $failure = ShipmondoFailure::of(self::failedCall((new ScriptedHttpClient())->respond(422, ['error' => 'Ugyldig'])));
 
         self::assertSame('Shipmondo afviste kaldet: Ugyldig', $failure->trans($translator, 'da'));
+    }
+
+    /**
+     * @return \Closure(Client): mixed
+     */
+    private static function createSalesOrder(): \Closure
+    {
+        return static fn (Client $client): mixed => $client->salesOrders()->create(new SalesOrderRequest(orderId: '000001001'));
     }
 
     /**

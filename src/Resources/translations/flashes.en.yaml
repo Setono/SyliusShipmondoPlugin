@@ -2,6 +2,7 @@ setono_sylius_shipmondo:
     order_deleted_in_shipmondo: 'The order was deleted in Shipmondo because it was cancelled.'
     order_will_be_deleted_in_shipmondo: 'The order will be deleted in Shipmondo because it was cancelled.'
     order_not_deleted_in_shipmondo: 'The order was cancelled, but it could not be deleted in Shipmondo. Delete it in Shipmondo manually.'
+    order_unlinked_not_deleted_in_shipmondo: 'The order was cancelled, but Shipmondo most likely has a sales order for it that could not be deleted, because the store does not know which sales order it is. Find the order in Shipmondo and cancel it there.'
     payment_gateways_not_fetched: 'Could not fetch the payment gateways from Shipmondo. %reason%'
     shipment_templates_not_fetched: 'Could not fetch the shipment templates from Shipmondo. %reason%'
     shipmondo_data_not_fetched: 'Could not fetch the payment gateways and shipment templates from Shipmondo. %reason%'

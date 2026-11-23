@@ -57,8 +57,9 @@ final class DeleteOrderHandler
             $this->shipmondoClient->salesOrders()->delete($shipmondoId);
         } catch (\Throwable $e) {
             match (ShipmondoFailure::of($e)->kind) {
-                // the sales order was already deleted in Shipmondo, which is what we wanted
-                ShipmondoFailureKind::NotFound => null,
+                // the sales order was already deleted in Shipmondo, or Shipmondo deleted it but its answer was cut off or
+                // couldn't be read: either way it is gone, which is what we wanted
+                ShipmondoFailureKind::NotFound, ShipmondoFailureKind::UnreadSuccess => null,
                 ShipmondoFailureKind::TemporaryFailure, ShipmondoFailureKind::RateLimited => throw $e,
                 default => throw new UnrecoverableMessageHandlingException(sprintf(
                     'Shipmondo did not delete the sales order %d of the order %s, and trying again will not change that',

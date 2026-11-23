@@ -22,6 +22,7 @@ final class OrderWorkflowTest extends TestCase
             OrderInterface::SHIPMONDO_STATE_PENDING,
             OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO,
             OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO,
+            OrderInterface::SHIPMONDO_STATE_UNLINKED,
             OrderInterface::SHIPMONDO_STATE_FAILED,
             OrderInterface::SHIPMONDO_STATE_CANCELLED,
         ], OrderWorkflow::getStates());
@@ -34,7 +35,7 @@ final class OrderWorkflowTest extends TestCase
     {
         $transitions = OrderWorkflow::getTransitions();
 
-        self::assertCount(6, $transitions);
+        self::assertCount(7, $transitions);
         self::assertContainsOnlyInstancesOf(Transition::class, $transitions);
 
         $byName = [];
@@ -58,6 +59,15 @@ final class OrderWorkflowTest extends TestCase
         self::assertSame(
             [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO],
             $byName[OrderWorkflow::TRANSITION_COMPLETE_UPLOAD]->getTos(),
+        );
+
+        self::assertSame(
+            [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO],
+            $byName[OrderWorkflow::TRANSITION_COMPLETE_UPLOAD_UNLINKED]->getFroms(),
+        );
+        self::assertSame(
+            [OrderInterface::SHIPMONDO_STATE_UNLINKED],
+            $byName[OrderWorkflow::TRANSITION_COMPLETE_UPLOAD_UNLINKED]->getTos(),
         );
 
         self::assertSame(
@@ -116,6 +126,25 @@ final class OrderWorkflowTest extends TestCase
     }
 
     /**
+     * Shipmondo most likely has a sales order for an unlinked order, so neither retrying (a second sales order) nor
+     * cancelling it (a sales order for a cancelled order) is enabled
+     *
+     * @test
+     */
+    public function it_builds_a_workflow_that_makes_an_order_unlinked_and_lets_nothing_move_it_out_of_unlinked(): void
+    {
+        $workflow = OrderWorkflow::getWorkflow(new EventDispatcher());
+        $order = new Order();
+        $order->setState(OrderInterface::STATE_CANCELLED);
+        $workflow->apply($order, OrderWorkflow::TRANSITION_START_UPLOAD);
+
+        $workflow->apply($order, OrderWorkflow::TRANSITION_COMPLETE_UPLOAD_UNLINKED);
+
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame([], $workflow->getEnabledTransitions($order));
+    }
+
+    /**
      * @test
      */
     public function it_builds_a_workflow_that_stores_the_state_as_a_string_on_the_order(): void
@@ -157,6 +186,7 @@ final class OrderWorkflowTest extends TestCase
         self::assertSame([
             [OrderWorkflow::TRANSITION_START_UPLOAD, [OrderInterface::SHIPMONDO_STATE_PENDING], [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO]],
             [OrderWorkflow::TRANSITION_COMPLETE_UPLOAD, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO]],
+            [OrderWorkflow::TRANSITION_COMPLETE_UPLOAD_UNLINKED, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], [OrderInterface::SHIPMONDO_STATE_UNLINKED]],
             [OrderWorkflow::TRANSITION_FAIL, [OrderInterface::SHIPMONDO_STATE_PENDING], [OrderInterface::SHIPMONDO_STATE_FAILED]],
             [OrderWorkflow::TRANSITION_FAIL, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], [OrderInterface::SHIPMONDO_STATE_FAILED]],
             [OrderWorkflow::TRANSITION_RESET, [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO], [OrderInterface::SHIPMONDO_STATE_PENDING]],
@@ -193,6 +223,7 @@ final class OrderWorkflowTest extends TestCase
                     OrderInterface::SHIPMONDO_STATE_PENDING,
                     OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO,
                     OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO,
+                    OrderInterface::SHIPMONDO_STATE_UNLINKED,
                     OrderInterface::SHIPMONDO_STATE_FAILED,
                     OrderInterface::SHIPMONDO_STATE_CANCELLED,
                 ],
@@ -204,6 +235,10 @@ final class OrderWorkflowTest extends TestCase
                     OrderWorkflow::TRANSITION_COMPLETE_UPLOAD => [
                         'from' => [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO],
                         'to' => [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO],
+                    ],
+                    OrderWorkflow::TRANSITION_COMPLETE_UPLOAD_UNLINKED => [
+                        'from' => [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO],
+                        'to' => [OrderInterface::SHIPMONDO_STATE_UNLINKED],
                     ],
                     OrderWorkflow::TRANSITION_FAIL => [
                         'from' => [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO],

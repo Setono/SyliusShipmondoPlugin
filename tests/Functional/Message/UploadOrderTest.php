@@ -64,6 +64,11 @@ final class UploadOrderTest extends FunctionalTestCase
         $answer = static fn (int $statusCode): \Closure => static fn (self $test): mixed => $test->shipmondo->respond('POST', 'sales_orders', $statusCode, ['error' => 'No']);
 
         yield 'rejected upload (422)' => [$answer(422), UploadOutcome::Rejected, OrderInterface::SHIPMONDO_STATE_FAILED];
+        yield 'unread success (a 201 without a sales order)' => [
+            static fn (self $test): mixed => $test->shipmondo->respond('POST', 'sales_orders', 201, null),
+            UploadOutcome::UnreadSuccess,
+            OrderInterface::SHIPMONDO_STATE_UNLINKED,
+        ];
         yield 'unexpected failure (a data mapper throws)' => [
             static function (self $test, OrderInterface $order): void {
                 $test->failToMap($order);
