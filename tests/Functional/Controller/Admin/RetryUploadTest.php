@@ -134,6 +134,21 @@ final class RetryUploadTest extends FunctionalTestCase
     /**
      * @test
      */
+    public function it_answers_not_found_for_the_retry_of_an_order_that_does_not_exist(): void
+    {
+        $order = $this->createOrder(OrderInterface::SHIPMONDO_STATE_FAILED);
+        $form = $this->retryForm($order);
+        $missingOrderId = self::id($order) + 1000;
+
+        $this->browser->request('PUT', sprintf('/admin/orders/%d/retry-upload', $missingOrderId), ['_csrf_token' => self::fieldValue($form, '_csrf_token')]);
+
+        self::assertResponseStatusCodeSame(404);
+        self::assertSame(OrderInterface::SHIPMONDO_STATE_FAILED, $this->orderRow(self::id($order))['shipmondo_state']);
+    }
+
+    /**
+     * @test
+     */
     public function it_refuses_to_retry_the_upload_of_an_order_on_a_get(): void
     {
         $order = $this->createOrder(OrderInterface::SHIPMONDO_STATE_FAILED);

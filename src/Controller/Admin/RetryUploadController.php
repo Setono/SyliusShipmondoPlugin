@@ -36,14 +36,17 @@ final class RetryUploadController extends AbstractController
     ) {
     }
 
+    /**
+     * Like Sylius's own state transitions, it finds the order before it checks the CSRF token
+     */
     public function retry(Request $request, int $id): RedirectResponse
     {
-        $this->assertCsrfTokenValid((string) $id, $request);
-
         $order = $this->orderRepository->find($id);
         if (!$order instanceof OrderInterface) {
             throw $this->createNotFoundException(sprintf('The order with id %d does not exist', $id));
         }
+
+        $this->assertCsrfTokenValid((string) $id, $request);
 
         if ($this->orderUploader->retry($order)) {
             $this->addFlash('success', 'setono_sylius_shipmondo.order_upload_retried');

@@ -34,7 +34,7 @@ vendor/bin/phpunit --filter it_maps_shipping_with_tax_included_in_price
 vendor/bin/infection
 ```
 
-PHPUnit bootstraps the test app via `tests/Application/config/bootstrap.php` (see `phpunit.xml.dist`). Unit tests live under `tests/Unit/` (e.g. `tests/Unit/DataMapper`, `tests/Unit/Registrar`, `tests/Unit/DependencyInjection`, `tests/Unit/Workflow`, `tests/Unit/Model`), with namespace `Tests\Setono\SyliusShipmondoPlugin\Unit\...`; `tests/Application/` is the Sylius host app, not a test suite. Tests use PHPUnit 9 `@test` annotations, `Prophecy\PhpUnit\ProphecyTrait` for mocks, and `matthiasnoback/symfony-dependency-injection-test` for container/extension tests. Code that calls Shipmondo is unit-tested against the real SDK over scripted HTTP answers (`ShipmondoApi::client(new ScriptedHttpClient())`), not a mocked client; assert on logs with `RecordingLogger`. Test helpers both suites share live in `tests/Support/`. Infection enforces `minCoveredMsi: 100`, so any test that covers a line must kill every mutant on it. Infection and code coverage run the `Unit` suite only (`defaultTestSuite` in `phpunit.xml.dist`, `testFrameworkOptions` in `infection.json.dist`).
+PHPUnit bootstraps the test app via `tests/Application/config/bootstrap.php` (see `phpunit.xml.dist`). Unit tests live under `tests/Unit/` (e.g. `tests/Unit/DataMapper`, `tests/Unit/Registrar`, `tests/Unit/DependencyInjection`, `tests/Unit/Workflow`, `tests/Unit/Model`), with namespace `Tests\Setono\SyliusShipmondoPlugin\Unit\...`; `tests/Application/` is the Sylius host app, not a test suite. Tests use PHPUnit 9 `@test` annotations, `Prophecy\PhpUnit\ProphecyTrait` for mocks, and `matthiasnoback/symfony-dependency-injection-test` for container/extension tests. Code that calls Shipmondo is unit-tested against the real SDK over scripted HTTP answers (`ShipmondoApi::client(new ScriptedHttpClient())`), not a mocked client; assert on logs with `RecordingLogger`. Test helpers both suites share live in `tests/Support/`. Infection enforces `minCoveredMsi: 100`, so any test that covers a line must kill every mutant on it. Infection runs the `Unit` suite only (`defaultTestSuite` in `phpunit.xml.dist`, `testFrameworkOptions` in `infection.json.dist`). Code coverage (CI's code-coverage job, uploaded to Codecov) counts the `Unit` and `Functional` suites: the job starts MySQL and uploads a clover report per suite, so code only the functional tests reach (e.g. `RetryUploadController`) counts as covered, though Infection doesn't mutate it.
 
 #### Functional tests
 
@@ -141,6 +141,7 @@ CI (`.github/workflows/build.yaml`) gates merges on the following — run them l
 - `vendor/bin/composer-dependency-analyser` (dependency-analysis job unsets `require-dev`, re-adds shipmonk, then analyses)
 - `lint:yaml` / `lint:twig` and `bin/console lint:container`
 - `vendor/bin/phpunit` (unit) and `vendor/bin/infection` (mutation tests); these jobs have no database
+- code coverage of the unit and functional suites (the code-coverage job, which starts MySQL), checked by Codecov's patch and project checks
 - `vendor/bin/phpunit --testsuite Functional`, in the integration-tests job, which starts MySQL
 - `vendor/bin/phpunit --testsuite Playwright`, in the browser-tests job (PHP 8.2 only, installs playwright-symfony itself)
 
