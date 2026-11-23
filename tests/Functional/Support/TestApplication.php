@@ -45,11 +45,12 @@ final class TestApplication
 
         self::stubMissingEncoreBuilds($kernel->getProjectDir() . '/public/build');
 
-        self::outsideTestTransaction($container, static function () use ($kernel, $container): void {
-            $application = new Application($kernel);
-            $application->setAutoExit(false);
+        $application = new Application($kernel);
+        $application->setAutoExit(false);
 
-            self::runCommand($application, 'doctrine:database:create', ['--if-not-exists' => true]);
+        self::createDatabaseIfMissing($application);
+
+        self::outsideTestTransaction($container, static function () use ($application, $container): void {
             self::runCommand($application, 'doctrine:schema:drop', ['--force' => true, '--full-database' => true]);
             self::runCommand($application, 'doctrine:schema:create');
 
@@ -106,6 +107,23 @@ final class TestApplication
             $connection->close();
             self::freshEntityManager($container);
 
+            StaticDriver::setKeepStaticConnections($keepStaticConnections);
+        }
+    }
+
+    /**
+     * Runs before anything connects to the database, which fails while it doesn't exist. The command connects to the
+     * server without selecting a database, and not as one of DAMA's static connections, so it isn't kept open in a
+     * transaction of DAMA's
+     */
+    private static function createDatabaseIfMissing(Application $application): void
+    {
+        $keepStaticConnections = StaticDriver::isKeepStaticConnections();
+        StaticDriver::setKeepStaticConnections(false);
+
+        try {
+            self::runCommand($application, 'doctrine:database:create', ['--if-not-exists' => true]);
+        } finally {
             StaticDriver::setKeepStaticConnections($keepStaticConnections);
         }
     }
