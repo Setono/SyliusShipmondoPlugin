@@ -16,7 +16,7 @@ use Symfony\Component\Workflow\Event\CompletedEvent;
  * When a Sylius order is cancelled, its Shipmondo state becomes cancelled too ({@see OrderCancellerInterface}). An
  * uploaded order's sales order is deleted first, and a flash message tells the user whether it was deleted, will be
  * deleted (async transport) or could not be deleted. A failed deletion never blocks the cancellation (see
- * DeleteOrderHandler).
+ * DeleteOrderHandler). An unlinked order's sales order, if Shipmondo has one, is deleted once an upload run finds it.
  *
  * Sylius 1.14 runs the `sylius_order` state machine on winzou by default, but it is migrating to
  * Symfony Workflow — so we hook both backends: a winzou `after` callback on the `cancel` transition
@@ -39,8 +39,7 @@ final class OrderCancellationListener
             Cancellation::SalesOrderDeleted => $this->addFlash('info', 'setono_sylius_shipmondo.order_deleted_in_shipmondo'),
             Cancellation::SalesOrderDeletedLater => $this->addFlash('info', 'setono_sylius_shipmondo.order_will_be_deleted_in_shipmondo'),
             Cancellation::SalesOrderNotDeleted => $this->addFlash('error', 'setono_sylius_shipmondo.order_not_deleted_in_shipmondo'),
-            // an error, not a warning, which Sylius's admin shows as a success
-            Cancellation::LeftUnlinked => $this->addFlash('error', 'setono_sylius_shipmondo.order_unlinked_not_deleted_in_shipmondo'),
+            Cancellation::LeftUnlinked => $this->addFlash('info', 'setono_sylius_shipmondo.order_unlinked_will_be_deleted_in_shipmondo'),
             default => null,
         };
     }

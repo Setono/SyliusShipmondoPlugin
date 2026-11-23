@@ -64,8 +64,7 @@ final class OrderCancellationListenerTest extends TestCase
         yield 'deleted' => [Cancellation::SalesOrderDeleted, ['info' => ['setono_sylius_shipmondo.order_deleted_in_shipmondo']]];
         yield 'deleted later' => [Cancellation::SalesOrderDeletedLater, ['info' => ['setono_sylius_shipmondo.order_will_be_deleted_in_shipmondo']]];
         yield 'not deleted' => [Cancellation::SalesOrderNotDeleted, ['error' => ['setono_sylius_shipmondo.order_not_deleted_in_shipmondo']]];
-        // an error, since Sylius's admin shows a warning as a success
-        yield 'left unlinked' => [Cancellation::LeftUnlinked, ['error' => ['setono_sylius_shipmondo.order_unlinked_not_deleted_in_shipmondo']]];
+        yield 'left unlinked' => [Cancellation::LeftUnlinked, ['info' => ['setono_sylius_shipmondo.order_unlinked_will_be_deleted_in_shipmondo']]];
     }
 
     /**

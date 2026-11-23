@@ -7,6 +7,7 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Unit\DataMapper;
 use PHPUnit\Framework\TestCase;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapper;
+use Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider;
 use Sylius\Component\Core\Model\Address;
 use Sylius\Component\Core\Model\Customer;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
@@ -51,7 +52,7 @@ final class SalesOrderDataMapperTest extends TestCase
 
         $salesOrder = new SalesOrderRequest();
 
-        $mapper = new SalesOrderDataMapper();
+        $mapper = new SalesOrderDataMapper(new OrderIdProvider());
         $mapper->map($order, $salesOrder);
 
         self::assertSame('000000123', $salesOrder->orderId);
@@ -87,7 +88,7 @@ final class SalesOrderDataMapperTest extends TestCase
 
         $salesOrder = new SalesOrderRequest();
 
-        $mapper = new SalesOrderDataMapper();
+        $mapper = new SalesOrderDataMapper(new OrderIdProvider());
         $mapper->map($order, $salesOrder);
 
         // getNumber() is null, and the mapper casts it to a string

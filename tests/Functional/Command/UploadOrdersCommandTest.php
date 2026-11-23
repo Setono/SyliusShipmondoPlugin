@@ -247,13 +247,14 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
             static fn (self $test): mixed => $test->shipmondo->respond('POST', 'sales_orders', 422, ['error' => 'The payment gateway does not exist']),
             OrderInterface::SHIPMONDO_STATE_FAILED,
         ];
+        // Shipmondo may have created the sales order before the failure, so a sales order lookup settles the order later
         yield 'temporary failure (500)' => [
             static fn (self $test): mixed => $test->shipmondo->respond('POST', 'sales_orders', 500, ['error' => 'Internal Server Error']),
-            OrderInterface::SHIPMONDO_STATE_PENDING,
+            OrderInterface::SHIPMONDO_STATE_UNLINKED,
         ];
         yield 'temporary failure (network)' => [
             static fn (self $test): mixed => $test->shipmondo->failToConnect('POST', 'sales_orders'),
-            OrderInterface::SHIPMONDO_STATE_PENDING,
+            OrderInterface::SHIPMONDO_STATE_UNLINKED,
         ];
         yield 'unexpected failure (a data mapper throws)' => [
             static function (self $test, OrderInterface $order): void {
@@ -282,7 +283,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         // fails, so whatever runs the command (cron, a scheduler) notices that no order can be uploaded
         $tester = $this->executeCommand(self::COMMAND);
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
-        self::assertStringContainsString('The remaining orders stay pending for the next run.', (string) preg_replace('/\s+/', ' ', $tester->getDisplay()));
+        self::assertStringContainsString('The remaining orders wait for the next run.', (string) preg_replace('/\s+/', ' ', $tester->getDisplay()));
 
         self::assertCount(1, $this->shipmondo->requests('POST', 'sales_orders'));
         foreach ([$turnedAway, $notTried] as $order) {
@@ -430,7 +431,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
             ->respond('POST', 'sales_orders', $statusCode, ['error' => 'No'])
         ;
 
-        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+        $this->executeCommand(self::COMMAND);
 
         $row = $this->orderRow(self::id($order));
         self::assertSame([OrderInterface::SHIPMONDO_STATE_CANCELLED, null], [$row['shipmondo_state'], $row['shipmondo_id']]);
@@ -442,7 +443,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
     public static function failedStatusCodes(): iterable
     {
         yield 'rejected upload (failed)' => [422];
-        yield 'temporary failure (back to pending)' => [500];
+        yield 'credentials failure (back to pending)' => [401];
     }
 
     /**

@@ -7,12 +7,17 @@ namespace Setono\SyliusShipmondoPlugin\DataMapper;
 use Setono\Shipmondo\Request\SalesOrder\Recipient;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
+use Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider;
 
 final class SalesOrderDataMapper implements SalesOrderDataMapperInterface
 {
+    public function __construct(private readonly OrderIdProvider $orderIdProvider)
+    {
+    }
+
     public function map(OrderInterface $order, SalesOrderRequest $salesOrder): void
     {
-        $salesOrder->orderId = (string) $order->getNumber();
+        $salesOrder->orderId = $this->orderIdProvider->getOrderId($order);
         $salesOrder->orderedAt = $order->getCheckoutCompletedAt();
         $salesOrder->sourceName = 'Sylius';
         $salesOrder->orderNote = $order->getNotes();

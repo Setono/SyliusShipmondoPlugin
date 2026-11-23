@@ -119,11 +119,12 @@ final class OrderCancellerTest extends TestCase
     }
 
     /**
-     * Shipmondo most likely has a sales order for it, but which is unknown, so it can't be deleted
+     * Shipmondo may have a sales order for it, but which is unknown, so it can't be deleted yet: the next sales order
+     * lookup deletes it, or makes the order cancelled if it finds none
      *
      * @test
      */
-    public function it_leaves_an_unlinked_order_unlinked_and_says_its_sales_order_has_to_be_cancelled_in_shipmondo(): void
+    public function it_leaves_an_unlinked_order_to_its_sales_order_lookup(): void
     {
         $order = self::cancelledOrder(OrderInterface::SHIPMONDO_STATE_UNLINKED);
         $this->commandBus->dispatch(Argument::cetera())->shouldNotBeCalled();
@@ -132,8 +133,8 @@ final class OrderCancellerTest extends TestCase
 
         self::assertSame([OrderInterface::SHIPMONDO_STATE_UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
         self::assertSame([[
-            'level' => LogLevel::ERROR,
-            'message' => 'The order {order} was cancelled, but it is unlinked: Shipmondo most likely has a sales order for it, but which is unknown, so it can\'t be deleted. Find the sales order in Shipmondo and cancel it there',
+            'level' => LogLevel::INFO,
+            'message' => 'The order {order} was cancelled while it is unlinked, so the next sales order lookup deletes its sales order, or makes the order cancelled if it finds none',
             'context' => ['order' => '#042'],
         ]], $this->logger->records);
     }

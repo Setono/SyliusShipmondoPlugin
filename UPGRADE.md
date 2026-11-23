@@ -51,9 +51,12 @@ For most installations the required changes are:
   prepends and you can override, that the plugin now requires `symfony/http-client` with `framework.http_client`
   enabled, that your `framework.http_client.default_options` now apply to them, and that when one file of yours configures
   `default_options.retry_failed` and overrides one of those clients, you repeat `retry_failed: false` there (section 22)
-- watch for `unlinked` orders, a new Shipmondo state for an order whose upload Shipmondo answered with a success the
-  plugin couldn't read: Shipmondo most likely has its sales order, so find it there, and cancel it there by hand when
-  you cancel such an order (section 23)
+- note the new `unlinked` Shipmondo state, for an order Shipmondo may have a sales order for although its upload
+  failed: Shipmondo's success couldn't be read (section 23), or the call that creates the sales order failed
+  temporarily (section 25). The upload run looks its sales order up ten minutes later, and links the order to it,
+  uploads it again, or deletes the sales order of an order cancelled meanwhile; and if you monitor
+  `setono:sylius-shipmondo:upload-orders`, note that it now also fails when Shipmondo rate limits those lookups
+  (section 25)
 - note that an admin can now retry the upload of a failed order, from the order page or in bulk from the order grid,
   which gets a Shipmondo state filter, a bulk action and a column of checkboxes, and if you override Sylius's order page
   sidebar, keep the plugin's Shipmondo section (section 24)
@@ -270,7 +273,8 @@ for good. In 2.x, `Uploader\OrderUploader` settles every failure on the order:
 | The order can't be turned into a sales order (a data mapper throws), or another unexpected error, such as a non-error status (e.g. an unfollowed redirect) | `failed` | continues |
 | Shipmondo doesn't accept the API credentials: 401 or 403 | `pending` | stops |
 | Shipmondo rate limits the upload: 429 | `pending` | stops |
-| A temporary failure: 5xx, a network error, or Shipmondo not answering in time (section 22) | `pending` | continues |
+| A temporary failure of a read before the sales order is created, e.g. of the payment gateways: 5xx, a network error, or Shipmondo not answering in time (section 22) | `pending` | continues |
+| A temporary failure of the call that creates the sales order: 5xx, a network error, or Shipmondo not answering in time (section 22). Shipmondo may have created the sales order before the failure | `unlinked` (section 25) | continues |
 | Shipmondo answered the creation of the sales order with a success, but its answer was cut off, e.g. because it didn't arrive in time (section 22), or the SDK couldn't read it: Shipmondo created the sales order | `unlinked` (section 23) | continues |
 | The order changed while it was uploading, before its `UploadOrder` command was handled | `pending` | continues |
 
@@ -282,10 +286,12 @@ for good. In 2.x, `Uploader\OrderUploader` settles every failure on the order:
   each failure is logged with the order number, its kind of Shipmondo failure (section 9) and Shipmondo's status code
   and error message, and a `failed` order stays `failed` until an admin retries its upload (section 24).
 - Going back to pending uses the new `retry` transition (`OrderWorkflow::TRANSITION_RETRY`,
-  `uploading_to_shipmondo` → `pending`, and `failed` → `pending` for an admin's retry, section 24) of the
-  `setono_sylius_shipmondo__order` workflow. `reset` is unchanged.
-- Retrying after a temporary failure can create a duplicate sales order, when Shipmondo created the sales order but
-  its answer was lost (see [#29](https://github.com/Setono/SyliusShipmondoPlugin/issues/29)).
+  `uploading_to_shipmondo` → `pending`, `failed` → `pending` for an admin's retry, section 24, and `unlinked` →
+  `pending` when a sales order lookup finds no sales order, section 25) of the `setono_sylius_shipmondo__order`
+  workflow. `reset` is unchanged.
+- A temporary failure of the call that creates the sales order doesn't put the order back to pending: Shipmondo may
+  have created the sales order before the failure, and it has no idempotency key, so uploading the order again could
+  create a duplicate. The order becomes `unlinked`, and the upload run looks its sales order up later (section 25).
 - **If you route `UploadOrder` to an async transport:** its handler no longer throws for a failed upload, so Messenger
   no longer retries it; the next upload run is the retry. The upload run can't see how async uploads go, so it never
   stops early and **the command always succeeds: watch the logs instead**. An async worker can't stop the `UploadOrder`
@@ -327,7 +333,7 @@ Only if you extend or call the upload code:
 |---|---|
 | `Uploader\OrderUploaderInterface::upload(): void` | `upload(): ?Uploader\UploadOutcome`: the outcome that stopped the run early, or `null` |
 | | new `OrderUploaderInterface::uploadOrder(OrderInterface $order, ?int $version = null): UploadOutcome`, which uploads one order in `uploading_to_shipmondo` and settles its state |
-| `Uploader\OrderUploader::__construct($provider, $commandBus, $orderWorkflow, $managerRegistry)` | `__construct($provider, $commandBus, $orderWorkflow, Setono\Shipmondo\Client\ClientInterface $shipmondoClient, SalesOrderDataMapperInterface $salesOrderDataMapper, Canceller\OrderCancellerInterface $orderCanceller, Psr\Log\LoggerInterface $logger, $managerRegistry)` |
+| `Uploader\OrderUploader::__construct($provider, $commandBus, $orderWorkflow, $managerRegistry)` | `__construct($provider, Provider\UnlinkedOrdersProviderInterface $unlinkedOrdersProvider, Provider\OrderIdProvider $orderIdProvider, $commandBus, $orderWorkflow, Setono\Shipmondo\Client\ClientInterface $shipmondoClient, SalesOrderDataMapperInterface $salesOrderDataMapper, Canceller\OrderCancellerInterface $orderCanceller, Psr\Log\LoggerInterface $logger, $managerRegistry)` |
 | `Message\CommandHandler\UploadOrderHandler::__construct($orderRepository, $shipmondoClient, $salesOrderDataMapper, $orderWorkflow)`; `__invoke()` returns `void` | `__construct($orderRepository, OrderUploaderInterface $orderUploader)`; `__invoke()` returns the `UploadOutcome` |
 | `Workflow\OrderWorkflow::getWorkflow()` returns a `Workflow`, on which `fail` is never enabled | returns a `StateMachine` with the transitions the container registers (see [#38](https://github.com/Setono/SyliusShipmondoPlugin/issues/38)) |
 
@@ -347,7 +353,7 @@ order that is cancelled in Sylius. When an order is cancelled in Sylius, it depe
 | `pending` or `failed` | the order becomes `cancelled` right away |
 | `uploaded_to_shipmondo` | its sales order is deleted (section 5): the order is `reset` to `pending` and then becomes `cancelled`. If the deletion fails, the order stays `uploaded_to_shipmondo`; delete the sales order in Shipmondo, and the `orders/delete` webhook makes the order `cancelled` the same way |
 | `uploading_to_shipmondo` | it is left to its upload, which makes it `cancelled` once the upload is settled. If Shipmondo created the sales order meanwhile, that sales order is deleted first. If the upload makes the order `unlinked`, it stays so, as below |
-| `unlinked` | it stays `unlinked`, since which sales order Shipmondo has for it is unknown: the admin is told to cancel the sales order in Shipmondo by hand (section 23) |
+| `unlinked` | it stays `unlinked`, since which sales order Shipmondo may have for it is unknown, until the upload run's sales order lookup settles it (section 25): the sales order it finds is deleted, and the order becomes `cancelled`; with none found, the order becomes `cancelled` right away; with several, it stays `unlinked`. The admin is told so |
 
 Whenever an order's sales order is deleted, through `DeleteOrder` or in Shipmondo, the order is `reset` to `pending`,
 and then becomes `cancelled` if it is cancelled in Sylius. An order that isn't goes on to be uploaded again, as before.
@@ -966,10 +972,11 @@ don't retry a failed request.
 
 - **A request that runs into its limit** is a Shipmondo failure like any other (section 9):
   - When Shipmondo doesn't answer in time, it is a **temporary failure**, as a network error is: the shop's pickup point
-    endpoint answers HTTP 502 and the picker says the pickup points couldn't be loaded, the admin says Shipmondo
-    couldn't be reached, and an upload goes back to pending. Shipmondo may have created the sales order before the time
-    ran out, and the next upload run then creates a second one: the duplicate section 6 warns about
-    ([#29](https://github.com/Setono/SyliusShipmondoPlugin/issues/29)). The shorter the limit, the likelier that is.
+    endpoint answers HTTP 502 and the picker says the pickup points couldn't be loaded, and the admin says Shipmondo
+    couldn't be reached. When the call that creates a sales order runs out of time, Shipmondo may have created the
+    sales order before it did, so the upload makes the order `unlinked`, and the upload run looks the sales order up
+    later instead of creating a second one (section 25). The shorter the limit, the more orders that takes. When a read
+    before that call runs out of time, the order goes back to pending.
   - When Shipmondo answers a call that changes something, creating or deleting a sales order, with a success, but
     the rest of its answer doesn't arrive, e.g. in time, it is an **unread success** (section 23): Shipmondo did what
     was asked, but what it answered is lost. **An upload then makes the order `unlinked`** instead of sending it back
@@ -1011,15 +1018,14 @@ sales order stayed in Shipmondo, where it could still be shipped
   `MappingException`). For a GET nothing changes.
 - **An upload that ends so makes the order `unlinked`**, a new Shipmondo state (`OrderInterface::SHIPMONDO_STATE_UNLINKED`),
   through the new `complete_upload_unlinked` transition (`OrderWorkflow::TRANSITION_COMPLETE_UPLOAD_UNLINKED`, from
-  `uploading_to_shipmondo`), and logs an error. The order isn't linked to a sales order. For the upload run's stop rule
+  `uploading_to_shipmondo`), and logs a warning. The order isn't linked to a sales order. For the upload run's stop rule
   it counts as an upload, since Shipmondo accepted the order, and the run goes on.
-- **Nothing moves an order out of `unlinked` yet**: not `retry`, which would upload it a second time, nor `cancel`. Find
-  its sales order in Shipmondo by the order number. A later version looks it up for you
-  ([#29](https://github.com/Setono/SyliusShipmondoPlugin/issues/29)). Until then, webhooks about its sales order find
-  no order, since none is linked to it.
-- **Cancelling an unlinked order in Sylius leaves it `unlinked`**, since its sales order can't be deleted without its id.
-  The admin gets an error flash, and an error is logged, saying to cancel the sales order in Shipmondo by hand. The same
-  happens to an order cancelled while it was uploading, whose upload makes it `unlinked`.
+- **Only a sales order lookup moves an order out of `unlinked`** (section 25): not an admin's `retry`, which would
+  upload it a second time, nor `cancel`. Until the lookup links it, webhooks about its sales order find no order, since
+  none is linked to it.
+- **Cancelling an unlinked order in Sylius leaves it `unlinked`**, since its sales order can't be deleted without its id:
+  the sales order lookup deletes it once it finds it (section 25). The same happens to an order cancelled while it was
+  uploading, whose upload makes it `unlinked`.
 - **A sales order deletion that ends in an unread success counts as done**, like a 404: the sales order is gone, so the
   order is reset and then cancelled (section 5). Before, it counted as failed, and the order stayed uploaded and linked.
 - **Registering the webhooks** explains an unread success like any other failure (section 9): register them again.
@@ -1027,7 +1033,8 @@ sales order stayed in Shipmondo, where it could still be shipped
   templates**, add `unlinked.html.twig` if you want your own.
 
 New translation keys: `setono_sylius_shipmondo.shipmondo_failure.unread_success` and `setono_sylius_shipmondo.ui.unlinked`
-in the `messages` domain, and `setono_sylius_shipmondo.order_unlinked_not_deleted_in_shipmondo` in the `flashes` domain.
+in the `messages` domain, and `setono_sylius_shipmondo.order_unlinked_will_be_deleted_in_shipmondo` in the `flashes`
+domain (section 25).
 
 This needs `setono/shipmondo-php-sdk` 2.0.0-rc.2 or later, whose exceptions for a success it can't read carry the
 request Shipmondo answered (`ResponseAwareException::getRequest()`), so the plugin can tell a call that changes something
@@ -1092,6 +1099,77 @@ Only if you extend or call the code involved:
 
 New: `Controller\Admin\RetryUploadController`.
 
+### 25. A sales order lookup settles an unlinked order, and a temporary failure to create the sales order makes the order unlinked
+
+Shipmondo has no idempotency key and accepts two sales orders with the same order id. A temporary failure of the call
+that creates the sales order (a 5xx, or no answer, e.g. a timeout, section 22) used to put the order back to `pending`.
+If Shipmondo had created the sales order before the failure, the next upload run created a second one, which could be
+shipped twice. And nothing moved an `unlinked` order (section 23) on: an admin had to find its sales order in Shipmondo
+by hand ([#29](https://github.com/Setono/SyliusShipmondoPlugin/issues/29)). Why the plugin does it this way is
+recorded in [ADR 0003](docs/adr/0003-a-sales-order-lookup-settles-every-unlinked-order.md).
+
+- **A temporary failure of the call that creates the sales order makes the order `unlinked`**, as an unread success
+  does (section 23), and logs a warning. A temporary failure of a read before that call, e.g. of the payment gateways
+  or shipment templates the data mappers fetch, still puts the order back to `pending`, since Shipmondo has no sales
+  order then. So do a credentials failure and a 429. The upload run's stop rules are unchanged.
+- **Each upload run starts with a sales order lookup** for every order that has been `unlinked` for at least ten
+  minutes, newest first, whatever its state in Sylius, before it uploads the pending orders. Shipmondo lists a sales
+  order it just created only after a short delay, so the run waits ten minutes (a fixed delay), measured from the
+  order's `updatedAt`. So an order whose upload failed temporarily is uploaded again at least ten minutes later, not in
+  the next run. Conditions you add through `PreQualifiedUploadableOrdersQueryBuilderCreatedEvent` don't narrow the
+  lookups. They run in the upload run, never through the command bus, also when you route `UploadOrder` to an async
+  transport.
+- **The lookup searches Shipmondo's sales orders by the exact order id the upload sent** (`GET /sales_orders` with
+  `order_id`, archived sales orders included), and settles the order by what it finds, locked and read again. An order
+  that changed while Shipmondo was searched is left as it is.
+
+  | Sales orders found | The order |
+  |---|---|
+  | one | is linked to it, and becomes `uploaded_to_shipmondo` through the new `link` transition (`OrderWorkflow::TRANSITION_LINK`, `unlinked` → `uploaded_to_shipmondo`), which needs the sales order id in its context, like `complete_upload` |
+  | none: someone deleted it in Shipmondo, or the call that failed didn't create one | goes back to `pending` through `retry`, which now leaves `unlinked` too, and is uploaded again, in the same run if it qualifies for upload |
+  | several | stays `unlinked`, and an error names them: they may be duplicates, or another shop's on the same Shipmondo account. Every run looks it up again, so once Shipmondo has only one of them, the order is linked to it |
+
+- **An `unlinked` order that is cancelled in Sylius is settled by its lookup too** (section 7): the sales order the lookup
+  finds is deleted, and the order becomes `cancelled`; with none found, it becomes `cancelled` right away; with several,
+  it stays `unlinked`. Cancelling it in the admin now flashes that its sales order will be deleted once an upload run
+  finds it, instead of an error telling the admin to cancel it in Shipmondo by hand, and logs at info level instead of
+  error.
+- **A lookup that fails leaves the order `unlinked`**, logs the failure, and the next run tries again. A credentials
+  failure stops the upload run, as for an upload. A 429 stops the lookups, which have their own rate limit in Shipmondo
+  (about 100 searches a minute), but the pending orders are still uploaded. **Either way, the command fails**, so your
+  cron monitoring notices. Any other failure doesn't stop the run, and doesn't count toward the three rejected uploads
+  in a row.
+- **The lookup matches on the order id alone.** Another shop on the same Shipmondo account that numbers its orders the
+  same way can have sales orders with the same order ids: an order then stays `unlinked` with several matches, or, when
+  its own sales order is gone, is linked to the other shop's. Prefixing a shop's order ids will avoid that
+  ([#71](https://github.com/Setono/SyliusShipmondoPlugin/issues/71)).
+- **Webhooks about a sales order that arrive while its order is `unlinked` are lost**, since no order is linked to it
+  yet ([#76](https://github.com/Setono/SyliusShipmondoPlugin/issues/76)). That should be rare: a sales order is seldom
+  shipped, or its payment captured, within minutes of its upload.
+- `setono:sylius-shipmondo:upload-orders` now ends its error messages with "The remaining orders wait for the next run.",
+  and when Shipmondo rate limits the run, says "Shipmondo rate limited the upload run, so it did not get through every
+  order."
+- **An unread success of the upload now logs a warning** instead of an error, since nobody has to find its sales order
+  by hand anymore.
+
+The flash key `setono_sylius_shipmondo.order_unlinked_not_deleted_in_shipmondo` (section 23) is now
+`setono_sylius_shipmondo.order_unlinked_will_be_deleted_in_shipmondo`, an `info` flash. If you override the old one,
+rename your override.
+
+Only if you extend or call the code involved:
+
+| 1.x | 2.x |
+|---|---|
+| `DataMapper\SalesOrderDataMapper::__construct()` | `__construct(Provider\OrderIdProvider $orderIdProvider)` |
+| `Uploader\OrderUploader::__construct(...)` | takes the unlinked orders provider and the order id provider too (section 6) |
+
+New: the `OrderWorkflow::TRANSITION_LINK` constant; `Provider\UnlinkedOrdersProviderInterface` and
+`Provider\UnlinkedOrdersProvider`, which find the unlinked orders due a lookup (`UnlinkedOrdersProvider::LOOKUP_DELAY`);
+and `Provider\OrderIdProvider`, the one place the order id the plugin sends Shipmondo comes from, which the upload and
+the lookup both use. `UploadOutcome::TemporaryFailure` now leaves an order `unlinked` when the call that creates the
+sales order failed. If your code relies on `unlinked` being final, or on `retry` leaving only `uploading_to_shipmondo`
+and `failed`, adjust it.
+
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
@@ -1104,4 +1182,4 @@ counting the shipping promotions in the shipping line, replacing only this shop'
 registering them at the channels' hostname on the command line, registering nothing at an endpoint Shipmondo
 can't reach, registering them right away instead of through the command bus, taking the authorized amount, the
 payment method and the payment gateway from the payments that paid the order, the time limits on the requests to
-Shipmondo, the `unlinked` Shipmondo state, and retrying the upload of a failed order.
+Shipmondo, the `unlinked` Shipmondo state, retrying the upload of a failed order, and the sales order lookup.

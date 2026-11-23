@@ -23,6 +23,8 @@ final class OrderWorkflow
 
     final public const TRANSITION_COMPLETE_UPLOAD_UNLINKED = 'complete_upload_unlinked';
 
+    final public const TRANSITION_LINK = 'link';
+
     final public const TRANSITION_FAIL = 'fail';
 
     final public const TRANSITION_RESET = 'reset';
@@ -32,7 +34,7 @@ final class OrderWorkflow
     final public const TRANSITION_CANCEL = 'cancel';
 
     /**
-     * The key of the sales order id in the context of a transition into uploaded, i.e. complete_upload
+     * The key of the sales order id in the context of a transition into uploaded, i.e. complete_upload and link
      */
     final public const CONTEXT_SALES_ORDER_ID = 'sales_order_id';
 
@@ -118,17 +120,21 @@ final class OrderWorkflow
         return [
             new Transition(self::TRANSITION_START_UPLOAD, [OrderInterface::SHIPMONDO_STATE_PENDING], OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO),
             new Transition(self::TRANSITION_COMPLETE_UPLOAD, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO),
-            // when Shipmondo answered the upload with a success that was cut off or couldn't be read: it created the sales
-            // order, but which is unknown. Nothing leaves unlinked yet: not retry, which would upload it a second time, nor
-            // cancel, since Shipmondo most likely has a sales order for it
+            // when Shipmondo may have created the sales order, but which is unknown: it answered the call that creates it with
+            // a success that was cut off or couldn't be read, or the call failed temporarily. Only a sales order lookup
+            // moves the order out of unlinked: link, or retry when it finds no sales order. Not cancel, since Shipmondo may
+            // have a sales order for it
             new Transition(self::TRANSITION_COMPLETE_UPLOAD_UNLINKED, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_UNLINKED),
+            // when a sales order lookup finds the one sales order Shipmondo has with the order id the order's upload sent
+            new Transition(self::TRANSITION_LINK, [OrderInterface::SHIPMONDO_STATE_UNLINKED], OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO),
             new Transition(self::TRANSITION_FAIL, [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_FAILED),
             // when an order's sales order is deleted, the order is no longer uploaded: it goes back to pending to be uploaded
             // again, unless it is cancelled in Sylius, in which case it becomes cancelled right after
             new Transition(self::TRANSITION_RESET, [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_PENDING),
-            // back to pending, so the next upload run tries again: when an upload fails for a reason that says nothing about
-            // the order, and when an admin retries the upload of a failed order, for which Shipmondo has no sales order
-            new Transition(self::TRANSITION_RETRY, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO, OrderInterface::SHIPMONDO_STATE_FAILED], OrderInterface::SHIPMONDO_STATE_PENDING),
+            // back to pending, so an upload run tries again: when an upload fails for a reason that says nothing about the
+            // order, when an admin retries the upload of a failed order, for which Shipmondo has no sales order, and when a
+            // sales order lookup finds no sales order for an unlinked order
+            new Transition(self::TRANSITION_RETRY, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO, OrderInterface::SHIPMONDO_STATE_FAILED, OrderInterface::SHIPMONDO_STATE_UNLINKED], OrderInterface::SHIPMONDO_STATE_PENDING),
             // when the order is cancelled in Sylius. It leaves only the states without a sales order: an uploaded order is
             // reset once its sales order is deleted, and an uploading order is settled by its upload first
             new Transition(self::TRANSITION_CANCEL, [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_FAILED], OrderInterface::SHIPMONDO_STATE_CANCELLED),

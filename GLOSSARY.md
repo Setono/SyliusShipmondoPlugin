@@ -15,7 +15,7 @@ Creating the sales order for a Sylius order in Shipmondo.
 _Avoid_: Dispatch, sync, export, push
 
 **Upload run**:
-One pass of the order upload, which looks up the sales orders of the unlinked orders and then uploads every pending order that qualifies for upload. It stops early after an upload that hits a credentials failure or is rate limited, or after three rejected uploads with no upload between them, and the remaining orders stay pending for the next run.
+One pass of the order upload, which looks up the sales orders of the unlinked orders and then uploads every pending order that qualifies for upload. It stops early after a sales order lookup or an upload that hits a credentials failure, after an upload that is rate limited, or after three rejected uploads with no upload between them, and the remaining orders wait for the next run. A sales order lookup that is rate limited stops only the lookups: the pending orders are still uploaded.
 _Avoid_: Sync, batch
 
 **Shipmondo state**:
