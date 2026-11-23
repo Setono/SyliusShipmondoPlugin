@@ -113,6 +113,38 @@ final class OrderUploader implements OrderUploaderInterface
     }
 
     /**
+     * The order was failed when it was loaded, e.g. when the admin opened its page, but something may have changed it
+     * since, so its row is locked and it is read again before it is retried
+     */
+    public function retry(OrderInterface $order): bool
+    {
+        $manager = $this->getManager($order);
+
+        /** @var bool $retried */
+        $retried = $manager->wrapInTransaction(function () use ($manager, $order): bool {
+            $manager->refresh($order, LockMode::PESSIMISTIC_WRITE);
+
+            // retry also leaves uploading, but only the upload decides how an uploading order goes on
+            if (OrderInterface::SHIPMONDO_STATE_FAILED !== $order->getShipmondoState()) {
+                return false;
+            }
+
+            $this->orderWorkflow->apply($order, OrderWorkflow::TRANSITION_RETRY);
+
+            return true;
+        });
+
+        $this->logger->info(
+            $retried ?
+                'The upload of the order {order} was retried, so the order is pending for the next upload run' :
+                'The upload of the order {order} was not retried, because its Shipmondo state is {state}, not failed',
+            ['order' => $order->getNumber(), 'state' => $order->getShipmondoState()],
+        );
+
+        return $retried;
+    }
+
+    /**
      * Puts a pending order in uploading, so no other upload run uploads it too.
      *
      * The upload run loaded the order a while ago. If something changed the order since (another run claimed it, an

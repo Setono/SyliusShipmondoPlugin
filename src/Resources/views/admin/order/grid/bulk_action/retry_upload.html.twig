@@ -1,0 +1,8 @@
+{# Sylius's admin scripts add the ids of the selected orders to the form as ids[] once the admin confirms #}
+<form action="{{ path('setono_sylius_shipmondo_admin_order_bulk_retry_upload') }}" method="post">
+    <input type="hidden" name="_method" value="PUT">
+    <input type="hidden" name="_csrf_token" value="{{ csrf_token(constant('Setono\\SyliusShipmondoPlugin\\Controller\\Admin\\RetryUploadController::BULK_CSRF_TOKEN_ID')) }}">
+    <button class="ui labeled icon button" type="submit" data-bulk-action-requires-confirmation disabled>
+        <i class="icon {{ action.icon }}"></i> {{ action.label|trans }}
+    </button>
+</form>

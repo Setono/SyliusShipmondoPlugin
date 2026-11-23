@@ -37,4 +37,17 @@ interface OrderUploaderInterface
      *                          now, it changed since, so it goes back to pending without being uploaded
      */
     public function uploadOrder(OrderInterface $order, ?int $version = null): UploadOutcome;
+
+    /**
+     * Retries the upload of a failed order: puts it back to pending, so the next upload run uploads it if it still
+     * qualifies for upload. Shipmondo has no sales order for a failed order, so it can't be uploaded twice. Nothing is
+     * asked of Shipmondo.
+     *
+     * The order is read again first, and an order that is no longer failed by then, e.g. because it was cancelled in the
+     * meantime, is left as it is. So is an order in any other Shipmondo state, also an uploading one, which is left to
+     * its upload.
+     *
+     * @return bool whether the order was retried, and so is pending now
+     */
+    public function retry(OrderInterface $order): bool;
 }

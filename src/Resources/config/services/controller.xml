@@ -24,6 +24,17 @@
             <tag name="controller.service_arguments"/>
         </service>
 
+        <service id="Setono\SyliusShipmondoPlugin\Controller\Admin\RetryUploadController" public="true">
+            <argument type="service" id="sylius.repository.order"/>
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\Uploader\OrderUploaderInterface"/>
+
+            <call method="setContainer">
+                <argument type="service" id="service_container"/>
+            </call>
+
+            <tag name="controller.service_arguments"/>
+        </service>
+
         <service id="Setono\SyliusShipmondoPlugin\Controller\Shop\GetPickupPointsAction" public="true">
             <argument type="service" id="sylius.repository.shipping_method"/>
             <argument type="service" id="sylius.context.cart"/>

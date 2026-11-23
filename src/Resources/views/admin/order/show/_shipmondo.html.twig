@@ -1,0 +1,29 @@
+{# The order's Shipmondo state, its sales order once it is uploaded, and a button to retry the upload of a failed order #}
+<div class="ui segment" id="setono-sylius-shipmondo-order">
+    {% include '@SetonoSyliusShipmondoPlugin/admin/order/grid/field/shipmondo_state.html.twig' with {
+        'data': order.shipmondoState,
+        'options': {'vars': {'labels': '@SetonoSyliusShipmondoPlugin/admin/order/grid/field/shipmondo_state'}},
+        'attached': true,
+    } only %}
+
+    <h3 class="ui dividing header">{{ 'setono_sylius_shipmondo.ui.shipmondo'|trans }}</h3>
+
+    {% if order.shipmondoId is not null %}
+        <div class="ui list">
+            <div class="item">
+                <div class="header">{{ 'setono_sylius_shipmondo.ui.sales_order_id'|trans }}</div>
+                {{ order.shipmondoId }}
+            </div>
+        </div>
+    {% endif %}
+
+    {% if order.shipmondoState == constant('Setono\\SyliusShipmondoPlugin\\Model\\OrderInterface::SHIPMONDO_STATE_FAILED') %}
+        <form action="{{ path('setono_sylius_shipmondo_admin_order_retry_upload', {'id': order.id}) }}" method="post">
+            <input type="hidden" name="_method" value="PUT">
+            <input type="hidden" name="_csrf_token" value="{{ csrf_token(order.id) }}">
+            <button class="ui labeled icon tiny fluid button" type="submit">
+                <i class="redo icon"></i> {{ 'setono_sylius_shipmondo.ui.retry_upload'|trans }}
+            </button>
+        </form>
+    {% endif %}
+</div>

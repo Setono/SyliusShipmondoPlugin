@@ -31,6 +31,9 @@ setono_sylius_shipmondo:
         pickup_points_not_loaded: The pickup points could not be loaded. Try again, or choose another shipping method.
         register_webhooks: Register webhooks
         register_webhooks_information: Either you have not registered webhooks yet or you need to re-register them because of changes in the configuration. Either way, please click the "Register webhooks" button below.
+        retry_upload: Retry upload
+        retry_upload_to_shipmondo: Retry upload to Shipmondo
+        sales_order_id: Sales order id
         select_shipmondo_payment_method: Select payment method...
         shipment_templates_in_shipmondo: Shipment templates in Shipmondo
         shipment_templates_not_loaded: The shipment templates could not be loaded from Shipmondo, so the shipping methods can't be mapped now.

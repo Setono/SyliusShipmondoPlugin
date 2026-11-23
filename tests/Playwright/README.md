@@ -11,6 +11,7 @@ could reach, for registering the webhooks, which the plugin refuses at localhost
 | `Admin/ShippingMethodFormTest` | The pickup point delivery checkbox and carrier select on the shipping method form, `carrier.js` showing the select only while the checkbox is checked, the carrier validation, the grid column |
 | `Admin/ShipmondoPageTest` | Configuration > Shipmondo: the menu entry, mapping payment methods and shipment templates, registering the webhooks, but not at localhost, the API error and empty states |
 | `Admin/OrderGridTest` | The "Shipmondo state" column of the order grid |
+| `Admin/RetryUploadTest` | Retrying the upload of a failed order from its page, and filtering the order grid on failed orders and retrying them with the bulk action |
 | `Admin/OrderCancellationTest` | Cancelling an order deletes its Shipmondo sales order, and the flash message for each outcome |
 | `Shop/PickupPointSelectionTest` | `pickup-point-manager.js` on the shipping step: which methods it asks pickup points for, the list, switching methods, a failing endpoint |
 | `Shop/PickupPointCheckoutTest` | The search sent to Shipmondo, the chosen pickup point surviving the checkout and being saved on the order, switching away from it |
