@@ -22,7 +22,7 @@
         "psr/log": "^1.1 || ^2.0 || ^3.0",
         "setono/composite-compiler-pass": "^1.1",
         "setono/doctrine-orm-trait": "^1.4",
-        "setono/shipmondo-php-sdk": "^2.0.0-beta.4",
+        "setono/shipmondo-php-sdk": "^2.0.0-rc.2",
         "sylius/channel": "^1.0",
         "sylius/core": "^1.0",
         "sylius/core-bundle": "^1.0",

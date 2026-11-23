@@ -35,8 +35,15 @@ enum ShipmondoFailureKind: string
     case Rejected = 'rejected';
 
     /**
-     * An answer nothing expects (an unreadable success, a redirect), or a failure before Shipmondo answered, such as
-     * order data a data mapper can't turn into a sales order
+     * An answer nothing expects (a redirect, a success to a read that can't be read), or a failure before Shipmondo
+     * answered, such as order data a data mapper can't turn into a sales order
      */
     case UnexpectedFailure = 'unexpected_failure';
+
+    /**
+     * Shipmondo answered a call that changes something, such as creating a sales order, with a success, but its answer
+     * was cut off, e.g. because it didn't arrive in time, or couldn't be read. Shipmondo did what was asked, but what it
+     * answered is unknown, so trying again could do it twice
+     */
+    case UnreadSuccess = 'unread_success';
 }

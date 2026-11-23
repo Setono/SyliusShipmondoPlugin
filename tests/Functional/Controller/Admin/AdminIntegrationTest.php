@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Setono\SyliusShipmondoPlugin\Functional\Controller\Admin;
 
+use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Symfony\Component\DomCrawler\Crawler;
 use Symfony\Component\DomCrawler\Form;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
@@ -24,6 +25,9 @@ final class AdminIntegrationTest extends FunctionalTestCase
         $this->fixtures->createOrder($customer);
         $this->fixtures->markAsUploaded($this->fixtures->createOrder($customer), 1001);
         $this->cancel($this->fixtures->createOrder($customer));
+        $unlinked = $this->fixtures->createOrder($customer);
+        $unlinked->setShipmondoState(OrderInterface::SHIPMONDO_STATE_UNLINKED);
+        $this->entityManager()->flush();
 
         $crawler = $this->browser->request('GET', '/admin/orders/');
 
@@ -42,6 +46,7 @@ final class AdminIntegrationTest extends FunctionalTestCase
         self::assertSame([
             ['Cancelled', 'ui yellow label'],
             ['Pending', 'ui label'],
+            ['Unlinked', 'ui orange label'],
             ['Uploaded to Shipmondo', 'ui green label'],
         ], $labels);
     }

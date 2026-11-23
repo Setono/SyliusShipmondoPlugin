@@ -51,6 +51,9 @@ For most installations the required changes are:
   prepends and you can override, that the plugin now requires `symfony/http-client` with `framework.http_client`
   enabled, that your `framework.http_client.default_options` now apply to them, and that when one file of yours configures
   `default_options.retry_failed` and overrides one of those clients, you repeat `retry_failed: false` there (section 22)
+- watch for `unlinked` orders, a new Shipmondo state for an order whose upload Shipmondo answered with a success the
+  plugin couldn't read: Shipmondo most likely has its sales order, so find it there, and cancel it there by hand when
+  you cancel such an order (section 23)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -63,7 +66,7 @@ The renamed SDK classes and the other class changes only matter if you extend th
 composer require setono/sylius-shipmondo-plugin:^2.0
 ```
 
-This pulls in `setono/shipmondo-php-sdk:^2.0` (2.0.0-beta.4 or later).
+This pulls in `setono/shipmondo-php-sdk:^2.0` (2.0.0-rc.2 or later).
 
 ### 2. Define the `SHIPMONDO_SANDBOX` environment variable (required)
 
@@ -230,7 +233,7 @@ Shipmondo state becomes `cancelled` (section 7). (Conversely, deleting a sales o
 that isn't cancelled back to `pending` so it is re-uploaded — see above — it is not treated as a cancellation.)
 
 A failing Shipmondo call never blocks the cancellation. A sales order that is already gone in Shipmondo (404) counts as
-deleted. On any other failure the order stays `uploaded_to_shipmondo` and keeps its `shipmondoId`, and:
+deleted, and so does a deletion Shipmondo answered with a success that was cut off or couldn't be read (section 23). On any other failure the order stays `uploaded_to_shipmondo` and keeps its `shipmondoId`, and:
 
 - **handled synchronously**, the failure is logged and the admin sees an error telling them to delete the sales order
   in Shipmondo manually;
@@ -261,14 +264,15 @@ for good. In 2.x, `Uploader\OrderUploader` settles every failure on the order:
 | Failure | Order ends in | Synchronous upload run |
 |---|---|---|
 | Shipmondo rejects the upload: a 4xx other than 401, 403 and 429 (e.g. 422) | `failed` | continues |
-| The order can't be turned into a sales order (a data mapper throws), or another unexpected error, such as a non-error status (e.g. an unfollowed redirect) or an answer the SDK can't read | `failed` | continues |
+| The order can't be turned into a sales order (a data mapper throws), or another unexpected error, such as a non-error status (e.g. an unfollowed redirect) | `failed` | continues |
 | Shipmondo doesn't accept the API credentials: 401 or 403 | `pending` | stops |
 | Shipmondo rate limits the upload: 429 | `pending` | stops |
 | A temporary failure: 5xx, a network error, or Shipmondo not answering in time (section 22) | `pending` | continues |
-| Shipmondo answered the creation of the sales order with a success, but the rest of its answer didn't arrive, e.g. in time (section 22): Shipmondo created the sales order | `failed` | continues |
+| Shipmondo answered the creation of the sales order with a success, but its answer was cut off, e.g. because it didn't arrive in time (section 22), or the SDK couldn't read it: Shipmondo created the sales order | `unlinked` (section 23) | continues |
 | The order changed while it was uploading, before its `UploadOrder` command was handled | `pending` | continues |
 
-- A synchronous upload run also stops after three rejected uploads with no successful upload between them, because
+- A synchronous upload run also stops after three rejected uploads with no successful upload between them (an upload
+  that makes the order `unlinked` counts as successful, since Shipmondo accepted the order), because
   Shipmondo answers 422 for shop-wide problems too, such as a mapped payment gateway that was deleted in Shipmondo.
 - **When the upload run stops early, the command prints why and exits with a failure code**, and the remaining orders
   stay `pending` for the next run. Otherwise the command stays silent and succeeds, also when single uploads failed:
@@ -338,7 +342,8 @@ order that is cancelled in Sylius. When an order is cancelled in Sylius, it depe
 |---|---|
 | `pending` or `failed` | the order becomes `cancelled` right away |
 | `uploaded_to_shipmondo` | its sales order is deleted (section 5): the order is `reset` to `pending` and then becomes `cancelled`. If the deletion fails, the order stays `uploaded_to_shipmondo`; delete the sales order in Shipmondo, and the `orders/delete` webhook makes the order `cancelled` the same way |
-| `uploading_to_shipmondo` | it is left to its upload, which makes it `cancelled` once the upload is settled. If Shipmondo created the sales order meanwhile, that sales order is deleted first |
+| `uploading_to_shipmondo` | it is left to its upload, which makes it `cancelled` once the upload is settled. If Shipmondo created the sales order meanwhile, that sales order is deleted first. If the upload makes the order `unlinked`, it stays so, as below |
+| `unlinked` | it stays `unlinked`, since which sales order Shipmondo has for it is unknown: the admin is told to cancel the sales order in Shipmondo by hand (section 23) |
 
 Whenever an order's sales order is deleted, through `DeleteOrder` or in Shipmondo, the order is `reset` to `pending`,
 and then becomes `cancelled` if it is cancelled in Sylius. An order that isn't goes on to be uploaded again, as before.
@@ -476,7 +481,8 @@ one kind of Shipmondo failure (`Failure\ShipmondoFailureKind`), and each caller 
 | `temporary_failure` | Shipmondo answers 5xx, or doesn't answer (a network error, or not in time, see section 22) |
 | `not_found` | Shipmondo answers 404 |
 | `rejected` | Shipmondo answers any other 4xx |
-| `unexpected_failure` | anything else: a success the SDK can't read, or whose rest didn't arrive for a call that changes something (section 22), a redirect, or a failure that isn't Shipmondo's answer, such as a data mapper that throws |
+| `unexpected_failure` | anything else: a redirect, a success to a read that the SDK can't read, or a failure that isn't Shipmondo's answer, such as a data mapper that throws |
+| `unread_success` | Shipmondo answers a call that changes something (anything but a GET), such as creating or deleting a sales order, with a success that is cut off, e.g. because it doesn't arrive in time (section 22), or that the SDK can't read (section 23) |
 
 - **The admin's Shipmondo page** says why it couldn't fetch the payment gateways or the shipment templates, e.g. that
   Shipmondo couldn't be reached, instead of always asking you to check the credentials, and logs it as a warning (see
@@ -961,12 +967,10 @@ don't retry a failed request.
     ran out, and the next upload run then creates a second one: the duplicate section 6 warns about
     ([#29](https://github.com/Setono/SyliusShipmondoPlugin/issues/29)). The shorter the limit, the likelier that is.
   - When Shipmondo answers a call that changes something, creating or deleting a sales order, with a success, but
-    the rest of its answer doesn't arrive, e.g. in time, it is an **unexpected failure**: Shipmondo did what was
-    asked, but what it answered is lost. **An upload then fails the order** instead of sending it back to pending,
-    since Shipmondo created the sales order: search Shipmondo for the order number and link the order to that sales
-    order, as in section 6's steps. A sales order deletion counts as failed (section 5) although the sales order is
-    gone, so the order stays uploaded and linked, until the `orders/delete` webhook for that sales order, if Shipmondo
-    sends one, settles it (section 4).
+    the rest of its answer doesn't arrive, e.g. in time, it is an **unread success** (section 23): Shipmondo did what
+    was asked, but what it answered is lost. **An upload then makes the order `unlinked`** instead of sending it back
+    to pending, since Shipmondo created the sales order, and a sales order deletion counts as done, since the sales
+    order is gone.
   - When the success of a read doesn't arrive in full, e.g. of the pickup point search, or of the payment gateways and
     shipment templates an upload reads, it is a temporary failure, as when Shipmondo doesn't answer at all: reading
     again changes nothing.
@@ -982,10 +986,58 @@ Only if you extend or call the code involved:
 | 1.x | 2.x |
 |---|---|
 | the `Setono\Shipmondo\Client\Client` service discovers its HTTP client | it gets the new `HttpClient\ShipmondoHttpClient` service, its 4th argument, which sends a pickup point search through `psr18.setono_sylius_shipmondo.pickup_points_http_client` and every other call through `psr18.setono_sylius_shipmondo.http_client` |
-| `Failure\ShipmondoFailure::of()` sorts every `ConnectionException` as `temporary_failure` | a `ConnectionException` that carries a success (`getResponse()`) to a call other than a GET is an `unexpected_failure`; it has that success's `statusCode`, also when it is a `temporary_failure` |
+| `Failure\ShipmondoFailure::of()` sorts every `ConnectionException` as `temporary_failure` | a `ConnectionException` that carries a success (`getResponse()`) to a call other than a GET is an `unread_success` (section 23); it has that success's `statusCode`, also when it is a `temporary_failure` |
 
 New: `DependencyInjection\SetonoSyliusShipmondoExtension::HTTP_CLIENT` and `::PICKUP_POINTS_HTTP_CLIENT`, the names of
 the two HTTP clients (their PSR-18 versions are `psr18.<name>`).
+
+### 23. An upload whose success can't be read makes the order unlinked
+
+Shipmondo can answer the upload of an order with a success the plugin can't read: the answer is cut off, e.g. because
+it doesn't arrive in time (section 22), or its body can't be decoded or mapped. Shipmondo has then created the sales
+order, but the plugin doesn't know its id. Such an upload used to make the order `failed`, a state the plugin treats as
+one in which Shipmondo has no sales order for the order: cancelling it in Sylius made it `cancelled` right away, while its
+sales order stayed in Shipmondo, where it could still be shipped
+([#69](https://github.com/Setono/SyliusShipmondoPlugin/issues/69)). Why it gets a state of its own is recorded in
+[ADR 0002](docs/adr/0002-an-unread-success-makes-the-order-unlinked.md).
+
+- **Such a call is a new kind of Shipmondo failure**, `unread_success` (`ShipmondoFailureKind::UnreadSuccess`, section
+  9): a success to a call that changes something (anything but a GET) whose answer was cut off (the SDK's
+  `ConnectionException` with a `getResponse()`) or couldn't be read (`MalformedResponseException`, including
+  `MappingException`). For a GET nothing changes.
+- **An upload that ends so makes the order `unlinked`**, a new Shipmondo state (`OrderInterface::SHIPMONDO_STATE_UNLINKED`),
+  through the new `complete_upload_unlinked` transition (`OrderWorkflow::TRANSITION_COMPLETE_UPLOAD_UNLINKED`, from
+  `uploading_to_shipmondo`), and logs an error. The order isn't linked to a sales order. For the upload run's stop rule
+  it counts as an upload, since Shipmondo accepted the order, and the run goes on.
+- **Nothing moves an order out of `unlinked` yet**: not `retry`, which would upload it a second time, nor `cancel`. Find
+  its sales order in Shipmondo by the order number. A later version looks it up for you
+  ([#29](https://github.com/Setono/SyliusShipmondoPlugin/issues/29)). Until then, webhooks about its sales order find
+  no order, since none is linked to it.
+- **Cancelling an unlinked order in Sylius leaves it `unlinked`**, since its sales order can't be deleted without its id.
+  The admin gets an error flash, and an error is logged, saying to cancel the sales order in Shipmondo by hand. The same
+  happens to an order cancelled while it was uploading, whose upload makes it `unlinked`.
+- **A sales order deletion that ends in an unread success counts as done**, like a 404: the sales order is gone, so the
+  order is reset and then cancelled (section 5). Before, it counted as failed, and the order stayed uploaded and linked.
+- **Registering the webhooks** explains an unread success like any other failure (section 9): register them again.
+- The order grid shows an unlinked order with an orange label. **If you override the Shipmondo state label
+  templates**, add `unlinked.html.twig` if you want your own.
+
+New translation keys: `setono_sylius_shipmondo.shipmondo_failure.unread_success` and `setono_sylius_shipmondo.ui.unlinked`
+in the `messages` domain, and `setono_sylius_shipmondo.order_unlinked_not_deleted_in_shipmondo` in the `flashes` domain.
+
+This needs `setono/shipmondo-php-sdk` 2.0.0-rc.2 or later, whose exceptions for a success it can't read carry the
+request Shipmondo answered (`ResponseAwareException::getRequest()`), so the plugin can tell a call that changes something
+from a read.
+
+Only if you extend or call the code involved:
+
+| 1.x | 2.x |
+|---|---|
+| | `Canceller\OrderCanceller::__construct($commandBus, $orderWorkflow, Psr\Log\LoggerInterface $logger)` |
+
+New: the `OrderInterface::SHIPMONDO_STATE_UNLINKED` and `OrderWorkflow::TRANSITION_COMPLETE_UPLOAD_UNLINKED`
+constants, and the `ShipmondoFailureKind::UnreadSuccess`, `UploadOutcome::UnreadSuccess` and `Cancellation::LeftUnlinked`
+cases. If your code matches on the Shipmondo states, the failure kinds, `UploadOutcome` or `Cancellation`, handle them.
 
 ### Unchanged
 
@@ -998,5 +1050,5 @@ flagging the mappings that no longer exist in Shipmondo, saying when the admin S
 counting the shipping promotions in the shipping line, replacing only this shop's webhooks when registering them,
 registering them at the channels' hostname on the command line, registering nothing at an endpoint Shipmondo
 can't reach, registering them right away instead of through the command bus, taking the authorized amount, the
-payment method and the payment gateway from the payments that paid the order, and the time limits on the requests to
-Shipmondo.
+payment method and the payment gateway from the payments that paid the order, the time limits on the requests to
+Shipmondo, and the `unlinked` Shipmondo state.

@@ -7,6 +7,7 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Webhook\Handler;
 use PHPUnit\Framework\TestCase;
 use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
+use Psr\Log\NullLogger;
 use Setono\Shipmondo\Enum\WebhookAction;
 use Setono\Shipmondo\Enum\WebhookResourceName;
 use Setono\SyliusShipmondoPlugin\Canceller\OrderCanceller;
@@ -109,7 +110,7 @@ final class SalesOrderDeletedHandlerTest extends TestCase
         $commandBus = $this->prophesize(MessageBusInterface::class);
         $commandBus->dispatch(Argument::cetera())->shouldNotBeCalled();
 
-        $handler = new SalesOrderDeletedHandler($orderWorkflow, new OrderCanceller($commandBus->reveal(), $orderWorkflow));
+        $handler = new SalesOrderDeletedHandler($orderWorkflow, new OrderCanceller($commandBus->reveal(), $orderWorkflow, new NullLogger()));
 
         $handler->handle($order, new RemoteEvent('shipmondo.event', $payload, WebhookResourceName::Orders, WebhookAction::Delete));
     }

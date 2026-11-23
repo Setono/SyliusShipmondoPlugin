@@ -8,6 +8,7 @@ use PHPUnit\Framework\TestCase;
 use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
+use Psr\Log\NullLogger;
 use Setono\Shipmondo\Exception\InternalServerErrorException;
 use Setono\Shipmondo\Exception\TooManyRequestsException;
 use Setono\Shipmondo\Exception\UnauthorizedException;
@@ -77,6 +78,35 @@ final class DeleteOrderHandlerTest extends TestCase
         yield 'deleted' => [204];
         // the sales order was already deleted in Shipmondo, which is what we wanted
         yield 'already deleted (404)' => [404];
+    }
+
+    /**
+     * Shipmondo deleted the sales order, though its answer was cut off or couldn't be read
+     *
+     * @test
+     *
+     * @dataProvider unreadSuccesses
+     *
+     * @param \Closure(ScriptedHttpClient): ScriptedHttpClient $answer
+     */
+    public function it_cancels_the_cancelled_order_when_shipmondo_deleted_the_sales_order_but_its_answer_cannot_be_read(\Closure $answer): void
+    {
+        $order = $this->uploadedOrder(cancelled: true);
+        $answer($this->shipmondo);
+
+        self::assertTrue($this->handle(new DeleteOrder(42)));
+
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_CANCELLED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame(['DELETE sales_orders/12345'], $this->shipmondo->requestLines());
+    }
+
+    /**
+     * @return iterable<string, array{\Closure(ScriptedHttpClient): ScriptedHttpClient}>
+     */
+    public static function unreadSuccesses(): iterable
+    {
+        yield 'cut off' => [static fn (ScriptedHttpClient $shipmondo): ScriptedHttpClient => $shipmondo->respondWithAnUnreadableBody(200)];
+        yield 'not JSON' => [static fn (ScriptedHttpClient $shipmondo): ScriptedHttpClient => $shipmondo->respond(200, body: 'not JSON')];
     }
 
     /**
@@ -250,7 +280,7 @@ final class DeleteOrderHandlerTest extends TestCase
             $this->orderRepository->reveal(),
             ShipmondoApi::client($this->shipmondo),
             $orderWorkflow,
-            new OrderCanceller($commandBus->reveal(), $orderWorkflow),
+            new OrderCanceller($commandBus->reveal(), $orderWorkflow, new NullLogger()),
         );
 
         return $handler($message);

@@ -34,11 +34,13 @@ final class OrderCancellationListener
 
     public function __invoke(OrderInterface $order): void
     {
-        // only the deletion of a sales order is worth telling the user about
+        // only what happens to a sales order is worth telling the user about
         match ($this->orderCanceller->cancel($order)) {
             Cancellation::SalesOrderDeleted => $this->addFlash('info', 'setono_sylius_shipmondo.order_deleted_in_shipmondo'),
             Cancellation::SalesOrderDeletedLater => $this->addFlash('info', 'setono_sylius_shipmondo.order_will_be_deleted_in_shipmondo'),
             Cancellation::SalesOrderNotDeleted => $this->addFlash('error', 'setono_sylius_shipmondo.order_not_deleted_in_shipmondo'),
+            // an error, not a warning, which Sylius's admin shows as a success
+            Cancellation::LeftUnlinked => $this->addFlash('error', 'setono_sylius_shipmondo.order_unlinked_not_deleted_in_shipmondo'),
             default => null,
         };
     }

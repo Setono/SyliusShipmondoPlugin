@@ -15,6 +15,12 @@ enum UploadOutcome: string
     case Uploaded = 'uploaded';
 
     /**
+     * Shipmondo answered the upload with a success, but its answer was cut off or couldn't be read: it most likely
+     * created the sales order, but which is unknown. The order is unlinked
+     */
+    case UnreadSuccess = 'unread_success';
+
+    /**
      * Shipmondo refused the upload because of something about this order, e.g. invalid data (a 4xx other than
      * 401, 403 and 429). The order is failed
      */

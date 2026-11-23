@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Command;
 
+use Nyholm\Psr7\Factory\Psr17Factory;
 use PHPUnit\Framework\TestCase;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
 use Psr\Log\LogLevel;
+use Setono\Shipmondo\Exception\MalformedResponseException;
 use Setono\Shipmondo\Exception\UnauthorizedException;
 use Setono\SyliusShipmondoPlugin\Command\RegisterWebhooksCommand;
 use Setono\SyliusShipmondoPlugin\Registrar\UnreachableWebhookEndpointException;
@@ -334,6 +336,31 @@ final class RegisterWebhooksCommandTest extends TestCase
             ],
         ]], $this->logger->records);
         $this->assertTheRouterContextIsPutBack();
+    }
+
+    /**
+     * Shipmondo registered a webhook, but its answer couldn't be read: the registration is still a failure, and
+     * registering again is safe, since it replaces the shop's own webhooks
+     *
+     * @test
+     */
+    public function it_fails_and_explains_why_when_the_answer_to_registering_a_webhook_cannot_be_read(): void
+    {
+        $this->channels('shop.example.com');
+        $this->webhookRegistrar->register()->willThrow(new MalformedResponseException(
+            ShipmondoApi::empty(201),
+            'Could not decode response body as JSON',
+            request: (new Psr17Factory())->createRequest('POST', 'https://app.shipmondo.com/api/public/v3/webhooks'),
+        ));
+
+        $commandTester = new CommandTester($this->command());
+
+        self::assertSame(Command::FAILURE, $commandTester->execute([], ['capture_stderr_separately' => true]));
+        self::assertStringContainsString(
+            '[ERROR] The webhooks could not be registered, so Shipmondo may send only some of them, or none. Register them again once the problem is solved. Shipmondo did what was asked, but its answer was cut off or could not be read: Could not decode response body as JSON',
+            self::oneLine($commandTester->getErrorOutput()),
+        );
+        self::assertSame('unread_success', $this->logger->records[0]['context']['shipmondoFailure'] ?? null);
     }
 
     /**

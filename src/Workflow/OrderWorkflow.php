@@ -21,6 +21,8 @@ final class OrderWorkflow
 
     final public const TRANSITION_COMPLETE_UPLOAD = 'complete_upload';
 
+    final public const TRANSITION_COMPLETE_UPLOAD_UNLINKED = 'complete_upload_unlinked';
+
     final public const TRANSITION_FAIL = 'fail';
 
     final public const TRANSITION_RESET = 'reset';
@@ -47,6 +49,7 @@ final class OrderWorkflow
             OrderInterface::SHIPMONDO_STATE_PENDING,
             OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO,
             OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO,
+            OrderInterface::SHIPMONDO_STATE_UNLINKED,
             OrderInterface::SHIPMONDO_STATE_FAILED,
             OrderInterface::SHIPMONDO_STATE_CANCELLED,
         ];
@@ -115,6 +118,10 @@ final class OrderWorkflow
         return [
             new Transition(self::TRANSITION_START_UPLOAD, [OrderInterface::SHIPMONDO_STATE_PENDING], OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO),
             new Transition(self::TRANSITION_COMPLETE_UPLOAD, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO),
+            // when Shipmondo answered the upload with a success that was cut off or couldn't be read: it created the sales
+            // order, but which is unknown. Nothing leaves unlinked yet: not retry, which would upload it a second time, nor
+            // cancel, since Shipmondo most likely has a sales order for it
+            new Transition(self::TRANSITION_COMPLETE_UPLOAD_UNLINKED, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_UNLINKED),
             new Transition(self::TRANSITION_FAIL, [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_FAILED),
             // when an order's sales order is deleted, the order is no longer uploaded: it goes back to pending to be uploaded
             // again, unless it is cancelled in Sylius, in which case it becomes cancelled right after

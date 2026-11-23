@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Canceller;
 
+use Psr\Log\LoggerInterface;
 use Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
@@ -17,6 +18,7 @@ final class OrderCanceller implements OrderCancellerInterface
     public function __construct(
         private readonly MessageBusInterface $commandBus,
         private readonly WorkflowInterface $orderWorkflow,
+        private readonly LoggerInterface $logger,
     ) {
     }
 
@@ -29,8 +31,22 @@ final class OrderCanceller implements OrderCancellerInterface
         return match ($order->getShipmondoState()) {
             OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO => $this->deleteSalesOrder($order),
             OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO => Cancellation::LeftToUpload,
+            OrderInterface::SHIPMONDO_STATE_UNLINKED => $this->leaveUnlinked($order),
             default => $this->cancelRightAway($order),
         };
+    }
+
+    /**
+     * Shipmondo most likely has a sales order for the order, but which is unknown, so it can't be deleted, and the
+     * order can't become cancelled: someone has to cancel the sales order in Shipmondo
+     */
+    private function leaveUnlinked(OrderInterface $order): Cancellation
+    {
+        $this->logger->error('The order {order} was cancelled, but it is unlinked: Shipmondo most likely has a sales order for it, but which is unknown, so it can\'t be deleted. Find the sales order in Shipmondo and cancel it there', [
+            'order' => $order->getNumber(),
+        ]);
+
+        return Cancellation::LeftUnlinked;
     }
 
     private function deleteSalesOrder(OrderInterface $order): Cancellation

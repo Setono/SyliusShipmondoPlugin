@@ -11,7 +11,8 @@ setono_sylius_shipmondo:
         not_found: 'Shipmondo could not find what was asked for: %error%'
         rejected: 'Shipmondo refused the request: %error%'
         unexpected_failure: 'Something unexpected went wrong when calling Shipmondo: %error%'
-    
+        unread_success: 'Shipmondo did what was asked, but its answer was cut off or could not be read: %error%'
+
     ui:
         cancelled: Cancelled
         failed: Failed
@@ -40,6 +41,7 @@ setono_sylius_shipmondo:
         stale_payment_gateways: 'These payment methods are mapped to a payment gateway that no longer exists in Shipmondo, so Shipmondo may not capture their payments. Map them to an existing payment gateway, or remove the mapping:'
         stale_shipment_templates: 'These shipping methods allow shipment templates that no longer exist in Shipmondo, so their orders may get another shipment template, or none. Remove them, or allow existing ones instead:'
         try_again: Try again
+        unlinked: Unlinked
         uploaded_to_shipmondo: Uploaded to Shipmondo
         uploading_to_shipmondo: Uploading to Shipmondo
         webhooks: Webhooks
