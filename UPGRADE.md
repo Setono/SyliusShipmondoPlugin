@@ -54,6 +54,9 @@ For most installations the required changes are:
 - watch for `unlinked` orders, a new Shipmondo state for an order whose upload Shipmondo answered with a success the
   plugin couldn't read: Shipmondo most likely has its sales order, so find it there, and cancel it there by hand when
   you cancel such an order (section 23)
+- note that an admin can now retry the upload of a failed order, from the order page or in bulk from the order grid,
+  which gets a Shipmondo state filter, a bulk action and a column of checkboxes, and if you override Sylius's order page
+  sidebar, keep the plugin's Shipmondo section (section 24)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -277,9 +280,10 @@ for good. In 2.x, `Uploader\OrderUploader` settles every failure on the order:
 - **When the upload run stops early, the command prints why and exits with a failure code**, and the remaining orders
   stay `pending` for the next run. Otherwise the command stays silent and succeeds, also when single uploads failed:
   each failure is logged with the order number, its kind of Shipmondo failure (section 9) and Shipmondo's status code
-  and error message, and a `failed` order stays `failed` until an admin steps in.
+  and error message, and a `failed` order stays `failed` until an admin retries its upload (section 24).
 - Going back to pending uses the new `retry` transition (`OrderWorkflow::TRANSITION_RETRY`,
-  `uploading_to_shipmondo` → `pending`) of the `setono_sylius_shipmondo__order` workflow. `reset` is unchanged.
+  `uploading_to_shipmondo` → `pending`, and `failed` → `pending` for an admin's retry, section 24) of the
+  `setono_sylius_shipmondo__order` workflow. `reset` is unchanged.
 - Retrying after a temporary failure can create a duplicate sales order, when Shipmondo created the sales order but
   its answer was lost (see [#29](https://github.com/Setono/SyliusShipmondoPlugin/issues/29)).
 - **If you route `UploadOrder` to an async transport:** its handler no longer throws for a failed upload, so Messenger
@@ -614,7 +618,7 @@ webhook parser (`Setono\Shipmondo\Webhook\WebhookParser`). **If you reference, d
 | `setono_sylius_shipmondo.data_mapper.sales_order.shipping` | `Setono\SyliusShipmondoPlugin\DataMapper\ShippingSalesOrderDataMapper` |
 | `setono_sylius_shipmondo.event_subscriber.add_menu` | `Setono\SyliusShipmondoPlugin\EventSubscriber\AddMenuSubscriber` |
 | `setono_sylius_shipmondo.event_subscriber.grid.add_pickup_point_delivery_to_shipping_method_grid` | `Setono\SyliusShipmondoPlugin\EventSubscriber\Grid\AddPickupPointDeliveryToShippingMethodGridSubscriber` |
-| `setono_sylius_shipmondo.event_subscriber.grid.add_shipmondo_state_column_to_order_grid` | `Setono\SyliusShipmondoPlugin\EventSubscriber\Grid\AddShipmondoStateColumnToOrderGridSubscriber` |
+| `setono_sylius_shipmondo.event_subscriber.grid.add_shipmondo_state_column_to_order_grid` | `Setono\SyliusShipmondoPlugin\EventSubscriber\Grid\AddShipmondoToOrderGridSubscriber` (renamed, section 24) |
 | `setono_sylius_shipmondo.form.type_extension.shipment` | `Setono\SyliusShipmondoPlugin\Form\Extension\ShipmentTypeExtension` |
 | `setono_sylius_shipmondo.form.type_extension.shipping_method` | `Setono\SyliusShipmondoPlugin\Form\Extension\ShippingMethodTypeExtension` |
 | `setono_sylius_shipmondo.message.command_handler.register_webhooks` | removed: the registrar registers the webhooks and records the registration (section 20) |
@@ -1039,6 +1043,55 @@ New: the `OrderInterface::SHIPMONDO_STATE_UNLINKED` and `OrderWorkflow::TRANSITI
 constants, and the `ShipmondoFailureKind::UnreadSuccess`, `UploadOutcome::UnreadSuccess` and `Cancellation::LeftUnlinked`
 cases. If your code matches on the Shipmondo states, the failure kinds, `UploadOutcome` or `Cancellation`, handle them.
 
+### 24. An admin can retry the upload of a failed order
+
+A `failed` order used to be a dead end: nothing moved it out of `failed` but cancelling it, and the admin showed its
+Shipmondo state only as a column in the order grid
+([#30](https://github.com/Setono/SyliusShipmondoPlugin/issues/30)). Since an upload whose success can't be read makes
+the order `unlinked` (section 23), Shipmondo has no sales order for a `failed` order, so retrying its upload can't create
+a second one.
+
+- **The `retry` transition (`OrderWorkflow::TRANSITION_RETRY`) now leads to `pending` from `failed` too**, not only from
+  `uploading_to_shipmondo`. It still means the same: back to `pending`, so the next upload run tries again. The upload
+  still applies it only to an uploading order.
+- **Retrying never calls Shipmondo.** It makes the order `pending`, and the next upload run uploads it if it still
+  qualifies for upload, including any conditions you add through `PreQualifiedUploadableOrdersQueryBuilderCreatedEvent`.
+  An order that no longer qualifies stays `pending`, like any other pending order. The order is locked and read again
+  when it is retried, and one that is no longer `failed` by then, e.g. because it was cancelled meanwhile, is left as it
+  is. An uploading order is left to its upload.
+- **The order page has a Shipmondo section** in its sidebar, right after the shipments: the order's Shipmondo state,
+  with the label the order grid shows, the id of its sales order once it is uploaded, and a "Retry upload" button for a
+  `failed` order. It is the `setono_sylius_shipmondo` block (priority 32) of the `sylius.admin.order.show.sidebar`
+  template event, rendering `@SetonoSyliusShipmondoPlugin/admin/order/show/_shipmondo.html.twig`. **If you override
+  Sylius's order page sidebar**, e.g. its `_content.html.twig`, and no longer render that template event, render the
+  plugin's template yourself; to move or drop the section, configure the block under `sylius_ui.events`.
+- **The order grid has a "Shipmondo state" filter** (`criteria[shipmondo_state]`) with every Shipmondo state, and a
+  **"Retry upload to Shipmondo" bulk action**, which retries the selected orders that are `failed`, leaves the rest as
+  they are, and flashes how many it retried and how many it left. Sylius's order grid has no bulk action of its own, so
+  the grid now also gets a column of checkboxes to select the orders with. The bulk action's type,
+  `setono_sylius_shipmondo_retry_upload`, renders `@SetonoSyliusShipmondoPlugin/admin/order/grid/bulk_action/retry_upload.html.twig`
+  (the plugin prepends it to `sylius_grid.templates.bulk_action`).
+- **Both actions take a PUT with a CSRF token**, like Sylius's own state transitions in the admin, e.g. cancelling an
+  order: `PUT /admin/orders/{id}/retry-upload` (route `setono_sylius_shipmondo_admin_order_retry_upload`, token id: the
+  order's id) and `PUT /admin/orders/bulk/retry-upload` (route `setono_sylius_shipmondo_admin_order_bulk_retry_upload`,
+  token id `RetryUploadController::BULK_CSRF_TOKEN_ID`, the order ids as `ids[]`). Anyone with admin access may use
+  them. Both routes come with the plugin's admin routes, in `routes.yaml` and `routes_no_locale.yaml` alike.
+- Each retry is logged at info level, also when the order was left as it was.
+
+New translation keys: `setono_sylius_shipmondo.ui.retry_upload`, `setono_sylius_shipmondo.ui.retry_upload_to_shipmondo`
+and `setono_sylius_shipmondo.ui.sales_order_id` in the `messages` domain, and `setono_sylius_shipmondo.order_upload_retried`,
+`setono_sylius_shipmondo.order_upload_not_retried`, `setono_sylius_shipmondo.orders_upload_retried` and
+`setono_sylius_shipmondo.orders_upload_not_retried` in the `flashes` domain (the last two are pluralized on `%count%`).
+
+Only if you extend or call the code involved:
+
+| 1.x | 2.x |
+|---|---|
+| `EventSubscriber\Grid\AddShipmondoStateColumnToOrderGridSubscriber` | `EventSubscriber\Grid\AddShipmondoToOrderGridSubscriber`, which adds the column, the filter and the bulk action |
+| | new `Uploader\OrderUploaderInterface::retry(OrderInterface $order): bool`, which makes a `failed` order `pending` and says whether it did. Implement it if you implement the interface |
+
+New: `Controller\Admin\RetryUploadController`.
+
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
@@ -1051,4 +1104,4 @@ counting the shipping promotions in the shipping line, replacing only this shop'
 registering them at the channels' hostname on the command line, registering nothing at an endpoint Shipmondo
 can't reach, registering them right away instead of through the command bus, taking the authorized amount, the
 payment method and the payment gateway from the payments that paid the order, the time limits on the requests to
-Shipmondo, and the `unlinked` Shipmondo state.
+Shipmondo, the `unlinked` Shipmondo state, and retrying the upload of a failed order.

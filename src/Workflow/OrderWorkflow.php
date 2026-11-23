@@ -126,8 +126,9 @@ final class OrderWorkflow
             // when an order's sales order is deleted, the order is no longer uploaded: it goes back to pending to be uploaded
             // again, unless it is cancelled in Sylius, in which case it becomes cancelled right after
             new Transition(self::TRANSITION_RESET, [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_PENDING),
-            // when an upload fails for a reason that says nothing about the order, the next upload run tries again
-            new Transition(self::TRANSITION_RETRY, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], OrderInterface::SHIPMONDO_STATE_PENDING),
+            // back to pending, so the next upload run tries again: when an upload fails for a reason that says nothing about
+            // the order, and when an admin retries the upload of a failed order, for which Shipmondo has no sales order
+            new Transition(self::TRANSITION_RETRY, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO, OrderInterface::SHIPMONDO_STATE_FAILED], OrderInterface::SHIPMONDO_STATE_PENDING),
             // when the order is cancelled in Sylius. It leaves only the states without a sales order: an uploaded order is
             // reset once its sales order is deleted, and an uploading order is settled by its upload first
             new Transition(self::TRANSITION_CANCEL, [OrderInterface::SHIPMONDO_STATE_PENDING, OrderInterface::SHIPMONDO_STATE_FAILED], OrderInterface::SHIPMONDO_STATE_CANCELLED),

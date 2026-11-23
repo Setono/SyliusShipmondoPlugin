@@ -7,6 +7,7 @@ namespace Setono\SyliusShipmondoPlugin\DependencyInjection;
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
 use Setono\SyliusShipmondoPlugin\Doctrine\Type\PickupPointType;
 use Setono\SyliusShipmondoPlugin\EventListener\OrderCancellationListener;
+use Setono\SyliusShipmondoPlugin\EventSubscriber\Grid\AddShipmondoToOrderGridSubscriber;
 use Setono\SyliusShipmondoPlugin\Message\Middleware\AbsorbDeleteOrderFailureMiddleware;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlerInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\WebhookParser;
@@ -143,8 +144,26 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
             ]);
         }
 
+        // The template of the order grid's bulk action that retries the upload of the selected orders
+        $container->prependExtensionConfig('sylius_grid', [
+            'templates' => [
+                'bulk_action' => [
+                    AddShipmondoToOrderGridSubscriber::RETRY_UPLOAD_BULK_ACTION => '@SetonoSyliusShipmondoPlugin/admin/order/grid/bulk_action/retry_upload.html.twig',
+                ],
+            ],
+        ]);
+
         $container->prependExtensionConfig('sylius_ui', [
             'events' => [
+                // right after the order's shipments
+                'sylius.admin.order.show.sidebar' => [
+                    'blocks' => [
+                        'setono_sylius_shipmondo' => [
+                            'template' => '@SetonoSyliusShipmondoPlugin/admin/order/show/_shipmondo.html.twig',
+                            'priority' => 32,
+                        ],
+                    ],
+                ],
                 'sylius.admin.shipping_method.update.javascripts' => [
                     'blocks' => [
                         'javascripts' => [

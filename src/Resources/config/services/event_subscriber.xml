@@ -6,7 +6,7 @@
             <tag name="kernel.event_subscriber"/>
         </service>
 
-        <service id="Setono\SyliusShipmondoPlugin\EventSubscriber\Grid\AddShipmondoStateColumnToOrderGridSubscriber">
+        <service id="Setono\SyliusShipmondoPlugin\EventSubscriber\Grid\AddShipmondoToOrderGridSubscriber">
             <tag name="kernel.event_subscriber"/>
         </service>
 

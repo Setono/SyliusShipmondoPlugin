@@ -854,6 +854,89 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
+     * An admin retries the upload of a failed order: it goes back to pending, so the next upload run uploads it if it
+     * still qualifies for upload. Nothing is asked of Shipmondo
+     *
+     * @test
+     */
+    public function it_retries_the_upload_of_a_failed_order_by_making_it_pending_for_the_next_upload_run(): void
+    {
+        $order = $this->order(1, self::FAILED);
+
+        // the order is retried as the database has it, locked, so nothing changes it in between
+        $this->entityManager->wrapInTransaction(Argument::type('callable'))->shouldBeCalledOnce();
+        $this->entityManager->refresh($order, LockMode::PESSIMISTIC_WRITE)->shouldBeCalledOnce();
+
+        self::assertTrue($this->uploader()->retry($order));
+
+        self::assertSame(self::PENDING, $order->getShipmondoState());
+        self::assertSame([], $this->shipmondo->requests());
+        self::assertSame([[
+            'level' => LogLevel::INFO,
+            'message' => 'The upload of the order {order} was retried, so the order is pending for the next upload run',
+            'context' => ['order' => '#001', 'state' => self::PENDING],
+        ]], $this->logger->records);
+    }
+
+    /**
+     * The order was failed when the admin was shown it, but something changed it before the retry read it again, e.g.
+     * another admin cancelled it
+     *
+     * @test
+     */
+    public function it_does_not_retry_the_upload_of_an_order_that_is_no_longer_failed_when_it_is_read_again(): void
+    {
+        $order = $this->order(1, self::FAILED);
+        $this->entityManager->refresh($order, LockMode::PESSIMISTIC_WRITE)->will(static function () use ($order): void {
+            $order->setState(OrderInterface::STATE_CANCELLED);
+            $order->setShipmondoState(self::CANCELLED);
+        })->shouldBeCalledOnce();
+
+        self::assertFalse($this->uploader()->retry($order));
+
+        self::assertSame(self::CANCELLED, $order->getShipmondoState());
+        self::assertSame([[
+            'level' => LogLevel::INFO,
+            'message' => 'The upload of the order {order} was not retried, because its Shipmondo state is {state}, not failed',
+            'context' => ['order' => '#001', 'state' => self::CANCELLED],
+        ]], $this->logger->records);
+    }
+
+    /**
+     * An uploading order is left to its upload, even though the upload itself retries it when it fails in a way that
+     * says nothing about the order
+     *
+     * @test
+     *
+     * @dataProvider statesThatAreNotFailed
+     */
+    public function it_does_not_retry_the_upload_of_an_order_that_is_not_failed(string $state, ?int $salesOrderId): void
+    {
+        $order = $this->order(1, $state);
+
+        self::assertFalse($this->uploader()->retry($order));
+
+        self::assertSame([$state, $salesOrderId], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame([[
+            'level' => LogLevel::INFO,
+            'message' => 'The upload of the order {order} was not retried, because its Shipmondo state is {state}, not failed',
+            'context' => ['order' => '#001', 'state' => $state],
+        ]], $this->logger->records);
+    }
+
+    /**
+     * @return iterable<string, array{string, int|null}>
+     */
+    public static function statesThatAreNotFailed(): iterable
+    {
+        yield 'pending' => [self::PENDING, null];
+        yield 'uploading' => [self::UPLOADING, null];
+        yield 'uploaded' => [self::UPLOADED, 999];
+        yield 'unlinked' => [self::UNLINKED, null];
+        yield 'cancelled' => [self::CANCELLED, null];
+    }
+
+    /**
      * An order in the given Shipmondo state. An uploaded order is linked to the sales order 999
      */
     private function order(int $id, string $state = self::PENDING): Order

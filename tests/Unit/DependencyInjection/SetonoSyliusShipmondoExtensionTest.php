@@ -165,7 +165,7 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
     /**
      * @test
      */
-    public function it_prepends_the_framework_and_sylius_ui_configuration(): void
+    public function it_prepends_the_framework_sylius_grid_and_sylius_ui_configuration(): void
     {
         (new SetonoSyliusShipmondoExtension())->prepend($this->container);
 
@@ -215,7 +215,23 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
         ]], $this->container->getExtensionConfig('framework'));
 
         self::assertSame([[
+            'templates' => [
+                'bulk_action' => [
+                    'setono_sylius_shipmondo_retry_upload' => '@SetonoSyliusShipmondoPlugin/admin/order/grid/bulk_action/retry_upload.html.twig',
+                ],
+            ],
+        ]], $this->container->getExtensionConfig('sylius_grid'));
+
+        self::assertSame([[
             'events' => [
+                'sylius.admin.order.show.sidebar' => [
+                    'blocks' => [
+                        'setono_sylius_shipmondo' => [
+                            'template' => '@SetonoSyliusShipmondoPlugin/admin/order/show/_shipmondo.html.twig',
+                            'priority' => 32,
+                        ],
+                    ],
+                ],
                 'sylius.admin.shipping_method.update.javascripts' => $javascripts('@SetonoSyliusShipmondoPlugin/admin/shipping_method/form/_javascripts.html.twig'),
                 'sylius.admin.shipping_method.create.javascripts' => $javascripts('@SetonoSyliusShipmondoPlugin/admin/shipping_method/form/_javascripts.html.twig'),
                 'sylius.shop.layout.javascripts' => $javascripts('@SetonoSyliusShipmondoPlugin/shop/_javascripts.html.twig'),

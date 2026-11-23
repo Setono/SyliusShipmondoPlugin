@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- The Unit suite runs by default (composer phpunit, Infection, code coverage) and needs no database.
-     The Functional suite boots the test application against MySQL; run it by selecting the Functional testsuite. -->
+<!-- The Unit suite runs by default (composer phpunit, Infection) and needs no database.
+     The Functional suite boots the test application against MySQL; run it by selecting the Functional testsuite.
+     CI's code coverage counts both suites. -->
 <phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd" colors="true"
          bootstrap="tests/Application/config/bootstrap.php"

@@ -89,7 +89,7 @@ final class OrderWorkflowTest extends TestCase
         );
 
         self::assertSame(
-            [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO],
+            [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO, OrderInterface::SHIPMONDO_STATE_FAILED],
             $byName[OrderWorkflow::TRANSITION_RETRY]->getFroms(),
         );
         self::assertSame(
@@ -145,6 +145,64 @@ final class OrderWorkflowTest extends TestCase
     }
 
     /**
+     * An admin retries the upload of a failed order, and the upload retries an order whose upload failed in a way that
+     * says nothing about it: both put the order back to pending, for the next upload run
+     *
+     * @test
+     *
+     * @dataProvider retriedStates
+     */
+    public function it_builds_a_workflow_that_retries_the_upload_of_a_failed_or_uploading_order(string $state): void
+    {
+        $workflow = OrderWorkflow::getWorkflow(new EventDispatcher());
+        $order = new Order();
+        $order->setShipmondoState($state);
+
+        self::assertTrue($workflow->can($order, OrderWorkflow::TRANSITION_RETRY));
+
+        $workflow->apply($order, OrderWorkflow::TRANSITION_RETRY);
+
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_PENDING, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function retriedStates(): iterable
+    {
+        yield 'failed' => [OrderInterface::SHIPMONDO_STATE_FAILED];
+        yield 'uploading' => [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO];
+    }
+
+    /**
+     * Only an order without a sales order can be retried: a pending order is waiting for its upload already, and the
+     * others have (or most likely have) a sales order, or are cancelled
+     *
+     * @test
+     *
+     * @dataProvider statesThatAreNotRetried
+     */
+    public function it_builds_a_workflow_that_does_not_retry_the_upload_of_an_order_in_any_other_state(string $state, ?int $salesOrderId): void
+    {
+        $workflow = OrderWorkflow::getWorkflow(new EventDispatcher());
+        $order = new Order();
+        $order->setShipmondoState($state, [OrderWorkflow::CONTEXT_SALES_ORDER_ID => $salesOrderId]);
+
+        self::assertFalse($workflow->can($order, OrderWorkflow::TRANSITION_RETRY));
+    }
+
+    /**
+     * @return iterable<string, array{string, int|null}>
+     */
+    public static function statesThatAreNotRetried(): iterable
+    {
+        yield 'pending' => [OrderInterface::SHIPMONDO_STATE_PENDING, null];
+        yield 'uploaded' => [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, 1001];
+        yield 'unlinked' => [OrderInterface::SHIPMONDO_STATE_UNLINKED, null];
+        yield 'cancelled' => [OrderInterface::SHIPMONDO_STATE_CANCELLED, null];
+    }
+
+    /**
      * @test
      */
     public function it_builds_a_workflow_that_stores_the_state_as_a_string_on_the_order(): void
@@ -191,6 +249,7 @@ final class OrderWorkflowTest extends TestCase
             [OrderWorkflow::TRANSITION_FAIL, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], [OrderInterface::SHIPMONDO_STATE_FAILED]],
             [OrderWorkflow::TRANSITION_RESET, [OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO], [OrderInterface::SHIPMONDO_STATE_PENDING]],
             [OrderWorkflow::TRANSITION_RETRY, [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO], [OrderInterface::SHIPMONDO_STATE_PENDING]],
+            [OrderWorkflow::TRANSITION_RETRY, [OrderInterface::SHIPMONDO_STATE_FAILED], [OrderInterface::SHIPMONDO_STATE_PENDING]],
             [OrderWorkflow::TRANSITION_CANCEL, [OrderInterface::SHIPMONDO_STATE_PENDING], [OrderInterface::SHIPMONDO_STATE_CANCELLED]],
             [OrderWorkflow::TRANSITION_CANCEL, [OrderInterface::SHIPMONDO_STATE_FAILED], [OrderInterface::SHIPMONDO_STATE_CANCELLED]],
         ], $transitions);
@@ -249,7 +308,7 @@ final class OrderWorkflowTest extends TestCase
                         'to' => [OrderInterface::SHIPMONDO_STATE_PENDING],
                     ],
                     OrderWorkflow::TRANSITION_RETRY => [
-                        'from' => [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO],
+                        'from' => [OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO, OrderInterface::SHIPMONDO_STATE_FAILED],
                         'to' => [OrderInterface::SHIPMONDO_STATE_PENDING],
                     ],
                     OrderWorkflow::TRANSITION_CANCEL => [

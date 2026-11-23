@@ -9,3 +9,17 @@ setono_sylius_shipmondo_admin_shipmondo_register_webhooks:
     methods: [GET]
     defaults:
         _controller: Setono\SyliusShipmondoPlugin\Controller\Admin\ShipmondoController::registerWebhooks
+
+setono_sylius_shipmondo_admin_order_retry_upload:
+    path: /orders/{id}/retry-upload
+    methods: [PUT]
+    requirements:
+        id: \d+
+    defaults:
+        _controller: Setono\SyliusShipmondoPlugin\Controller\Admin\RetryUploadController::retry
+
+setono_sylius_shipmondo_admin_order_bulk_retry_upload:
+    path: /orders/bulk/retry-upload
+    methods: [PUT]
+    defaults:
+        _controller: Setono\SyliusShipmondoPlugin\Controller\Admin\RetryUploadController::bulkRetry
