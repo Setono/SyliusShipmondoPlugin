@@ -1,8 +1,10 @@
 name: "build"
 on:
+    # every merge into 2.x is tested too: a pull request is tested against 2.x as it was then, so two that pass on their
+    # own can still break 2.x together
     push:
         branches:
-            - "master"
+            - "2.x"
         paths-ignore:
             - "**/*.md"
     pull_request:
@@ -378,6 +380,10 @@ jobs:
 
             -   name: "Collect code coverage of the unit tests with pcov and phpunit/phpunit"
                 run: "vendor/bin/phpunit --coverage-clover=.build/logs/clover-unit.xml"
+
+            # the functional suite creates the schema, but the database has to exist
+            -   name: "Create database"
+                run: "(cd tests/Application && bin/console doctrine:database:create)"
 
             # what only the functional tests reach, e.g. the admin controllers, counts as covered too. Infection still
             # mutates against the unit tests only
