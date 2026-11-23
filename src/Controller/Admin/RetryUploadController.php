@@ -63,13 +63,13 @@ final class RetryUploadController extends AbstractController
         $this->assertCsrfTokenValid(self::BULK_CSRF_TOKEN_ID, $request);
 
         $retried = 0;
-        $skipped = 0;
+        $notRetried = 0;
 
         foreach ($this->orderRepository->findBy(['id' => $request->request->all('ids')]) as $order) {
             if ($order instanceof OrderInterface && $this->orderUploader->retry($order)) {
                 ++$retried;
             } else {
-                ++$skipped;
+                ++$notRetried;
             }
         }
 
@@ -78,10 +78,10 @@ final class RetryUploadController extends AbstractController
             'parameters' => ['%count%' => $retried],
         ]);
 
-        if ($skipped > 0) {
+        if ($notRetried > 0) {
             $this->addFlash('info', [
                 'message' => 'setono_sylius_shipmondo.orders_upload_not_retried',
-                'parameters' => ['%count%' => $skipped],
+                'parameters' => ['%count%' => $notRetried],
             ]);
         }
 

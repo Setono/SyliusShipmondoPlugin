@@ -854,9 +854,6 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
-     * An order in the given Shipmondo state. An uploaded order is linked to the sales order 999
-     */
-    /**
      * An admin retries the upload of a failed order: it goes back to pending, so the next upload run uploads it if it
      * still qualifies for upload. Nothing is asked of Shipmondo
      *
@@ -939,6 +936,9 @@ final class OrderUploaderTest extends TestCase
         yield 'cancelled' => [self::CANCELLED, null];
     }
 
+    /**
+     * An order in the given Shipmondo state. An uploaded order is linked to the sales order 999
+     */
     private function order(int $id, string $state = self::PENDING): Order
     {
         return $this->orders[] = Orders::create($state, 999, id: $id, number: sprintf('#%03d', $id));
