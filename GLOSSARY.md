@@ -19,7 +19,7 @@ One pass of the order upload, which uploads every pending order that qualifies f
 _Avoid_: Sync, batch
 
 **Shipmondo state**:
-Where a Sylius order is in its upload: pending, uploading, uploaded, failed or cancelled.
+Where a Sylius order is in its upload: pending, uploading, uploaded, unlinked, failed or cancelled.
 _Avoid_: Upload status, sync state
 
 **Pending**:
@@ -34,15 +34,19 @@ _Avoid_: Dispatching
 Shipmondo has a sales order for the order, and the order is linked to it. Only an uploaded order is linked to a sales order.
 _Avoid_: Dispatched, synced
 
+**Unlinked**:
+Shipmondo most likely has a sales order for the order, but the order isn't linked to it: its upload was an unread success, so which sales order Shipmondo created is unknown.
+_Avoid_: Unconfirmed, lost
+
 **Failed**:
-The order's upload can't succeed as it is: Shipmondo rejected it, or the order's data couldn't be turned into a sales order. It stays failed until an admin steps in.
+The order's upload can't succeed as it is: Shipmondo rejected it, or the order's data couldn't be turned into a sales order. Shipmondo has no sales order for it. It stays failed until an admin retries its upload, which makes it pending again.
 _Avoid_: Error, broken
 
 **Cancelled**:
-The Sylius order was cancelled, and Shipmondo has no sales order for it: it was never uploaded, or its sales order was deleted. Nothing more happens to it. An order that is cancelled in Sylius becomes cancelled right away when it is pending or failed, once its sales order is deleted when it is uploaded, and once its upload is settled when it is uploading.
+The Sylius order was cancelled, and Shipmondo has no sales order for it: it was never uploaded, or its sales order was deleted. Nothing more happens to it. An order that is cancelled in Sylius becomes cancelled right away when it is pending or failed, once its sales order is deleted when it is uploaded, once its sales order is found in Shipmondo and deleted, or isn't found, when it is unlinked, and once its upload is settled when it is uploading.
 
 **Upload outcome**:
-How one upload went: uploaded, a Shipmondo failure, the order changed while it was uploading (back to pending), or skipped because the order wasn't uploading. It decides the order's Shipmondo state: an upload that is rejected or not found, or fails unexpectedly, makes the order failed, and any other Shipmondo failure puts it back to pending.
+How one upload went: uploaded, a Shipmondo failure, the order changed while it was uploading (back to pending), or skipped because the order wasn't uploading. It decides the order's Shipmondo state: an upload that is an unread success makes the order unlinked, an upload that is rejected or not found, or fails unexpectedly in any other way, makes it failed, and any other Shipmondo failure puts it back to pending.
 
 **Rejected upload**:
 An upload that Shipmondo rejected or answered with not found. The order becomes failed, and the upload counts toward the upload run's stop rule.
@@ -86,7 +90,11 @@ Shipmondo refused the call because of something about it, such as invalid data (
 _Avoid_: validation error
 
 **Unexpected failure**:
-An answer nothing expects (an unreadable success, a redirect), or a failure before Shipmondo answered, such as order data a data mapper can't turn into a sales order. So is a success to a call that changes something, such as creating a sales order, whose rest didn't arrive, e.g. in time: Shipmondo did what was asked, but its answer is lost.
+An answer nothing expects (a redirect, a success to a read that can't be read), or a failure before Shipmondo answered, such as order data a data mapper can't turn into a sales order.
+
+**Unread success**:
+Shipmondo answered a call that changes something, such as creating a sales order, with a success, but its answer was cut off, e.g. because it didn't arrive in time, or couldn't be read. Shipmondo did what was asked, but what it answered is unknown. Deleting a sales order that ends in an unread success is not a failure: the sales order is gone, as wanted.
+_Avoid_: lost answer
 
 ### Pickup points
 
