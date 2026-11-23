@@ -39,7 +39,7 @@ Shipmondo may have a sales order for the order, but the order isn't linked to it
 _Avoid_: Unconfirmed, lost
 
 **Sales order lookup**:
-Finding the sales order Shipmondo created for an unlinked order, by the exact order id its upload sent. An upload run looks up each order that has been unlinked for at least ten minutes, since Shipmondo lists a new sales order only after a short delay. One sales order found: the order is linked to it and becomes uploaded. None: someone deleted it in Shipmondo, so the order goes back to pending and is uploaded again, as when a linked order's sales order is deleted. Several: the order stays unlinked, since some may be another shop's. A lookup that fails is tried again by the next upload run.
+Finding the sales order Shipmondo may have created for an unlinked order, by the exact order id its upload sent. An upload run looks up each order that has been unlinked for at least ten minutes, since Shipmondo lists a new sales order only after a short delay. One sales order found: the order is linked to it and becomes uploaded. None: the call that failed temporarily didn't create one, or someone deleted it in Shipmondo, so the order goes back to pending and is uploaded again, as when a linked order's sales order is deleted. Several: the order stays unlinked, since some may be another shop's. A lookup that fails is tried again by the next upload run.
 _Avoid_: Search, sync, reconcile
 
 **Failed**:

@@ -648,6 +648,7 @@ in a service of your own (autowiring) and decorate it:
 | `Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface` | `Setono\SyliusShipmondoPlugin\Canceller\OrderCanceller` |
 | `Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface` | `Setono\SyliusShipmondoPlugin\DataMapper\CompositeSalesOrderDataMapper`, which runs every data mapper |
 | `Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface` | `Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProvider` |
+| `Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProviderInterface` | `Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProvider` (section 25) |
 | `Setono\SyliusShipmondoPlugin\Provider\SetupProviderInterface` | `Setono\SyliusShipmondoPlugin\Provider\SetupProvider` (section 14) |
 | `Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface` | `Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar` |
 | `Setono\SyliusShipmondoPlugin\Uploader\OrderUploaderInterface` | `Setono\SyliusShipmondoPlugin\Uploader\OrderUploader` |
@@ -1033,8 +1034,7 @@ sales order stayed in Shipmondo, where it could still be shipped
   templates**, add `unlinked.html.twig` if you want your own.
 
 New translation keys: `setono_sylius_shipmondo.shipmondo_failure.unread_success` and `setono_sylius_shipmondo.ui.unlinked`
-in the `messages` domain, and `setono_sylius_shipmondo.order_unlinked_will_be_deleted_in_shipmondo` in the `flashes`
-domain (section 25).
+in the `messages` domain.
 
 This needs `setono/shipmondo-php-sdk` 2.0.0-rc.2 or later, whose exceptions for a success it can't read carry the
 request Shipmondo answered (`ResponseAwareException::getRequest()`), so the plugin can tell a call that changes something
@@ -1131,9 +1131,8 @@ recorded in [ADR 0003](docs/adr/0003-a-sales-order-lookup-settles-every-unlinked
 
 - **An `unlinked` order that is cancelled in Sylius is settled by its lookup too** (section 7): the sales order the lookup
   finds is deleted, and the order becomes `cancelled`; with none found, it becomes `cancelled` right away; with several,
-  it stays `unlinked`. Cancelling it in the admin now flashes that its sales order will be deleted once an upload run
-  finds it, instead of an error telling the admin to cancel it in Shipmondo by hand, and logs at info level instead of
-  error.
+  it stays `unlinked`. Cancelling it in the admin flashes that its sales order will be deleted once an upload run
+  finds it.
 - **A lookup that fails leaves the order `unlinked`**, logs the failure, and the next run tries again. A credentials
   failure stops the upload run, as for an upload. A 429 stops the lookups, which have their own rate limit in Shipmondo
   (about 100 searches a minute), but the pending orders are still uploaded. **Either way, the command fails**, so your
@@ -1146,15 +1145,8 @@ recorded in [ADR 0003](docs/adr/0003-a-sales-order-lookup-settles-every-unlinked
 - **Webhooks about a sales order that arrive while its order is `unlinked` are lost**, since no order is linked to it
   yet ([#76](https://github.com/Setono/SyliusShipmondoPlugin/issues/76)). That should be rare: a sales order is seldom
   shipped, or its payment captured, within minutes of its upload.
-- `setono:sylius-shipmondo:upload-orders` now ends its error messages with "The remaining orders wait for the next run.",
-  and when Shipmondo rate limits the run, says "Shipmondo rate limited the upload run, so it did not get through every
-  order."
-- **An unread success of the upload now logs a warning** instead of an error, since nobody has to find its sales order
-  by hand anymore.
 
-The flash key `setono_sylius_shipmondo.order_unlinked_not_deleted_in_shipmondo` (section 23) is now
-`setono_sylius_shipmondo.order_unlinked_will_be_deleted_in_shipmondo`, an `info` flash. If you override the old one,
-rename your override.
+New translation key: `setono_sylius_shipmondo.order_unlinked_will_be_deleted_in_shipmondo` in the `flashes` domain.
 
 Only if you extend or call the code involved:
 
@@ -1163,10 +1155,10 @@ Only if you extend or call the code involved:
 | `DataMapper\SalesOrderDataMapper::__construct()` | `__construct(Provider\OrderIdProvider $orderIdProvider)` |
 | `Uploader\OrderUploader::__construct(...)` | takes the unlinked orders provider and the order id provider too (section 6) |
 
-New: the `OrderWorkflow::TRANSITION_LINK` constant; `Provider\UnlinkedOrdersProviderInterface` and
-`Provider\UnlinkedOrdersProvider`, which find the unlinked orders due a lookup (`UnlinkedOrdersProvider::LOOKUP_DELAY`);
-and `Provider\OrderIdProvider`, the one place the order id the plugin sends Shipmondo comes from, which the upload and
-the lookup both use. `UploadOutcome::TemporaryFailure` now leaves an order `unlinked` when the call that creates the
+New: the `OrderWorkflow::TRANSITION_LINK` constant; `Provider\UnlinkedOrdersProviderInterface` (a private alias of
+`Provider\UnlinkedOrdersProvider`, section 13), which finds the unlinked orders due a lookup
+(`UnlinkedOrdersProvider::LOOKUP_DELAY`); and `Provider\OrderIdProvider`, the one place the order id the plugin sends
+Shipmondo comes from, which the upload and the lookup both use. `UploadOutcome::TemporaryFailure` now leaves an order `unlinked` when the call that creates the
 sales order failed. If your code relies on `unlinked` being final, or on `retry` leaving only `uploading_to_shipmondo`
 and `failed`, adjust it.
 

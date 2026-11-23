@@ -99,9 +99,8 @@ final class OrderUploader implements OrderUploaderInterface
             $response = $this->shipmondoClient->salesOrders()->create($salesOrder);
         } catch (\Throwable $e) {
             $failure = ShipmondoFailure::of($e);
-            $outcome = self::outcomeOf($failure);
 
-            return $this->settle($order, $outcome, failure: $failure, mayHaveCreated: self::mayHaveCreated($outcome));
+            return $this->settle($order, self::outcomeOf($failure), failure: $failure, createFailed: true);
         }
 
         return $this->settle($order, UploadOutcome::Uploaded, salesOrderId: $response->id);
@@ -199,16 +198,21 @@ final class OrderUploader implements OrderUploaderInterface
                 continue;
             }
 
-            $outcome = self::outcomeOf($failure);
-            if (UploadOutcome::CredentialsFailure === $outcome || UploadOutcome::RateLimited === $outcome) {
+            $stoppedBy = match ($failure->kind) {
+                ShipmondoFailureKind::CredentialsFailure => UploadOutcome::CredentialsFailure,
+                ShipmondoFailureKind::RateLimited => UploadOutcome::RateLimited,
+                default => null,
+            };
+
+            if (null !== $stoppedBy) {
                 $this->logger->error(
-                    UploadOutcome::CredentialsFailure === $outcome ?
+                    UploadOutcome::CredentialsFailure === $stoppedBy ?
                         'The upload run stopped, because Shipmondo answered the sales order lookup of the order {order} with a {outcome}. The remaining orders wait for the next run' :
                         'The sales order lookups stopped, because Shipmondo answered the lookup of the order {order} with a {outcome}. The remaining unlinked orders wait for the next run, and the pending orders are uploaded',
-                    ['order' => $order->getNumber(), 'outcome' => $outcome->value],
+                    ['order' => $order->getNumber(), 'outcome' => $stoppedBy->value],
                 );
 
-                return $outcome;
+                return $stoppedBy;
             }
         }
 
@@ -222,7 +226,8 @@ final class OrderUploader implements OrderUploaderInterface
      * unlinked, since some may be another shop's on the same Shipmondo account.
      *
      * The upload run loaded the order a while ago, so its row is locked and it is read again before it is settled. One
-     * that changed since, e.g. because another upload run looked it up, is left as it is. An order that is cancelled in
+     * that changed since, e.g. because another upload run looked it up, is left as it is, even when it is still unlinked:
+     * another run may have uploaded it again in between, and the next run looks it up again. An order that is cancelled in
      * Sylius becomes cancelled once Shipmondo has no sales order for it: right away when none was found, and once its
      * sales order is deleted when one was.
      *
@@ -273,7 +278,7 @@ final class OrderUploader implements OrderUploaderInterface
         });
 
         if (!$settled) {
-            $this->logger->info('The sales order lookup of the order {order} was not settled, because the order changed while Shipmondo was searched, so it is left as it is', [
+            $this->logger->info('The sales order lookup of the order {order} was not settled, because the order changed while Shipmondo was searched, or a guard on the order workflow holds it back, so it is left as it is', [
                 'order' => $order->getNumber(),
                 'state' => $order->getShipmondoState(),
             ]);
@@ -403,27 +408,21 @@ final class OrderUploader implements OrderUploaderInterface
      * deleted. An unlinked order stays unlinked, since which sales order Shipmondo may have created is unknown: the
      * sales order lookup settles it later
      *
-     * @param bool $mayHaveCreated whether Shipmondo may have created the sales order although the call that creates it
-     *                             failed, which makes the order unlinked
+     * @param bool $createFailed whether the call that creates the sales order failed, rather than an earlier step
      */
     private function settle(
         OrderInterface $order,
         UploadOutcome $outcome,
         ?int $salesOrderId = null,
         ?ShipmondoFailure $failure = null,
-        bool $mayHaveCreated = false,
+        bool $createFailed = false,
     ): UploadOutcome {
         $manager = $this->getManager($order);
 
-        $manager->wrapInTransaction(function () use ($manager, $order, $outcome, $salesOrderId, $mayHaveCreated): void {
+        $manager->wrapInTransaction(function () use ($manager, $order, $outcome, $salesOrderId, $createFailed): void {
             $manager->refresh($order, LockMode::PESSIMISTIC_WRITE);
 
-            $this->orderWorkflow->apply($order, match (true) {
-                UploadOutcome::Uploaded === $outcome => OrderWorkflow::TRANSITION_COMPLETE_UPLOAD,
-                $mayHaveCreated => OrderWorkflow::TRANSITION_COMPLETE_UPLOAD_UNLINKED,
-                UploadOutcome::Rejected === $outcome, UploadOutcome::UnexpectedFailure === $outcome => OrderWorkflow::TRANSITION_FAIL,
-                default => OrderWorkflow::TRANSITION_RETRY,
-            }, [OrderWorkflow::CONTEXT_SALES_ORDER_ID => $salesOrderId]);
+            $this->orderWorkflow->apply($order, self::transitionOf($outcome, $createFailed), [OrderWorkflow::CONTEXT_SALES_ORDER_ID => $salesOrderId]);
         });
 
         $this->log($order, $outcome, $failure);
@@ -472,14 +471,19 @@ final class OrderUploader implements OrderUploaderInterface
     }
 
     /**
-     * Whether Shipmondo may have created the sales order although the call that creates it failed so: it answered with a
-     * success that couldn't be read, or failed temporarily, which a server error or an answer lost after Shipmondo
-     * created the sales order also is. Shipmondo accepts two sales orders with the same order id, so creating it again
-     * could make a duplicate
+     * The transition that settles an upload. When the call that creates the sales order ends in an unread success, or
+     * fails temporarily, e.g. with a server error or no answer in time, Shipmondo may have created the sales order before
+     * the failure. It accepts two sales orders with the same order id, so uploading the order again could make a
+     * duplicate: the order becomes unlinked instead, for a sales order lookup to settle
      */
-    private static function mayHaveCreated(UploadOutcome $outcome): bool
+    private static function transitionOf(UploadOutcome $outcome, bool $createFailed): string
     {
-        return UploadOutcome::UnreadSuccess === $outcome || UploadOutcome::TemporaryFailure === $outcome;
+        return match ($outcome) {
+            UploadOutcome::Uploaded => OrderWorkflow::TRANSITION_COMPLETE_UPLOAD,
+            UploadOutcome::UnreadSuccess, UploadOutcome::TemporaryFailure => $createFailed ? OrderWorkflow::TRANSITION_COMPLETE_UPLOAD_UNLINKED : OrderWorkflow::TRANSITION_RETRY,
+            UploadOutcome::Rejected, UploadOutcome::UnexpectedFailure => OrderWorkflow::TRANSITION_FAIL,
+            default => OrderWorkflow::TRANSITION_RETRY,
+        };
     }
 
     private function log(OrderInterface $order, UploadOutcome $outcome, ?ShipmondoFailure $failure = null): void

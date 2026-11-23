@@ -11,6 +11,7 @@ use Sylius\Component\Core\Model\CustomerInterface;
 use Symfony\Component\Console\Command\Command;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
+use Tests\Setono\SyliusShipmondoPlugin\Support\SalesOrders;
 
 /**
  * The sales order lookups an upload run makes before it uploads the pending orders, driven through the upload command
@@ -216,12 +217,7 @@ final class SalesOrderLookupTest extends FunctionalTestCase
      */
     private function respondWithSalesOrders(array $orderIds): void
     {
-        $salesOrders = [];
-        foreach ($orderIds as $id => $orderId) {
-            $salesOrders[] = ['id' => $id, 'order_id' => $orderId, 'source_name' => 'Sylius'];
-        }
-
-        $this->shipmondo->respond('GET', 'sales_orders', 200, $salesOrders, ['X-Total-Pages' => '1']);
+        $this->shipmondo->respond('GET', 'sales_orders', 200, SalesOrders::withOrderIds($orderIds), ['X-Total-Pages' => '1']);
     }
 
     /**

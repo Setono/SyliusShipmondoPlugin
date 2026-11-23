@@ -55,6 +55,7 @@ use Symfony\Component\Messenger\Middleware\StackInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Workflow\Event\GuardEvent;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
+use Tests\Setono\SyliusShipmondoPlugin\Support\SalesOrders;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\Orders;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\RecordingLogger;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ScriptedHttpClient;
@@ -254,7 +255,7 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
-     * Shipmondo may have created the sales order before its answer was lost, e.g. when it didn't answer in time
+     * Shipmondo may have created the sales order before the failure, e.g. when it didn't answer in time
      *
      * @test
      */
@@ -1141,27 +1142,54 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
-     * E.g. another upload run looked it up meanwhile, and even uploaded it again
+     * E.g. another upload run looked it up meanwhile: it may have linked it, or even uploaded it again
      *
      * @test
+     *
+     * @dataProvider changesWhileLookingUp
+     *
+     * @param \Closure(Order): void $change
      */
-    public function it_leaves_an_order_that_changed_while_its_sales_order_was_looked_up_as_it_is(): void
+    public function it_leaves_an_order_that_changed_while_its_sales_order_was_looked_up_as_it_is(\Closure $change, string $state, ?int $salesOrderId): void
     {
         $order = $this->unlinkedOrder(1);
         $this->respondWithSalesOrders([]);
-        $this->entityManager->refresh($order, LockMode::PESSIMISTIC_WRITE)->will(static function () use ($order): void {
-            $order->setVersion(2);
+        $this->entityManager->refresh($order, LockMode::PESSIMISTIC_WRITE)->will(static function () use ($order, $change): void {
+            $change($order);
         });
 
         self::assertNull($this->uploader()->upload());
 
-        self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame([$state, $salesOrderId], [$order->getShipmondoState(), $order->getShipmondoId()]);
         self::assertSame(['GET sales_orders'], $this->shipmondo->requestLines());
         self::assertSame([[
             'level' => LogLevel::INFO,
-            'message' => 'The sales order lookup of the order {order} was not settled, because the order changed while Shipmondo was searched, so it is left as it is',
-            'context' => ['order' => '#001', 'state' => self::UNLINKED],
+            'message' => 'The sales order lookup of the order {order} was not settled, because the order changed while Shipmondo was searched, or a guard on the order workflow holds it back, so it is left as it is',
+            'context' => ['order' => '#001', 'state' => $state],
         ]], $this->logger->records);
+    }
+
+    /**
+     * @return iterable<string, array{\Closure(Order): void, string, int|null}>
+     */
+    public static function changesWhileLookingUp(): iterable
+    {
+        yield 'linked by another upload run' => [
+            static function (Order $order): void {
+                $order->setShipmondoState(self::UPLOADED, [OrderWorkflow::CONTEXT_SALES_ORDER_ID => 1001]);
+                $order->setVersion(2);
+            },
+            self::UPLOADED,
+            1001,
+        ];
+        // e.g. another run found no sales order, uploaded it again, and that upload failed temporarily
+        yield 'still unlinked, but changed' => [
+            static function (Order $order): void {
+                $order->setVersion(4);
+            },
+            self::UNLINKED,
+            null,
+        ];
     }
 
     /**
@@ -1453,12 +1481,7 @@ final class OrderUploaderTest extends TestCase
      */
     private function respondWithSalesOrders(array $orderIds): void
     {
-        $salesOrders = [];
-        foreach ($orderIds as $id => $orderId) {
-            $salesOrders[] = ['id' => $id, 'order_id' => $orderId, 'source_name' => 'Sylius'];
-        }
-
-        $this->shipmondo->respond(200, $salesOrders);
+        $this->shipmondo->respond(200, SalesOrders::withOrderIds($orderIds));
     }
 
     /**
