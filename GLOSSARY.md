@@ -15,7 +15,7 @@ Creating the sales order for a Sylius order in Shipmondo.
 _Avoid_: Dispatch, sync, export, push
 
 **Upload run**:
-One pass of the order upload, which looks up the sales orders of the unlinked orders and then uploads every pending order that qualifies for upload. It stops early after a sales order lookup or an upload that hits a credentials failure, after an upload that is rate limited, or after three rejected uploads with no upload between them, and the remaining orders wait for the next run. A sales order lookup that is rate limited stops only the lookups: the pending orders are still uploaded.
+One pass of the order upload, which looks up the sales orders of the unlinked orders, then uploads every pending order that qualifies for upload, and last registers the webhooks again if the store's webhooks in Shipmondo no longer match. It stops early, and the remaining orders wait for the next run, after a sales order lookup or an upload that hits a credentials failure, after an upload that is rate limited, after three temporary failures in a row, lookups and uploads alike, with no call Shipmondo answered between them, or after three uploads in a row that make the order failed, with no upload Shipmondo accepted between them. The lookups alone stop after a lookup that is rate limited, or after three lookups in a row that fail in any other way: the pending orders are still uploaded. Three unread successes in a row, with no uploaded order between them, don't stop the run, since Shipmondo has the sales orders, but the run reports them as a problem, as it reports stopping early.
 _Avoid_: Sync, batch
 
 **Shipmondo state**:
@@ -119,8 +119,8 @@ _Avoid_: remote event (Symfony's name for it), callback, notification
 What the plugin does to a Sylius order when a webhook about its sales order arrives, such as shipping the order's shipments when Shipmondo reports the sales order shipped.
 
 **Webhook registration**:
-The set of webhooks the store has asked Shipmondo to send it: exactly the ones a webhook handler handles. Shipmondo sends the webhooks of the latest registration, so a change to that set takes effect only once the webhooks are registered again. Registering replaces only the store's own webhooks: the ones named with its shop id or sent to its endpoint. Another store on the same Shipmondo account keeps its own. Nothing is registered at an endpoint Shipmondo can't reach, such as one at localhost, so the webhooks registered before are kept.
+The set of webhooks the store has asked Shipmondo to send it at its endpoint: one for each action a webhook handler handles. Registering makes the store's own webhooks in Shipmondo (the ones named with its shop id or sent to its endpoint) match that set: it adds the missing ones, including any Shipmondo has deactivated, removes the rest, and leaves those that match. Another store on the same Shipmondo account keeps its own. An admin registers once, which sets the endpoint. After that, every upload run registers again at that endpoint whenever the store's webhooks in Shipmondo no longer match, e.g. after an upgrade changes the actions handled, unless the store turns that off. Nothing is registered at an endpoint Shipmondo can't reach, such as one at localhost, so the webhooks registered before are kept.
 _Avoid_: subscription sync
 
 **Shop id**:
-What tells a store's webhooks apart from those of the other stores on the same Shipmondo account: 8 hexadecimal characters in each webhook's name, derived from the store's webhooks key. Stores with the same webhooks key get the same shop id.
+What tells a store's webhooks apart from those of the other stores on the same Shipmondo account: 8 hexadecimal characters in each webhook's name, derived from the store's webhooks key. Stores with the same webhooks key get the same shop id, so each one's registration replaces the other's webhooks.
