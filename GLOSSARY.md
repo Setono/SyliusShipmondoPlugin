@@ -56,7 +56,7 @@ The Sylius order was cancelled, and Shipmondo has no sales order for it: it was 
 How one upload went: uploaded, a Shipmondo failure, the order changed while it was uploading (back to pending), or skipped because the order wasn't uploading. It decides the order's Shipmondo state: an upload that is an unread success, or whose call that creates the sales order fails temporarily, makes the order unlinked; an upload that is rejected or not found, or fails unexpectedly in any other way, makes it failed; and any other Shipmondo failure puts it back to pending.
 
 **Rejected upload**:
-An upload that Shipmondo rejected or answered with not found. The order becomes failed, and the upload counts toward the upload run's stop rule.
+An upload that Shipmondo rejected or answered with not found. The order becomes failed, and the upload counts toward the upload run's stop rule for uploads in a row that make the order failed.
 
 **Shipment template**:
 Shipmondo's preset for shipping a sales order: the carrier and product, and the parcels, from a sender country to a receiver country. The admin allows some for each shipping method, and the upload chooses the one that ships from the store's country to the shipping address's country and fits the order's weight best.

@@ -35,12 +35,6 @@ final class OrderUploader implements OrderUploaderInterface
     use ORMTrait;
 
     /**
-     * Shipmondo answers 422 whether the order or a shop-wide setting (e.g. a deleted payment gateway) is the problem,
-     * so this many rejected uploads in a row stop a synchronous upload run
-     */
-    private const MAX_REJECTED_UPLOADS_IN_A_ROW = 3;
-
-    /**
      * Shipmondo lists at most this many sales orders per page. A sales order lookup reads one page, which holds every
      * sales order with one order id
      */
@@ -61,17 +55,16 @@ final class OrderUploader implements OrderUploaderInterface
         $this->managerRegistry = $managerRegistry;
     }
 
-    public function upload(): ?UploadOutcome
+    public function upload(): array
     {
-        $lookupsStoppedBy = $this->lookUpSalesOrders();
+        $run = new UploadRun($this->logger);
 
-        // the uploads would fail the same way
-        if (UploadOutcome::CredentialsFailure === $lookupsStoppedBy) {
-            return $lookupsStoppedBy;
+        $this->lookUpSalesOrders($run);
+        if (!$run->stopped()) {
+            $this->uploadPendingOrders($run);
         }
 
-        // a rate limit on the lookups doesn't keep the pending orders from being uploaded, but the run still reports it
-        return $this->uploadPendingOrders() ?? $lookupsStoppedBy;
+        return $run->problems();
     }
 
     public function uploadOrder(OrderInterface $order, ?int $version = null): UploadOutcome
@@ -141,83 +134,39 @@ final class OrderUploader implements OrderUploaderInterface
 
     /**
      * Uploads every pending order that qualifies for upload, until a stop rule stops the run
-     *
-     * @return UploadOutcome|null the outcome that stopped the run, or null when it got through every order
      */
-    private function uploadPendingOrders(): ?UploadOutcome
+    private function uploadPendingOrders(UploadRun $run): void
     {
-        $rejectedInARow = 0;
-
         foreach ($this->preQualifiedUploadableOrdersProvider->getOrders() as $order) {
             if (!$this->claim($order)) {
                 continue;
             }
 
             $outcome = $this->requestUpload($order);
-
-            if (UploadOutcome::CredentialsFailure === $outcome || UploadOutcome::RateLimited === $outcome) {
-                $this->logger->error('The upload run stopped, because Shipmondo answered the upload of the order {order} with a {outcome}. The remaining orders stay pending for the next run', [
-                    'order' => $order->getNumber(),
-                    'outcome' => $outcome->value,
-                ]);
-
-                return $outcome;
-            }
-
-            $rejectedInARow = match ($outcome) {
-                // Shipmondo accepted the order, even when its answer couldn't be read, so nothing shop-wide is wrong
-                UploadOutcome::Uploaded, UploadOutcome::UnreadSuccess => 0,
-                UploadOutcome::Rejected => $rejectedInARow + 1,
-                default => $rejectedInARow,
-            };
-
-            if (self::MAX_REJECTED_UPLOADS_IN_A_ROW === $rejectedInARow) {
-                $this->logger->error('The upload run stopped after {count} rejected uploads in a row, which suggests a shop-wide problem, such as a payment gateway or shipment template that no longer exists in Shipmondo. The remaining orders stay pending for the next run', [
-                    'count' => $rejectedInARow,
-                ]);
-
-                return UploadOutcome::Rejected;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Looks up the sales order of every unlinked order that is due a sales order lookup, newest first. A credentials
-     * failure or a rate limit stops the lookups, since the remaining ones would most likely fail the same way: they wait
-     * for the next upload run
-     *
-     * @return UploadOutcome|null what stopped the lookups ({@see UploadOutcome::CredentialsFailure} or
-     *                            {@see UploadOutcome::RateLimited}), or null when every order was looked up
-     */
-    private function lookUpSalesOrders(): ?UploadOutcome
-    {
-        foreach ($this->unlinkedOrdersProvider->getOrders() as $order) {
-            $failure = $this->lookUp($order);
-            if (null === $failure) {
+            // how an upload sent to an asynchronous transport goes is unknown here
+            if (null === $outcome) {
                 continue;
             }
 
-            $stoppedBy = match ($failure->kind) {
-                ShipmondoFailureKind::CredentialsFailure => UploadOutcome::CredentialsFailure,
-                ShipmondoFailureKind::RateLimited => UploadOutcome::RateLimited,
-                default => null,
-            };
-
-            if (null !== $stoppedBy) {
-                $this->logger->error(
-                    UploadOutcome::CredentialsFailure === $stoppedBy ?
-                        'The upload run stopped, because Shipmondo answered the sales order lookup of the order {order} with a {outcome}. The remaining orders wait for the next run' :
-                        'The sales order lookups stopped, because Shipmondo answered the lookup of the order {order} with a {outcome}. The remaining unlinked orders wait for the next run, and the pending orders are uploaded',
-                    ['order' => $order->getNumber(), 'outcome' => $stoppedBy->value],
-                );
-
-                return $stoppedBy;
+            $run->recordUpload($order, $outcome);
+            if ($run->stopped()) {
+                return;
             }
         }
+    }
 
-        return null;
+    /**
+     * Looks up the sales order of every unlinked order that is due a sales order lookup, newest first, until a stop rule
+     * stops the lookups: the remaining ones wait for the next upload run
+     */
+    private function lookUpSalesOrders(UploadRun $run): void
+    {
+        foreach ($this->unlinkedOrdersProvider->getOrders() as $order) {
+            $run->recordLookup($order, $this->lookUp($order));
+            if ($run->lookupsStopped()) {
+                return;
+            }
+        }
     }
 
     /**
@@ -461,7 +410,8 @@ final class OrderUploader implements OrderUploaderInterface
 
     /**
      * A failure that says nothing about the order puts it back to pending. A 404 counts as rejected: on creating a
-     * sales order, it most likely means something shop-wide is wrong, which the upload run's stop rule catches
+     * sales order, it most likely means something shop-wide is wrong, which the upload run's stop rule for failed uploads
+     * catches
      */
     private static function outcomeOf(ShipmondoFailure $failure): UploadOutcome
     {

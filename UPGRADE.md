@@ -16,7 +16,7 @@ For most installations the required changes are:
 - check the orders that 1.x left stuck in `uploading_to_shipmondo` against Shipmondo, then link or reset them
   (section 6)
 - if you monitor the `setono:sylius-shipmondo:upload-orders` cron job, note that it now fails only when the upload
-  run stops early (section 6)
+  run stops early or reports another problem that most likely hits every order (sections 6 and 28)
 - move the cancelled orders that 1.x left pending or failed to the new `cancelled` Shipmondo state (section 7)
 - if you override the order grid's Shipmondo state label templates, rename `dispatching.html.twig` and
   `dispatched.html.twig` (section 7)
@@ -66,6 +66,9 @@ For most installations the required changes are:
   order entity doesn't use `OrderTrait`, implement `getShipmondoFailure()` (section 26)
 - if several shops share a Shipmondo account, give each its own order id prefix, while no order is unlinked or
   uploading (section 27)
+- note that the upload run now also stops after three temporary failures, failed uploads or failed lookups in a row,
+  and that `setono:sylius-shipmondo:upload-orders` fails after three unread successes in a row, though the run goes on,
+  and if you call `OrderUploaderInterface::upload()`, read the list of problems it now returns (section 28)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -275,20 +278,22 @@ for good. In 2.x, `Uploader\OrderUploader` settles every failure on the order:
 
 | Failure | Order ends in | Synchronous upload run |
 |---|---|---|
-| Shipmondo rejects the upload: a 4xx other than 401, 403 and 429 (e.g. 422) | `failed` | continues |
-| The order can't be turned into a sales order (a data mapper throws), or another unexpected error, such as a non-error status (e.g. an unfollowed redirect) | `failed` | continues |
+| Shipmondo rejects the upload: a 4xx other than 401, 403 and 429 (e.g. 422) | `failed` | continues (section 28) |
+| The order can't be turned into a sales order (a data mapper throws), or another unexpected error, such as a non-error status (e.g. an unfollowed redirect) | `failed` | continues (section 28) |
 | Shipmondo doesn't accept the API credentials: 401 or 403 | `pending` | stops |
 | Shipmondo rate limits the upload: 429 | `pending` | stops |
-| A temporary failure of a read before the sales order is created, e.g. of the payment gateways: 5xx, a network error, or Shipmondo not answering in time (section 22) | `pending` | continues |
-| A temporary failure of the call that creates the sales order: 5xx, a network error, or Shipmondo not answering in time (section 22). Shipmondo may have created the sales order before the failure | `unlinked` (section 25) | continues |
-| Shipmondo answered the creation of the sales order with a success, but its answer was cut off, e.g. because it didn't arrive in time (section 22), or the SDK couldn't read it: Shipmondo created the sales order | `unlinked` (section 23) | continues |
+| A temporary failure of a read before the sales order is created, e.g. of the payment gateways: 5xx, a network error, or Shipmondo not answering in time (section 22) | `pending` | continues (section 28) |
+| A temporary failure of the call that creates the sales order: 5xx, a network error, or Shipmondo not answering in time (section 22). Shipmondo may have created the sales order before the failure | `unlinked` (section 25) | continues (section 28) |
+| Shipmondo answered the creation of the sales order with a success, but its answer was cut off, e.g. because it didn't arrive in time (section 22), or the SDK couldn't read it: Shipmondo created the sales order | `unlinked` (section 23) | continues (section 28) |
 | The order changed while it was uploading, before its `UploadOrder` command was handled | `pending` | continues |
 
-- A synchronous upload run also stops after three rejected uploads with no successful upload between them (an upload
-  that makes the order `unlinked` counts as successful, since Shipmondo accepted the order), because
-  Shipmondo answers 422 for shop-wide problems too, such as a mapped payment gateway that was deleted in Shipmondo.
+- A synchronous upload run also stops after three uploads in a row that make the order `failed`, with no upload
+  Shipmondo accepted between them (an unread success counts as accepted, section 23), because Shipmondo answers 422 for
+  shop-wide problems too, such as a mapped payment gateway that was deleted in Shipmondo. It stops after three temporary
+  failures in a row too, and the command fails after three unread successes in a row (section 28).
 - **When the upload run stops early, the command prints why and exits with a failure code**, and the remaining orders
-  stay `pending` for the next run. Otherwise the command stays silent and succeeds, also when single uploads failed:
+  stay `pending` for the next run. So it does when the run reports another problem (section 28). Otherwise the command
+  stays silent and succeeds, also when single uploads failed:
   each failure is logged with the order number, its kind of Shipmondo failure (section 9) and Shipmondo's status code
   and error message, and a `failed` order stays `failed` until an admin retries its upload (section 24).
 - Going back to pending uses the new `retry` transition (`OrderWorkflow::TRANSITION_RETRY`,
@@ -299,8 +304,9 @@ for good. In 2.x, `Uploader\OrderUploader` settles every failure on the order:
   have created the sales order before the failure, and it has no idempotency key, so uploading the order again could
   create a duplicate. The order becomes `unlinked`, and the upload run looks its sales order up later (section 25).
 - **If you route `UploadOrder` to an async transport:** its handler no longer throws for a failed upload, so Messenger
-  no longer retries it; the next upload run is the retry. The upload run can't see how async uploads go, so it never
-  stops early and **the command always succeeds: watch the logs instead**. An async worker can't stop the `UploadOrder`
+  no longer retries it; the next upload run is the retry. The upload run can't see how async uploads go, so they never
+  stop it early or make the command fail: **watch the logs instead**. Its sales order lookups still run in it (section
+  25), so they can stop it and make the command fail (section 28). An async worker can't stop the `UploadOrder`
   commands already sent to the transport, so after a credentials failure each of them goes back to pending.
 - An order that something else changed after the upload run loaded it (another run, an admin cancelling it, a payment
   update) is skipped and left as it is, so the next upload run checks again whether it qualifies for upload. In 1.x
@@ -337,7 +343,7 @@ Only if you extend or call the upload code:
 
 | 1.x | 2.x |
 |---|---|
-| `Uploader\OrderUploaderInterface::upload(): void` | `upload(): ?Uploader\UploadOutcome`: the outcome that stopped the run early, or `null` |
+| `Uploader\OrderUploaderInterface::upload(): void` | `upload(): array`: the `list<Uploader\UploadRunProblem>` the run reports, e.g. what stopped it early, or an empty list (section 28) |
 | | new `OrderUploaderInterface::uploadOrder(OrderInterface $order, ?int $version = null): UploadOutcome`, which uploads one order in `uploading_to_shipmondo` and settles its state |
 | `Uploader\OrderUploader::__construct($provider, $commandBus, $orderWorkflow, $managerRegistry)` | `__construct($provider, Provider\UnlinkedOrdersProviderInterface $unlinkedOrdersProvider, Provider\OrderIdProviderInterface $orderIdProvider, $commandBus, $orderWorkflow, Setono\Shipmondo\Client\ClientInterface $shipmondoClient, SalesOrderDataMapperInterface $salesOrderDataMapper, Canceller\OrderCancellerInterface $orderCanceller, Psr\Log\LoggerInterface $logger, $managerRegistry)` |
 | `Message\CommandHandler\UploadOrderHandler::__construct($orderRepository, $shipmondoClient, $salesOrderDataMapper, $orderWorkflow)`; `__invoke()` returns `void` | `__construct($orderRepository, OrderUploaderInterface $orderUploader)`; `__invoke()` returns the `UploadOutcome` |
@@ -1027,7 +1033,8 @@ sales order stayed in Shipmondo, where it could still be shipped
 - **An upload that ends so makes the order `unlinked`**, a new Shipmondo state (`OrderInterface::SHIPMONDO_STATE_UNLINKED`),
   through the new `complete_upload_unlinked` transition (`OrderWorkflow::TRANSITION_COMPLETE_UPLOAD_UNLINKED`, from
   `uploading_to_shipmondo`), and logs a warning. The order isn't linked to a sales order. For the upload run's stop rule
-  it counts as an upload, since Shipmondo accepted the order, and the run goes on.
+  for failed uploads it counts as an upload Shipmondo accepted, and the run goes on; three in a row make the command fail
+  (section 28).
 - **Only a sales order lookup moves an order out of `unlinked`** (section 25): not an admin's `retry`, which would
   upload it a second time, nor `cancel`. Until the lookup links it, webhooks about its sales order find no order, since
   none is linked to it.
@@ -1118,7 +1125,8 @@ recorded in [ADR 0003](docs/adr/0003-a-sales-order-lookup-settles-every-unlinked
 - **A temporary failure of the call that creates the sales order makes the order `unlinked`**, as an unread success
   does (section 23), and logs a warning. A temporary failure of a read before that call, e.g. of the payment gateways
   or shipment templates the data mappers fetch, still puts the order back to `pending`, since Shipmondo has no sales
-  order then. So do a credentials failure and a 429. The upload run's stop rules are unchanged.
+  order then. So do a credentials failure and a 429. The upload run's stop rules count a temporary failure the same
+  way, wherever it happens (section 28).
 - **Each upload run starts with a sales order lookup** for every order that has been `unlinked` for at least ten
   minutes, newest first, whatever its state in Sylius, before it uploads the pending orders. Shipmondo lists a sales
   order it just created only after a short delay, so the run waits ten minutes (a fixed delay), measured from when the
@@ -1146,8 +1154,8 @@ recorded in [ADR 0003](docs/adr/0003-a-sales-order-lookup-settles-every-unlinked
 - **A lookup that fails leaves the order `unlinked`**, logs the failure, and the next run tries again. A credentials
   failure stops the upload run, as for an upload. A 429 stops the lookups, which have their own rate limit in Shipmondo
   (about 100 searches a minute), but the pending orders are still uploaded. **Either way, the command fails**, so your
-  cron monitoring notices. Any other failure doesn't stop the run, and doesn't count toward the three rejected uploads
-  in a row.
+  cron monitoring notices. A temporary failure counts toward the run's temporary failures in a row, and any other
+  failure toward the lookups' failures in a row (section 28), never toward the uploads that make the order `failed`.
 - **The lookup matches on the order id alone.** Another shop on the same Shipmondo account that numbers its orders the
   same way can have sales orders with the same order ids: an order then stays `unlinked` with several matches, or, when
   its own sales order is gone, is linked to the other shop's. Give each such shop an order id prefix of its own to
@@ -1285,6 +1293,46 @@ setono_sylius_shipmondo:
 New: the `setono_sylius_shipmondo.order_id_prefix` parameter, which the plugin passes to
 `Provider\OrderIdProvider::__construct(string $prefix = '')`. An `order_id_prefix` of `~` (null) is no prefix.
 
+### 28. The upload run stops after temporary failures, failed uploads or failed lookups in a row, and reports unread successes in a row
+
+`setono:sylius-shipmondo:upload-orders` failed only when the upload run stopped early: on a credentials failure, a 429,
+or three rejected uploads in a row. A problem that hit every order otherwise went unnoticed by cron monitoring
+([#74](https://github.com/Setono/SyliusShipmondoPlugin/issues/74)): during a Shipmondo outage, every lookup and upload
+waited out the time limit (section 22), and every upload made its order `unlinked`; a data mapper that failed for every
+order made every order `failed`; answers the SDK couldn't read made every order `unlinked`; and lookups that Shipmondo
+rejected left every unlinked order `unlinked` for good.
+
+The upload run now keeps four counts, of the sales order lookups and of the uploads it sees, which are those handled
+synchronously (the default). How an upload sent to an asynchronous transport goes is unknown to it, as before.
+
+| In a row | Starts the count over | At three |
+|---|---|---|
+| Temporary failures (a 5xx, or no answer in time, section 22), lookups and uploads alike, including one while a data mapper reads from Shipmondo | any other result of a lookup or an upload. An upload that made no call, because the order changed while it was uploading, leaves the count as it is | **the run stops**: the pending orders stay `pending`, and the unlinked orders `unlinked` |
+| Uploads that make the order `failed`: rejected, not found, and **now an unexpected failure too**, e.g. a data mapper that throws | an upload Shipmondo accepted: uploaded, or an unread success | **the run stops**, as after three rejected uploads before |
+| Lookups that fail in any way but temporarily, by a 429 or by a credentials failure: rejected, not found, or an unexpected failure, e.g. an answer the SDK can't read | a lookup whose search succeeded, whatever it found | **the lookups stop**, as after a 429, and the pending orders are still uploaded |
+| Unread successes (section 23) | only an uploaded order | **the run goes on**, since Shipmondo created the sales orders and lookups link them later, but it reports the problem |
+
+- Each stop, and each problem the run reports, is logged as an error, with the count.
+- **The command fails whenever the run reports a problem**: it stopped early, its lookups stopped, or it hit three
+  unread successes in a row. Its error names every problem, each with what to do, e.g. for unread successes to check the
+  log, the time limits of the requests to Shipmondo (section 22) and the version of the Shipmondo SDK. It stays silent
+  otherwise, also after fewer than three of each in a row.
+- **Its messages for a 429 changed**: after a 429 in an upload it says that the run stopped because Shipmondo rate
+  limited an upload, and after a 429 in a lookup that the lookups stopped and the pending orders were uploaded, each with
+  what to check if it keeps happening. Before, both said that Shipmondo rate limited the upload run. If your monitoring
+  matches on the command's output, update it.
+- **The counts aren't configurable**, and the time limits, the ten minutes before a lookup and the rules for a 429 are
+  unchanged.
+
+Only if you extend or call the code involved: `Uploader\OrderUploaderInterface::upload()` now returns an `array`, the
+`list<Uploader\UploadRunProblem>` the run reports, in the order they arose, each once, or an empty list when it reports
+none, instead of `?Uploader\UploadOutcome`, the outcome that stopped the run (section 6). Implement it so if you
+implement the interface, and if you call it, read the problems instead of the outcome.
+
+New: the `Uploader\UploadRunProblem` enum. `CredentialsFailure`, `UploadRateLimited`, `TemporaryFailuresInARow` and
+`FailedUploadsInARow` stopped the run; `LookupsRateLimited` and `FailedLookupsInARow` stopped the lookups; and
+`UnreadSuccessesInARow` is only reported. The counts live in `Uploader\UploadRun`, which is internal.
+
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
@@ -1298,4 +1346,4 @@ registering them at the channels' hostname on the command line, registering noth
 can't reach, registering them right away instead of through the command bus, taking the authorized amount, the
 payment method and the payment gateway from the payments that paid the order, the time limits on the requests to
 Shipmondo, the `unlinked` Shipmondo state, retrying the upload of a failed order, the sales order lookup, recording
-and showing why an order's upload didn't go through, and the order id prefix.
+and showing why an order's upload didn't go through, the order id prefix, and the upload run's stop rules.

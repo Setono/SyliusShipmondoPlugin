@@ -19,17 +19,27 @@ interface OrderUploaderInterface
      * command bus. Then it puts each pending order that qualifies for upload in uploading, and uploads it through the
      * UploadOrder command.
      *
-     * A credentials failure in a lookup stops the run, and a 429 stops the lookups, but not the uploads. When UploadOrder
-     * is handled synchronously (the default), the run stops early after an upload that hits a credentials failure or a
-     * 429, or after three rejected uploads in a row, because the remaining orders would most likely fail the same way.
-     * The remaining orders wait for the next run.
+     * Stop rules end the run early when the remaining orders would most likely fail the same way, and they wait for the
+     * next run. They apply to the lookups and to the uploads the run sees, which are those handled synchronously (the
+     * default): how an upload sent to an asynchronous transport goes is unknown to the run.
      *
-     * @return UploadOutcome|null the outcome that stopped the run early ({@see UploadOutcome::CredentialsFailure},
-     *                            {@see UploadOutcome::RateLimited}, or {@see UploadOutcome::Rejected} for the third
-     *                            rejected upload in a row) or stopped its lookups ({@see UploadOutcome::RateLimited},
-     *                            unless the uploads stopped too), or null when the run got through every order
+     * - A credentials failure stops the run, in a lookup or an upload, and so does a 429 in an upload.
+     * - Three temporary failures in a row, lookups and uploads alike, stop the run. Any lookup or upload Shipmondo
+     *   answered starts the count over; an upload that made no call leaves it as it is.
+     * - Three uploads in a row that make the order failed (rejected, not found, or an unexpected failure) stop the run.
+     *   An upload Shipmondo accepted (uploaded, or an unread success) starts the count over.
+     * - A 429 in a lookup stops the lookups, and so do three lookups in a row that fail in any other way than
+     *   temporarily (rejected, not found, or an unexpected failure). A lookup whose search succeeded starts the count
+     *   over. The pending orders are still uploaded.
+     * - Three unread successes in a row don't stop the run, since Shipmondo created the sales orders, and lookups link
+     *   them later, but the run reports them. Only an uploaded order starts the count over.
+     *
+     * Each stop, and each problem the run reports, is logged as an error.
+     *
+     * @return list<UploadRunProblem> the problems the run reports, in the order they arose, or an empty list when it
+     *                                got through every order without one
      */
-    public function upload(): ?UploadOutcome;
+    public function upload(): array;
 
     /**
      * Uploads an order whose Shipmondo state is uploading, and settles that state: uploaded (and linked to its sales
