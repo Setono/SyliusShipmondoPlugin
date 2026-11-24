@@ -1,4 +1,7 @@
-{# The order's Shipmondo state, its sales order once it is uploaded, and a button to retry the upload of a failed order #}
+{# The order's Shipmondo state, its sales order once it is uploaded, the Shipmondo failure that put the order in its
+   Shipmondo state, and a button to retry the upload of a failed order #}
+{% set failed = constant('Setono\\SyliusShipmondoPlugin\\Model\\OrderInterface::SHIPMONDO_STATE_FAILED') %}
+{% set failure = order.shipmondoFailure %}
 <div class="ui segment" id="setono-sylius-shipmondo-order">
     {% include '@SetonoSyliusShipmondoPlugin/admin/order/grid/field/shipmondo_state.html.twig' with {
         'data': order.shipmondoState,
@@ -17,7 +20,32 @@
         </div>
     {% endif %}
 
-    {% if order.shipmondoState == constant('Setono\\SyliusShipmondoPlugin\\Model\\OrderInterface::SHIPMONDO_STATE_FAILED') %}
+    {% if failure is not null %}
+        <div class="ui tiny {{ order.shipmondoState == failed ? 'negative' : 'warning' }} message" id="setono-sylius-shipmondo-upload-failure">
+            <div class="header">{{ 'setono_sylius_shipmondo.ui.last_upload'|trans }}</div>
+            <p>{{ failure|trans }}</p>
+            <div class="ui list">
+                {% if failure.statusCode is not null %}
+                    <div class="item">
+                        <div class="header">{{ 'setono_sylius_shipmondo.ui.status_code'|trans }}</div>
+                        {{ failure.statusCode }}
+                    </div>
+                {% endif %}
+                {% if order.shipmondoStateChangedAt is not null %}
+                    <div class="item">
+                        <div class="header">{{ 'setono_sylius_shipmondo.ui.when'|trans }}</div>
+                        {{ order.shipmondoStateChangedAt|date('d-m-Y H:i:s') }}
+                    </div>
+                {% endif %}
+            </div>
+            {# what happens next depends on the state the failure put the order in: an upload puts it in one of these #}
+            {% if order.shipmondoState in [failed, constant('Setono\\SyliusShipmondoPlugin\\Model\\OrderInterface::SHIPMONDO_STATE_UNLINKED'), constant('Setono\\SyliusShipmondoPlugin\\Model\\OrderInterface::SHIPMONDO_STATE_PENDING')] %}
+                <p>{{ ('setono_sylius_shipmondo.ui.last_upload_' ~ order.shipmondoState)|trans }}</p>
+            {% endif %}
+        </div>
+    {% endif %}
+
+    {% if order.shipmondoState == failed %}
         <form action="{{ path('setono_sylius_shipmondo_admin_order_retry_upload', {'id': order.id}) }}" method="post">
             <input type="hidden" name="_method" value="PUT">
             <input type="hidden" name="_csrf_token" value="{{ csrf_token(order.id) }}">

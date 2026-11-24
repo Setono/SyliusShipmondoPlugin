@@ -27,6 +27,7 @@ use Setono\Shipmondo\Exception\ValidationException;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\Canceller\OrderCanceller;
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
+use Setono\SyliusShipmondoPlugin\Failure\RecordedShipmondoFailure;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailureKind;
 use Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder;
 use Setono\SyliusShipmondoPlugin\Message\Command\UploadOrder;
@@ -222,6 +223,7 @@ final class OrderUploaderTest extends TestCase
 
         self::assertSame($state, $order->getShipmondoState());
         self::assertNull($order->getShipmondoId());
+        self::assertSame([$failure, $statusCode, 'The payment gateway does not exist'], self::recordedFailure($order));
         self::assertSame([[
             'level' => $level,
             'message' => $message,
@@ -275,6 +277,11 @@ final class OrderUploaderTest extends TestCase
         self::assertSame(UploadOutcome::TemporaryFailure, $this->uploader()->uploadOrder($order));
 
         self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame([
+            ShipmondoFailureKind::TemporaryFailure,
+            null,
+            'Could not get a response from Shipmondo [POST https://sandbox.shipmondo.com/api/public/v3/sales_orders]. The HTTP client\'s exception is the previous exception',
+        ], self::recordedFailure($order));
         self::assertSame(['POST sales_orders'], $this->shipmondo->requestLines());
         self::assertSame([[
             'level' => LogLevel::WARNING,
@@ -312,6 +319,7 @@ final class OrderUploaderTest extends TestCase
         self::assertSame(UploadOutcome::TemporaryFailure, $this->uploader()->uploadOrder($order));
 
         self::assertSame([self::PENDING, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame([ShipmondoFailureKind::TemporaryFailure, $statusCode], array_slice(self::recordedFailure($order) ?? [], 0, 2));
         self::assertSame(['GET payment_gateways'], $this->shipmondo->requestLines());
         self::assertSame([[
             'level' => LogLevel::WARNING,
@@ -351,6 +359,7 @@ final class OrderUploaderTest extends TestCase
         self::assertSame(UploadOutcome::UnexpectedFailure, $this->uploader()->uploadOrder($order));
 
         self::assertSame(self::FAILED, $order->getShipmondoState());
+        self::assertSame([ShipmondoFailureKind::UnexpectedFailure, null, 'Division by zero'], self::recordedFailure($order));
         self::assertSame([], $this->shipmondo->requests());
         self::assertSame([[
             'level' => LogLevel::ERROR,
@@ -381,6 +390,11 @@ final class OrderUploaderTest extends TestCase
         self::assertSame(UploadOutcome::UnreadSuccess, $this->uploader()->uploadOrder($order));
 
         self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame([
+            ShipmondoFailureKind::UnreadSuccess,
+            201,
+            'Shipmondo answered 201, but its response could not be read in full [POST https://sandbox.shipmondo.com/api/public/v3/sales_orders]. The body\'s exception is the previous exception',
+        ], self::recordedFailure($order));
         self::assertSame([[
             'level' => LogLevel::WARNING,
             'message' => self::UNREAD_SUCCESS_MESSAGE,
@@ -412,6 +426,7 @@ final class OrderUploaderTest extends TestCase
         self::assertSame(UploadOutcome::UnreadSuccess, $this->uploader()->uploadOrder($order));
 
         self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame([ShipmondoFailureKind::UnreadSuccess, 201], array_slice(self::recordedFailure($order) ?? [], 0, 2));
         self::assertSame([[
             'level' => LogLevel::WARNING,
             'message' => self::UNREAD_SUCCESS_MESSAGE,
@@ -916,6 +931,30 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
+     * The failure that put the order back to pending no longer explains its Shipmondo state once its next upload starts,
+     * also while a worker hasn't handled the upload yet
+     *
+     * @test
+     */
+    public function it_clears_the_shipmondo_failure_of_an_order_it_claims(): void
+    {
+        $order = $this->order(1, failure: new RecordedShipmondoFailure(ShipmondoFailureKind::RateLimited, 429, 'Too many requests'));
+        $commandBus = $this->prophesize(MessageBusInterface::class);
+        // sent to an asynchronous transport, so the order stays uploading
+        $commandBus->dispatch(Argument::type(UploadOrder::class))->will(static function (array $args): Envelope {
+            Assert::isInstanceOf($args[0], UploadOrder::class);
+
+            return new Envelope($args[0]);
+        });
+        $this->commandBus = $commandBus->reveal();
+
+        self::assertNull($this->uploader()->upload());
+
+        self::assertSame(self::UPLOADING, $order->getShipmondoState());
+        self::assertNull($order->getShipmondoFailure());
+    }
+
+    /**
      * @return iterable<string, array{HandledStamp|null}>
      */
     public static function envelopesWithoutAnOutcome(): iterable
@@ -1062,13 +1101,15 @@ final class OrderUploaderTest extends TestCase
      */
     public function it_leaves_an_unlinked_order_unlinked_when_a_lookup_finds_several_sales_orders(): void
     {
-        $order = $this->unlinkedOrder(1);
+        $order = $this->unlinkedOrder(1, failure: new RecordedShipmondoFailure(ShipmondoFailureKind::UnreadSuccess, 201, 'Unreadable'));
         $this->respondWithSalesOrders([1001 => '#001', 1002 => 'another', 1003 => '#001']);
         $this->entityManager->wrapInTransaction(Argument::cetera())->shouldNotBeCalled();
 
         self::assertNull($this->uploader()->upload());
 
         self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        // it still explains why the order is unlinked
+        self::assertSame([ShipmondoFailureKind::UnreadSuccess, 201, 'Unreadable'], self::recordedFailure($order));
         self::assertSame(['GET sales_orders'], $this->shipmondo->requestLines());
         self::assertSame([[
             'level' => LogLevel::ERROR,
@@ -1242,6 +1283,42 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
+     * The failure that made the order unlinked no longer explains its Shipmondo state once a lookup settles it
+     *
+     * @test
+     *
+     * @dataProvider settlingLookups
+     *
+     * @param array<int, string> $salesOrders
+     */
+    public function it_clears_the_shipmondo_failure_of_an_unlinked_order_its_lookup_settles(array $salesOrders, string $state): void
+    {
+        $order = $this->unlinkedOrder(1, failure: new RecordedShipmondoFailure(ShipmondoFailureKind::TemporaryFailure, 500, 'Internal Server Error'));
+        $this->respondWithSalesOrders($salesOrders);
+        // so the run doesn't upload the order a lookup puts back to pending, whose claim would clear the failure too
+        $this->eventDispatcher->addListener(
+            'workflow.setono_sylius_shipmondo__order.guard.start_upload',
+            static function (GuardEvent $event): void {
+                $event->setBlocked(true);
+            },
+        );
+
+        self::assertNull($this->uploader()->upload());
+
+        self::assertSame($state, $order->getShipmondoState());
+        self::assertNull($order->getShipmondoFailure());
+    }
+
+    /**
+     * @return iterable<string, array{array<int, string>, string}>
+     */
+    public static function settlingLookups(): iterable
+    {
+        yield 'one sales order found (link)' => [[1001 => '#001'], self::UPLOADED];
+        yield 'none found (retry)' => [[], self::PENDING];
+    }
+
+    /**
      * @return iterable<string, array{array<int, string>, string}>
      */
     public static function lookupTransitions(): iterable
@@ -1408,7 +1485,7 @@ final class OrderUploaderTest extends TestCase
      */
     public function it_retries_the_upload_of_a_failed_order_by_making_it_pending_for_the_next_upload_run(): void
     {
-        $order = $this->order(1, self::FAILED);
+        $order = $this->order(1, self::FAILED, new RecordedShipmondoFailure(ShipmondoFailureKind::Rejected, 422, 'Invalid'));
 
         // the order is retried as the database has it, locked, so nothing changes it in between
         $this->entityManager->wrapInTransaction(Argument::type('callable'))->shouldBeCalledOnce();
@@ -1417,6 +1494,8 @@ final class OrderUploaderTest extends TestCase
         self::assertTrue($this->uploader()->retry($order));
 
         self::assertSame(self::PENDING, $order->getShipmondoState());
+        // it no longer explains the order's Shipmondo state
+        self::assertNull($order->getShipmondoFailure());
         self::assertSame([], $this->shipmondo->requests());
         self::assertSame([[
             'level' => LogLevel::INFO,
@@ -1484,19 +1563,32 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
-     * An order in the given Shipmondo state. An uploaded order is linked to the sales order 999
+     * An order in the given Shipmondo state, put in it by the given Shipmondo failure, if any. An uploaded order is
+     * linked to the sales order 999
      */
-    private function order(int $id, string $state = self::PENDING): Order
+    private function order(int $id, string $state = self::PENDING, ?RecordedShipmondoFailure $failure = null): Order
     {
-        return $this->orders[] = Orders::create($state, 999, id: $id, number: sprintf('#%03d', $id));
+        return $this->orders[] = Orders::create($state, 999, id: $id, number: sprintf('#%03d', $id), failure: $failure);
     }
 
     /**
-     * An unlinked order that is due a sales order lookup
+     * An unlinked order that is due a sales order lookup, made unlinked by the given Shipmondo failure, if any
      */
-    private function unlinkedOrder(int $id, string $state = OrderInterface::STATE_NEW): Order
+    private function unlinkedOrder(int $id, string $state = OrderInterface::STATE_NEW, ?RecordedShipmondoFailure $failure = null): Order
     {
-        return $this->unlinkedOrders[] = Orders::create(self::UNLINKED, state: $state, id: $id, number: sprintf('#%03d', $id));
+        return $this->unlinkedOrders[] = Orders::create(self::UNLINKED, state: $state, id: $id, number: sprintf('#%03d', $id), failure: $failure);
+    }
+
+    /**
+     * The kind, status code and message of the Shipmondo failure the order recorded, or null when it recorded none
+     *
+     * @return array{ShipmondoFailureKind, int|null, string}|null
+     */
+    private static function recordedFailure(Order $order): ?array
+    {
+        $failure = $order->getShipmondoFailure();
+
+        return null === $failure ? null : [$failure->kind, $failure->statusCode, $failure->message];
     }
 
     /**

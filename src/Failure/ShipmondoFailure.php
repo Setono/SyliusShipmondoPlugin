@@ -90,13 +90,11 @@ final class ShipmondoFailure implements TranslatableInterface
         ];
     }
 
+    /**
+     * Explains the failure as an order that recorded it does, with Shipmondo's message, or else the exception's
+     */
     public function trans(TranslatorInterface $translator, ?string $locale = null): string
     {
-        return $translator->trans(
-            'setono_sylius_shipmondo.shipmondo_failure.' . $this->kind->value,
-            ['%error%' => $this->error ?? $this->exception->getMessage()],
-            'messages',
-            $locale,
-        );
+        return RecordedShipmondoFailure::of($this)->trans($translator, $locale);
     }
 }
