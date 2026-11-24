@@ -83,6 +83,7 @@ final class RetryUploadTest extends FunctionalTestCase
         self::assertSame([], $this->shipmondo->requests());
 
         $this->respondWithThePaymentGateway();
+        $this->theWebhooksAreRegistered();
         $this->shipmondo->respond('POST', 'sales_orders', 201, ['id' => 1001]);
 
         $this->executeCommand('setono:sylius-shipmondo:upload-orders')->assertCommandIsSuccessful();

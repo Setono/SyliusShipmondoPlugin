@@ -26,6 +26,8 @@ final class UploadFailureTest extends FunctionalTestCase
         parent::setUp();
 
         $this->respondWithThePaymentGateway();
+        // so the upload run's last step only fetches them
+        $this->theWebhooksAreRegistered();
     }
 
     /**

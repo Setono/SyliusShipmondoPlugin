@@ -322,7 +322,7 @@ final class RegisterWebhooksCommandTest extends TestCase
         self::assertSame(Command::FAILURE, $commandTester->execute([], ['capture_stderr_separately' => true]));
         self::assertSame('', $commandTester->getDisplay());
         self::assertStringContainsString(
-            '[ERROR] The webhooks could not be registered, so Shipmondo may send only some of them, or none. Register them again once the problem is solved. Shipmondo did not accept the API credentials.',
+            '[ERROR] The webhooks could not be registered, so this shop\'s webhooks in Shipmondo may still differ from the ones the plugin handles. Register them again once the problem is solved. Shipmondo did not accept the API credentials.',
             self::oneLine($commandTester->getErrorOutput()),
         );
         self::assertSame([[
@@ -357,7 +357,7 @@ final class RegisterWebhooksCommandTest extends TestCase
 
         self::assertSame(Command::FAILURE, $commandTester->execute([], ['capture_stderr_separately' => true]));
         self::assertStringContainsString(
-            '[ERROR] The webhooks could not be registered, so Shipmondo may send only some of them, or none. Register them again once the problem is solved. Shipmondo did what was asked, but its answer was cut off or could not be read: Could not decode response body as JSON',
+            '[ERROR] The webhooks could not be registered, so this shop\'s webhooks in Shipmondo may still differ from the ones the plugin handles. Register them again once the problem is solved. Shipmondo did what was asked, but its answer was cut off or could not be read: Could not decode response body as JSON',
             self::oneLine($commandTester->getErrorOutput()),
         );
         self::assertSame('unread_success', $this->logger->records[0]['context']['shipmondoFailure'] ?? null);

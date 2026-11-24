@@ -35,6 +35,7 @@ use Setono\SyliusShipmondoPlugin\Webhook\OrderResolver;
 use Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\WebhookParser;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\DependencyInjection\Compiler\ResolveClassPass;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Extension\Extension;
@@ -65,6 +66,33 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
         $this->assertContainerBuilderHasParameter('setono_sylius_shipmondo.webhooks.key', '%env(SHIPMONDO_WEBHOOKS_KEY)%');
         $this->assertContainerBuilderHasParameter('setono_sylius_shipmondo.webhooks.name_prefix', 'Setono Sylius Shipmondo Plugin');
         $this->assertContainerBuilderHasParameter('setono_sylius_shipmondo.order_id_prefix', '');
+        // the parameter assertion compares loosely
+        self::assertTrue($this->container->getParameter('setono_sylius_shipmondo.webhooks.register_automatically'));
+    }
+
+    /**
+     * Every upload run registers the webhooks again, unless the shop turns it off, e.g. in a staging copy of production
+     * that shares its webhooks key
+     *
+     * @test
+     */
+    public function the_upload_run_registers_the_webhooks_again_unless_it_is_turned_off(): void
+    {
+        $this->load(['webhooks' => ['register_automatically' => false]]);
+
+        self::assertFalse($this->container->getParameter('setono_sylius_shipmondo.webhooks.register_automatically'));
+        $this->assertContainerBuilderHasServiceDefinitionWithArgument(OrderUploader::class, 10, new Reference(WebhookRegistrarInterface::class));
+        $this->assertContainerBuilderHasServiceDefinitionWithArgument(OrderUploader::class, 11, '%setono_sylius_shipmondo.webhooks.register_automatically%');
+    }
+
+    /**
+     * @test
+     */
+    public function register_automatically_must_be_a_boolean(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+
+        $this->load(['webhooks' => ['register_automatically' => 'yes']]);
     }
 
     /**

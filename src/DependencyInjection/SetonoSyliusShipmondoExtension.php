@@ -41,7 +41,7 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
     public function load(array $configs, ContainerBuilder $container): void
     {
         /**
-         * @var array{order_id_prefix: string, api: array{username: string, key: string, sandbox: bool|string}, webhooks: array{key: string, name_prefix: string}, resources: array<string, mixed>} $config
+         * @var array{order_id_prefix: string, api: array{username: string, key: string, sandbox: bool|string}, webhooks: array{key: string, name_prefix: string, register_automatically: bool}, resources: array<string, mixed>} $config
          */
         $config = $this->processConfiguration($this->getConfiguration([], $container), $configs);
         $loader = new XmlFileLoader($container, new FileLocator(__DIR__ . '/../Resources/config'));
@@ -61,6 +61,7 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
         $container->setParameter('setono_sylius_shipmondo.api.sandbox', $config['api']['sandbox']);
         $container->setParameter('setono_sylius_shipmondo.webhooks.key', $config['webhooks']['key']);
         $container->setParameter('setono_sylius_shipmondo.webhooks.name_prefix', $config['webhooks']['name_prefix']);
+        $container->setParameter('setono_sylius_shipmondo.webhooks.register_automatically', $config['webhooks']['register_automatically']);
         $container->setParameter('setono_sylius_shipmondo.order_id_prefix', $config['order_id_prefix']);
 
         $this->registerResources(

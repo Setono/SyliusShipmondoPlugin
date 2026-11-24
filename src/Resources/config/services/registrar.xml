@@ -10,6 +10,7 @@
             <argument type="service" id="setono_sylius_shipmondo.factory.registered_webhooks"/>
             <argument>%setono_sylius_shipmondo.webhooks.key%</argument>
             <argument>%setono_sylius_shipmondo.webhooks.name_prefix%</argument>
+            <argument type="service" id="logger"/>
         </service>
 
         <service id="Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface"

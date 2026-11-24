@@ -34,6 +34,7 @@ final class ShipmondoController extends AbstractController
         private readonly SetupProviderInterface $setupProvider,
         private readonly TranslatorInterface $translator,
         private readonly LoggerInterface $logger,
+        private readonly bool $registerWebhooksAutomatically,
     ) {
     }
 
@@ -79,7 +80,32 @@ final class ShipmondoController extends AbstractController
             $this->logger->warning('Could not fetch the shipment templates from Shipmondo for the Shipmondo page', $shipmentTemplatesFailure->logContext());
         }
 
-        $this->addNotFetchedFlashes($paymentGatewaysFailure, $shipmentTemplatesFailure);
+        // this shop's webhooks are compared at the endpoint the upload run keeps them at, so only once an admin has
+        // registered them there
+        $registeredWebhooks = $this->registeredWebhooksRepository->findLatest();
+        $webhooksEndpoint = $registeredWebhooks?->getEndpoint();
+        $webhookComparison = null;
+        $webhooksFailure = null;
+
+        if (null !== $webhooksEndpoint) {
+            try {
+                $webhookComparison = $this->webhookRegistrar->compare($webhooksEndpoint);
+            } catch (ShipmondoException $e) {
+                $webhooksFailure = ShipmondoFailure::of($e);
+
+                $this->logger->warning('Could not fetch this shop\'s webhooks from Shipmondo for the Shipmondo page', $webhooksFailure->logContext());
+            }
+        }
+
+        $notFetched = [
+            'setono_sylius_shipmondo.payment_gateways_not_fetched' => $paymentGatewaysFailure,
+            'setono_sylius_shipmondo.shipment_templates_not_fetched' => $shipmentTemplatesFailure,
+        ];
+        if (null === $webhooksEndpoint) {
+            $this->addNotFetchedFlashes($notFetched, 'setono_sylius_shipmondo.shipmondo_data_not_fetched');
+        } else {
+            $this->addNotFetchedFlashes($notFetched + ['setono_sylius_shipmondo.webhooks_not_fetched' => $webhooksFailure], 'setono_sylius_shipmondo.shipmondo_data_and_webhooks_not_fetched');
+        }
 
         // Whether the page knows which payment gateways and shipment templates Shipmondo has, and so which mappings are
         // stale. A list that was fetched is shown with its stale mappings, or saving its form would remove them
@@ -195,7 +221,10 @@ final class ShipmondoController extends AbstractController
             'shipmentTemplatesFetched' => $shipmentTemplatesFetched,
             'stalePaymentGateways' => $stalePaymentGateways,
             'staleShipmentTemplates' => $staleShipmentTemplates,
-            'registeredWebhooks' => $this->registeredWebhooksRepository->findOneByVersion($this->webhookRegistrar->getVersion()),
+            'registeredWebhooks' => $registeredWebhooks,
+            // null when no endpoint is recorded, or this shop's webhooks couldn't be fetched
+            'webhookComparison' => $webhookComparison,
+            'registerWebhooksAutomatically' => $this->registerWebhooksAutomatically,
         ]);
     }
 
@@ -219,43 +248,49 @@ final class ShipmondoController extends AbstractController
             $failure = ShipmondoFailure::of($e);
 
             $this->logger->error('The webhooks could not be registered in Shipmondo', $failure->logContext());
-            $this->addFailureFlash('setono_sylius_shipmondo.webhooks_not_registered', $failure);
+            $this->addFailureFlash('setono_sylius_shipmondo.webhooks_not_registered', $failure->trans($this->translator));
         }
 
         return $this->redirectToRoute('setono_sylius_shipmondo_admin_shipmondo_index');
     }
 
     /**
-     * Flashes which lists couldn't be fetched from Shipmondo, and why: once for both when both failed for the same
-     * reason, e.g. a credentials failure, and once per list otherwise
+     * Flashes which lists couldn't be fetched from Shipmondo, and why: once for every list when each list the page
+     * fetched failed for the same reason, e.g. a credentials failure, and once per list otherwise
+     *
+     * @param array<string, ShipmondoFailure|null> $failures each list the page fetched, by the message that says it
+     *                                                       couldn't be fetched, with why it couldn't, or null when it was
+     * @param string $allNotFetched the message that says none of them could be fetched
      */
-    private function addNotFetchedFlashes(?ShipmondoFailure $paymentGatewaysFailure, ?ShipmondoFailure $shipmentTemplatesFailure): void
+    private function addNotFetchedFlashes(array $failures, string $allNotFetched): void
     {
-        if (null !== $paymentGatewaysFailure && null !== $shipmentTemplatesFailure &&
-            $paymentGatewaysFailure->trans($this->translator) === $shipmentTemplatesFailure->trans($this->translator)
-        ) {
-            $this->addFailureFlash('setono_sylius_shipmondo.shipmondo_data_not_fetched', $paymentGatewaysFailure);
+        $reasons = [];
+        foreach ($failures as $message => $failure) {
+            if (null !== $failure) {
+                $reasons[$message] = $failure->trans($this->translator);
+            }
+        }
+
+        $distinctReasons = array_values(array_unique($reasons));
+        if (count($reasons) === count($failures) && 1 === count($distinctReasons)) {
+            $this->addFailureFlash($allNotFetched, $distinctReasons[0]);
 
             return;
         }
 
-        if (null !== $paymentGatewaysFailure) {
-            $this->addFailureFlash('setono_sylius_shipmondo.payment_gateways_not_fetched', $paymentGatewaysFailure);
-        }
-
-        if (null !== $shipmentTemplatesFailure) {
-            $this->addFailureFlash('setono_sylius_shipmondo.shipment_templates_not_fetched', $shipmentTemplatesFailure);
+        foreach ($reasons as $message => $reason) {
+            $this->addFailureFlash($message, $reason);
         }
     }
 
     /**
      * Flashes an error that says what failed, followed by the failure's explanation as its %reason%
      */
-    private function addFailureFlash(string $message, ShipmondoFailure $failure): void
+    private function addFailureFlash(string $message, string $reason): void
     {
         $this->addFlash('error', [
             'message' => $message,
-            'parameters' => ['%reason%' => $failure->trans($this->translator)],
+            'parameters' => ['%reason%' => $reason],
         ]);
     }
 }

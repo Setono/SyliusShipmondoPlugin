@@ -6,8 +6,9 @@ namespace Setono\SyliusShipmondoPlugin\Uploader;
 
 /**
  * A problem an upload run reports, because it most likely hits every order, not just one: it stopped the run early,
- * stopped the sales order lookups, or the run went on in spite of it. A single failed upload or lookup is no problem of
- * the run: it is logged, and shows on the order
+ * stopped the sales order lookups, or the run went on in spite of it. And a problem of the run's last step, which
+ * registers the webhooks again. A single failed upload or lookup is no problem of the run: it is logged, and shows on
+ * the order
  */
 enum UploadRunProblem
 {
@@ -52,4 +53,23 @@ enum UploadRunProblem
      * lookups link them. The run went on
      */
     case UnreadSuccessesInARow;
+
+    /**
+     * The run's last step didn't register the webhooks again, because no registration with an endpoint is recorded:
+     * they have never been registered, or not since the plugin recorded where. An admin registers them once, after which
+     * the upload run keeps them current
+     */
+    case WebhooksNotRegisteredYet;
+
+    /**
+     * The run's last step didn't register the webhooks again, because Shipmondo can't reach the endpoint they were last
+     * registered at
+     */
+    case WebhookEndpointUnreachable;
+
+    /**
+     * The run's last step couldn't compare this shop's webhooks in Shipmondo with the wanted ones, or fix the difference,
+     * because a call to Shipmondo failed. The next run tries again
+     */
+    case WebhookRegistrationFailed;
 }

@@ -14,6 +14,8 @@ use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
  */
 final class ShipmondoControllerTest extends FunctionalTestCase
 {
+    private const WEBHOOKS_NOT_REGISTERED = 'The webhooks are not registered yet, or not since the plugin started recording where Shipmondo sends them.';
+
     /**
      * @test
      */
@@ -47,7 +49,10 @@ final class ShipmondoControllerTest extends FunctionalTestCase
             ['664116', '664115'],
             $crawler->filter(sprintf('select[name="shipping_methods[%d][]"] option', self::id($this->fixtures->shippingMethod)))->extract(['value']),
         );
-        self::assertSelectorTextContains('body', 'Either you have not registered webhooks yet');
+        self::assertSelectorTextContains('body', self::WEBHOOKS_NOT_REGISTERED);
+        self::assertSelectorTextContains('body', 'Once they are registered, every upload run registers them again at the same endpoint whenever this shop\'s webhooks in Shipmondo no longer match the ones the plugin handles, e.g. after an upgrade.');
+        // nothing to compare this shop's webhooks with: an unstubbed request for them would fail the test
+        self::assertSame([], $this->shipmondo->requests('GET', 'webhooks'));
         // every mapping exists in Shipmondo
         self::assertSelectorNotExists('.message.warning');
         self::assertSelectorNotExists('tr.warning');
@@ -429,6 +434,8 @@ final class ShipmondoControllerTest extends FunctionalTestCase
         $this->logIn();
         $this->openTheAdminAt('shop.example.com');
         $this->respondToWebhookRegistration();
+        // the page then compares this shop's webhooks in Shipmondo, which are the ones registered
+        $this->shipmondo->respond('GET', 'webhooks', 200, $this->wantedWebhooks('http://shop.example.com/webhook/shipmondo'), ['X-Total-Pages' => '1']);
 
         $this->browser->request('GET', '/admin/shipmondo/register-webhooks');
 
@@ -445,7 +452,98 @@ final class ShipmondoControllerTest extends FunctionalTestCase
         $this->browser->followRedirect();
 
         self::assertSelectorTextContains('.message.positive', 'Webhooks registered successfully');
-        self::assertSelectorTextContains('body', 'Webhooks were registered on');
+        self::assertSelectorTextContains('body', 'The webhooks were last registered at http://shop.example.com/webhook/shipmondo on');
+        self::assertSelectorTextContains('body', 'This shop\'s webhooks in Shipmondo match the ones the plugin handles.');
+        self::assertSelectorTextNotContains('body', self::WEBHOOKS_NOT_REGISTERED);
+    }
+
+    /**
+     * @test
+     */
+    public function it_shows_that_this_shops_webhooks_in_shipmondo_match_and_where_they_were_last_registered(): void
+    {
+        $this->logIn();
+        $this->recordWebhookRegistration(self::WEBHOOK_ENDPOINT, '2026-03-04 05:06:07');
+        $this->respondWithGatewaysAndTemplates();
+        $this->shipmondo->respond('GET', 'webhooks', 200, $this->wantedWebhooks(self::WEBHOOK_ENDPOINT), ['X-Total-Pages' => '1']);
+
+        $this->browser->request('GET', '/admin/shipmondo');
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('body', 'The webhooks were last registered at https://shop.example.com/webhook/shipmondo on March 4, 2026');
+        self::assertSelectorTextContains('.message.positive', 'This shop\'s webhooks in Shipmondo match the ones the plugin handles.');
+        self::assertSelectorNotExists('.message.negative');
+        self::assertSelectorNotExists('.message.warning');
+    }
+
+    /**
+     * E.g. after an upgrade of the plugin that handles a new action, before an upload run registers them again
+     *
+     * @test
+     */
+    public function it_shows_how_this_shops_webhooks_in_shipmondo_differ_from_the_wanted_ones(): void
+    {
+        $this->logIn();
+        $this->recordWebhookRegistration(self::WEBHOOK_ENDPOINT);
+        $this->respondWithGatewaysAndTemplates();
+        $wanted = $this->wantedWebhooks(self::WEBHOOK_ENDPOINT);
+        $missing = $wanted[0];
+        $inactive = ['id' => 8001, 'active' => false] + $wanted[1];
+        $this->shipmondo->respond('GET', 'webhooks', 200, [...array_slice($wanted, 1), $inactive], ['X-Total-Pages' => '1']);
+
+        $crawler = $this->browser->request('GET', '/admin/shipmondo');
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorTextContains('.message.warning', 'This shop\'s webhooks in Shipmondo don\'t match the ones the plugin handles:');
+        self::assertSame([
+            sprintf('Missing: %s', $missing['name']),
+            sprintf('To remove: %s, sent to https://shop.example.com/webhook/shipmondo, inactive', $inactive['name']),
+        ], $crawler->filter('.message.warning li')->each(static fn (Crawler $item): string => trim($item->text())));
+        self::assertSelectorTextContains('.message.warning', 'The next upload run registers them again, or register them now with the button below.');
+        // comparing changes nothing
+        self::assertSame(['GET webhooks'], array_map(
+            static fn ($request): string => $request->getMethod() . ' webhooks',
+            $this->shipmondo->requests(null, 'webhooks'),
+        ));
+    }
+
+    /**
+     * @test
+     */
+    public function it_says_this_shops_webhooks_could_not_be_loaded_and_why(): void
+    {
+        $this->logIn();
+        $this->recordWebhookRegistration(self::WEBHOOK_ENDPOINT);
+        $this->respondWithGatewaysAndTemplates();
+        $this->shipmondo->failToConnect('GET', 'webhooks');
+
+        $this->browser->request('GET', '/admin/shipmondo');
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorCount(1, '.message.negative');
+        self::assertSelectorTextContains('.message.negative p', 'Could not fetch this shop\'s webhooks from Shipmondo. Shipmondo could not be reached, or had a server error.');
+        self::assertSelectorTextContains('body', 'This shop\'s webhooks could not be loaded from Shipmondo, so whether they match the ones the plugin handles is unknown now.');
+        self::assertSelectorTextContains('body', 'The webhooks were last registered at https://shop.example.com/webhook/shipmondo');
+        // the other lists are still shown
+        self::assertSelectorExists('select[name^="payment_methods"]');
+    }
+
+    /**
+     * @test
+     */
+    public function it_says_once_when_nothing_could_be_fetched_from_shipmondo_for_the_same_reason(): void
+    {
+        $this->logIn();
+        $this->recordWebhookRegistration(self::WEBHOOK_ENDPOINT);
+        foreach (['payment_gateways', 'shipment_templates', 'webhooks'] as $list) {
+            $this->shipmondo->respond('GET', $list, 401, ['error' => 'Invalid credentials']);
+        }
+
+        $this->browser->request('GET', '/admin/shipmondo');
+
+        self::assertResponseIsSuccessful();
+        self::assertSelectorCount(1, '.message.negative');
+        self::assertSelectorTextContains('.message.negative p', 'Could not fetch the payment gateways, shipment templates and this shop\'s webhooks from Shipmondo. Shipmondo did not accept the API credentials.');
     }
 
     /**
@@ -465,9 +563,9 @@ final class ShipmondoControllerTest extends FunctionalTestCase
         $this->respondWithGatewaysAndTemplates();
         $this->browser->followRedirect();
 
-        self::assertSelectorTextContains('.message.negative', 'The webhooks could not be registered, so Shipmondo may send only some of them, or none. Register them again once the problem is solved. Shipmondo did not accept the API credentials.');
+        self::assertSelectorTextContains('.message.negative', 'The webhooks could not be registered, so this shop\'s webhooks in Shipmondo may still differ from the ones the plugin handles. Register them again once the problem is solved. Shipmondo did not accept the API credentials.');
         self::assertSelectorNotExists('.message.positive');
-        self::assertSelectorTextContains('body', 'Either you have not registered webhooks yet');
+        self::assertSelectorTextContains('body', self::WEBHOOKS_NOT_REGISTERED);
     }
 
     /**
@@ -494,7 +592,7 @@ final class ShipmondoControllerTest extends FunctionalTestCase
 
         self::assertSelectorTextContains('.message.negative', sprintf('The webhooks were not registered, because Shipmondo can\'t reach their endpoint, %s. Open the admin at the shop\'s hostname and register them there. The webhooks registered before are kept.', $endpoint));
         self::assertSelectorNotExists('.message.positive');
-        self::assertSelectorTextContains('body', 'Either you have not registered webhooks yet');
+        self::assertSelectorTextContains('body', self::WEBHOOKS_NOT_REGISTERED);
     }
 
     /**

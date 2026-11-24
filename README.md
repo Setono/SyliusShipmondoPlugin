@@ -227,8 +227,26 @@ php bin/console setono:sylius-shipmondo:register-webhooks
 ```
 
 Both register them right away, whatever your Messenger routing, and say how it went: the button with a flash message,
-the command in its output and exit code. Register them again whenever the plugin's webhook handlers change, e.g. after
-upgrading the plugin.
+the command in its output and exit code.
+
+Registering compares the shop's webhooks in Shipmondo with the ones the plugin handles (one per action its webhook
+handlers handle), and fixes only the difference: it creates the missing ones, including any Shipmondo has deactivated
+or sends to another address, deletes the ones no longer wanted and any duplicates, and leaves the rest. When nothing
+differs, it only fetches them. Then it records where it registered them, and when, which the Shipmondo page shows along
+with whether the shop's webhooks in Shipmondo still match.
+
+**Register them once.** After that, every run of `setono:sylius-shipmondo:upload-orders` ends by registering them
+again at the same address, so an upgrade that changes the webhooks the plugin handles, or a webhook deleted or
+deactivated in Shipmondo, is fixed by the next run. When nothing differs, that costs one request. Until they are
+registered once, the command uploads the orders and then fails, saying to register them. It also fails, after the
+uploads, when it can't register them again, and logs why. To keep the webhooks yourself, turn it off:
+
+```yaml
+# config/packages/setono_sylius_shipmondo.yaml
+setono_sylius_shipmondo:
+    webhooks:
+        register_automatically: false
+```
 
 Shipmondo sends the webhooks to the shop's webhook endpoint, `/webhook/shipmondo`. The admin's button registers it at
 the host the admin is on. On the command line there is no request to take the host from, so the command registers it
@@ -259,7 +277,9 @@ kept.
 > `192.168.1.20`. With the production credentials and webhooks key, e.g. in a copy of the production `.env`,
 > registering there replaces the production shop's working webhooks with ones Shipmondo can't deliver. Locally, give
 > the shop a `SHIPMONDO_WEBHOOKS_KEY` of its own, or a Shipmondo sandbox account (`SHIPMONDO_SANDBOX=true` with its
-> credentials).
+> credentials). The same goes for a staging copy of production that runs the upload command: with the same webhooks
+> key, each install's upload run replaces the other's webhooks on every run. Give it a key of its own, or turn off
+> `register_automatically` there.
 
 ## Cancelled orders and asynchronous deletion
 

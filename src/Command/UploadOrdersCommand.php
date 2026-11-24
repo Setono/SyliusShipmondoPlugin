@@ -14,9 +14,9 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 
 /**
  * Runs an upload run. It is silent when the run reports no problem, and fails, naming each problem the run reports and
- * what to do about it, when the run stopped early, its sales order lookups stopped, or it hit three unread successes in a
- * row, so a cron job's monitoring notices a problem that most likely hits every order. A single failed upload or lookup
- * is logged and shows on the order.
+ * what to do about it, when the run stopped early, its sales order lookups stopped, it hit three unread successes in a
+ * row, or its last step couldn't register the webhooks again, so a cron job's monitoring notices a problem that most
+ * likely hits every order, or every webhook. A single failed upload or lookup is logged and shows on the order.
  */
 #[AsCommand(
     name: 'setono:sylius-shipmondo:upload-orders',
@@ -45,6 +45,9 @@ final class UploadOrdersCommand extends Command
                 UploadRunProblem::LookupsRateLimited => 'The sales order lookups stopped, because Shipmondo rate limited one. If it keeps happening, check the unlinked orders in Shipmondo: an order with several sales orders is looked up in every run. The pending orders were uploaded, and the remaining unlinked orders wait for the next run.',
                 UploadRunProblem::FailedLookupsInARow => 'The sales order lookups stopped after three lookups in a row that failed: Shipmondo rejected them, or its answers could not be read. Check the log and the version of the Shipmondo SDK. The pending orders were uploaded, and the remaining unlinked orders wait for the next run.',
                 UploadRunProblem::UnreadSuccessesInARow => 'Shipmondo answered three uploads in a row with a success that was cut off or could not be read, so it created the sales orders, but the orders are unlinked until sales order lookups link them, at least ten minutes later. Its answers can\'t be read or arrive too late: check the log, the time limits of the requests to Shipmondo and the version of the Shipmondo SDK.',
+                UploadRunProblem::WebhooksNotRegisteredYet => 'The upload run did not register the webhooks again, because they are not registered yet: no registration with an endpoint is recorded. Register them once from the admin\'s Shipmondo page or with setono:sylius-shipmondo:register-webhooks, after which the upload run keeps them current. To keep them yourself, turn off setono_sylius_shipmondo.webhooks.register_automatically. The pending orders were uploaded.',
+                UploadRunProblem::WebhookEndpointUnreachable => 'The upload run did not register the webhooks again, because Shipmondo can\'t reach the endpoint they were last registered at, which the log names. Register them from the admin\'s Shipmondo page, opened at the shop\'s hostname, or with setono:sylius-shipmondo:register-webhooks. The pending orders were uploaded.',
+                UploadRunProblem::WebhookRegistrationFailed => 'The upload run could not compare the webhooks with Shipmondo\'s, or register them again, because a call to Shipmondo failed. The log has why. The next run tries again, and the pending orders were uploaded.',
             },
             $problems,
         ));

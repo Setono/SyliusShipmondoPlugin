@@ -55,6 +55,10 @@ final class Configuration implements ConfigurationInterface
                             ->info('This is the prefix that will be added to the name of the webhooks, followed by the shop\'s id')
                             ->defaultValue('Setono Sylius Shipmondo Plugin')
                             ->cannotBeEmpty()
+                        ->end()
+                        ->booleanNode('register_automatically')
+                            ->info('Whether every upload run registers the webhooks again where an admin last registered them, when this shop\'s webhooks in Shipmondo no longer match the ones the plugin handles, e.g. after an upgrade. Turn it off in an install that shares another\'s webhooks key, e.g. a staging copy of production, or they replace each other\'s webhooks on every run')
+                            ->defaultTrue()
         ;
 
         $this->addResourcesSection($rootNode);

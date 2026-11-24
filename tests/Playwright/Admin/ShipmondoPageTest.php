@@ -10,6 +10,7 @@ use function Playwright\Testing\expect;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
 use Tests\Setono\SyliusShipmondoPlugin\Playwright\BrowserTestCase;
+use Tests\Setono\SyliusShipmondoPlugin\Support\Webhooks;
 
 /**
  * The admin "Shipmondo" page (Configuration > Shipmondo) maps Sylius payment methods to Shipmondo payment gateways
@@ -28,7 +29,7 @@ final class ShipmondoPageTest extends BrowserTestCase
 
     private const SHIPMENT_TEMPLATES_NOT_LOADED = 'The shipment templates could not be loaded from Shipmondo, so the shipping methods can\'t be mapped now.';
 
-    private const WEBHOOKS_NOT_REGISTERED = 'Either you have not registered webhooks yet or you need to re-register them';
+    private const WEBHOOKS_NOT_REGISTERED = 'The webhooks are not registered yet, or not since the plugin started recording where Shipmondo sends them.';
 
     private const QUICKPAY_ID = 4921;
 
@@ -118,11 +119,12 @@ final class ShipmondoPageTest extends BrowserTestCase
     public function the_webhooks_are_registered_with_shipmondo(): void
     {
         $this->respondWithGatewaysAndTemplates();
+        // the plugin leaves both alone: neither carries the shop's id, nor is sent to the endpoint it registers, so
+        // deleting either would be a request this test did not stub
         $this->respondWithList('webhooks');
-        // the plugin replaces the webhook it registered before (8500473) and leaves the other one (8500472) alone:
-        // deleting that one would be a request this test did not stub
-        $this->shipmondo->respond('DELETE', 'webhooks/8500473', 204, null);
         $this->shipmondo->respond('POST', 'webhooks', 201, self::shipmondoResponse('webhooks')[1]);
+        // then the page compares the shop's webhooks in Shipmondo, which are the ones it registered
+        $this->respondWithList('webhooks', [...self::shipmondoResponse('webhooks'), ...Webhooks::wanted(static::getContainer(), 'http://shop.example.com/webhook/shipmondo')]);
         // at the shop's hostname: Shipmondo can't reach localhost
         $page = $this->visitAt(self::SHOP_HOST, '/admin/shipmondo');
         expect($page->getByText(self::WEBHOOKS_NOT_REGISTERED))->toBeVisible();
@@ -131,8 +133,10 @@ final class ShipmondoPageTest extends BrowserTestCase
 
         expect($page)->toHaveURL('http://shop.example.com/admin/shipmondo');
         expect($this->flash('success'))->toContainText('Webhooks registered successfully');
-        expect($page->getByText('Webhooks were registered on'))->toBeVisible();
+        expect($page->getByText('The webhooks were last registered at http://shop.example.com/webhook/shipmondo on'))->toBeVisible();
+        expect($page->getByText('This shop\'s webhooks in Shipmondo match the ones the plugin handles.'))->toBeVisible();
         expect($page->getByText(self::WEBHOOKS_NOT_REGISTERED))->toBeHidden();
+        self::assertSame([], $this->shipmondo->requests('DELETE'));
 
         $created = $this->shipmondo->requests('POST', 'webhooks');
         self::assertNotEmpty($created);
@@ -280,7 +284,7 @@ final class ShipmondoPageTest extends BrowserTestCase
         expect($page)->toHaveURL('http://shop.example.com/admin/shipmondo');
         // the page itself can't fetch from Shipmondo either, so it flashes that too
         expect($this->flash('error'))->toHaveCount(2);
-        expect($page->getByText('The webhooks could not be registered, so Shipmondo may send only some of them, or none. Register them again once the problem is solved. Shipmondo did not accept the API credentials.'))->toBeVisible();
+        expect($page->getByText('The webhooks could not be registered, so this shop\'s webhooks in Shipmondo may still differ from the ones the plugin handles. Register them again once the problem is solved. Shipmondo did not accept the API credentials.'))->toBeVisible();
         expect($this->flash('success'))->toHaveCount(0);
     }
 

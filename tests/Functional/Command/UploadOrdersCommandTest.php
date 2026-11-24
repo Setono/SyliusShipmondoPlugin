@@ -17,6 +17,14 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
 {
     private const COMMAND = 'setono:sylius-shipmondo:upload-orders';
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // so the upload run's last step only fetches them
+        $this->theWebhooksAreRegistered();
+    }
+
     /**
      * @test
      */
@@ -212,7 +220,8 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         $tester = $this->executeCommand(self::COMMAND);
         $tester->assertCommandIsSuccessful();
         self::assertSame('', $tester->getDisplay());
-        self::assertSame([], $this->shipmondo->requests());
+        // only the last step's check that this shop's webhooks still match
+        self::assertSame(['GET webhooks'], $this->shipmondo->requestLines());
     }
 
     /**
