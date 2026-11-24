@@ -54,8 +54,11 @@ final class RecordedShipmondoFailureType extends JsonType
         }
 
         $data = is_string($value) ? json_decode($value, true) : null;
-        $kind = is_array($data) && is_string($data['kind'] ?? null) ? ShipmondoFailureKind::tryFrom($data['kind']) : null;
+        if (!is_array($data) || !is_string($data['kind'] ?? null)) {
+            return null;
+        }
 
+        $kind = ShipmondoFailureKind::tryFrom($data['kind']);
         if (null === $kind) {
             return null;
         }
