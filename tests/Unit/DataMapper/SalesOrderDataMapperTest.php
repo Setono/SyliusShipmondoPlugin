@@ -100,8 +100,7 @@ final class SalesOrderDataMapperTest extends TestCase
     }
 
     /**
-     * A shop changes the order id it sends Shipmondo with the order id prefix, or by decorating or replacing the order id
-     * provider
+     * The order id comes from the order id provider, as the sales order lookup's does, e.g. with the shop's order id prefix
      *
      * @test
      */

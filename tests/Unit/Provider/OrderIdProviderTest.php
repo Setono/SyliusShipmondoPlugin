@@ -6,7 +6,7 @@ namespace Tests\Setono\SyliusShipmondoPlugin\Unit\Provider;
 
 use PHPUnit\Framework\TestCase;
 use Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider;
-use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\Orders;
 
 final class OrderIdProviderTest extends TestCase
 {
@@ -15,7 +15,7 @@ final class OrderIdProviderTest extends TestCase
      */
     public function it_gives_the_order_number_as_the_order_id(): void
     {
-        self::assertSame('000001234', (new OrderIdProvider())->getOrderId(self::order('000001234')));
+        self::assertSame('000001234', (new OrderIdProvider())->getOrderId(Orders::create(number: '000001234')));
     }
 
     /**
@@ -25,14 +25,6 @@ final class OrderIdProviderTest extends TestCase
      */
     public function it_puts_the_order_id_prefix_before_the_order_number(): void
     {
-        self::assertSame('WEB-000001234', (new OrderIdProvider('WEB-'))->getOrderId(self::order('000001234')));
-    }
-
-    private static function order(string $number): Order
-    {
-        $order = new Order();
-        $order->setNumber($number);
-
-        return $order;
+        self::assertSame('WEB-000001234', (new OrderIdProvider('WEB-'))->getOrderId(Orders::create(number: '000001234')));
     }
 }

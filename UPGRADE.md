@@ -1183,12 +1183,13 @@ Only if you extend or call the code involved:
 New: the `OrderWorkflow::TRANSITION_LINK` constant; `Provider\UnlinkedOrdersProviderInterface` (a private alias of
 `Provider\UnlinkedOrdersProvider`, section 13), which finds the unlinked orders due a lookup
 (`UnlinkedOrdersProvider::LOOKUP_DELAY`); and `Provider\OrderIdProviderInterface` (a private alias of
-`Provider\OrderIdProvider`, which gives the order number), the one place the order id the plugin sends Shipmondo comes
-from, which the upload and the lookup both use. Decorate or replace it to send another order id (to put a prefix before
-the order number, set the `order_id_prefix` option instead, section 27), but only while no order is `unlinked`: a lookup searches by the order id it gives now, so an unlinked order's lookup
-would find no sales order, and the order would be uploaded a second time. `UploadOutcome::TemporaryFailure` now leaves an order `unlinked` when the call that creates the
-sales order failed. If your code relies on `unlinked` being final, or on `retry` leaving only `uploading_to_shipmondo`
-and `failed`, adjust it.
+`Provider\OrderIdProvider`, which gives the order number, after the order id prefix, section 27), the one place the
+order id the plugin sends Shipmondo comes from, which the upload and the lookup both use. Decorate or replace it to send
+another order id (to put a prefix before the order number, set the `order_id_prefix` option instead), but only while no
+order is `unlinked` or `uploading_to_shipmondo`: a lookup searches by the order id it gives now, so an unlinked order's
+lookup would find no sales order, and the order would be uploaded a second time. `UploadOutcome::TemporaryFailure` now
+leaves an order `unlinked` when the call that creates the sales order failed. If your code relies on `unlinked` being
+final, or on `retry` leaving only `uploading_to_shipmondo` and `failed`, adjust it.
 
 ### 26. The order records why its upload didn't go through, and the order page shows it
 
@@ -1281,11 +1282,8 @@ setono_sylius_shipmondo:
   that changes the order id it gives. A decorator keeps working with the option: the plugin's `OrderIdProvider` gives
   it the prefixed order id.
 
-Only if you extend or call the code involved:
-
-| 1.x | 2.x |
-|---|---|
-| | `Provider\OrderIdProvider::__construct(string $prefix = '')`, which the plugin passes the new `setono_sylius_shipmondo.order_id_prefix` parameter |
+New: the `setono_sylius_shipmondo.order_id_prefix` parameter, which the plugin passes to
+`Provider\OrderIdProvider::__construct(string $prefix = '')`. An `order_id_prefix` of `~` (null) is no prefix.
 
 ### Unchanged
 
