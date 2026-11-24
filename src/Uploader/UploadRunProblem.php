@@ -20,7 +20,7 @@ enum UploadRunProblem
     /**
      * Shipmondo rate limited an upload (429), so the run stopped
      */
-    case RateLimited;
+    case UploadRateLimited;
 
     /**
      * Three sales order lookups or uploads in a row failed temporarily, with no call Shipmondo answered between them, so

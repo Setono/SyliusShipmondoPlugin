@@ -11,6 +11,7 @@ use Setono\SyliusShipmondoPlugin\Uploader\OrderUploaderInterface;
 use Setono\SyliusShipmondoPlugin\Uploader\UploadRunProblem;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Tester\CommandTester;
+use Tests\Setono\SyliusShipmondoPlugin\Support\CommandErrors;
 
 final class UploadOrdersCommandTest extends TestCase
 {
@@ -18,7 +19,7 @@ final class UploadOrdersCommandTest extends TestCase
 
     private const CREDENTIALS_FAILURE = 'The upload run stopped, because Shipmondo did not accept the API credentials. Check the Shipmondo API user and key. The remaining orders wait for the next run.';
 
-    private const LOOKUPS_RATE_LIMITED = 'The sales order lookups stopped, because Shipmondo rate limited one. The pending orders were uploaded, and the remaining unlinked orders wait for the next run.';
+    private const LOOKUPS_RATE_LIMITED = 'The sales order lookups stopped, because Shipmondo rate limited one. If it keeps happening, check the unlinked orders in Shipmondo: an order with several sales orders is looked up in every run. The pending orders were uploaded, and the remaining unlinked orders wait for the next run.';
 
     private const UNREAD_SUCCESSES_IN_A_ROW = 'Shipmondo answered three uploads in a row with a success that was cut off or could not be read, so it created the sales orders, but the orders are unlinked until sales order lookups link them, at least ten minutes later. Its answers can\'t be read or arrive too late: check the log, the time limits of the requests to Shipmondo and the version of the Shipmondo SDK.';
 
@@ -53,7 +54,7 @@ final class UploadOrdersCommandTest extends TestCase
         $commandTester = new CommandTester(new UploadOrdersCommand($orderUploader->reveal()));
 
         self::assertSame(Command::FAILURE, $commandTester->execute([]));
-        self::assertSame([$error], self::errors($commandTester));
+        self::assertSame([$error], CommandErrors::of($commandTester));
     }
 
     /**
@@ -63,8 +64,8 @@ final class UploadOrdersCommandTest extends TestCase
     {
         yield 'credentials failure' => [UploadRunProblem::CredentialsFailure, self::CREDENTIALS_FAILURE];
         yield 'rate limited' => [
-            UploadRunProblem::RateLimited,
-            'The upload run stopped, because Shipmondo rate limited an upload. The remaining orders wait for the next run.',
+            UploadRunProblem::UploadRateLimited,
+            'The upload run stopped, because Shipmondo rate limited an upload. If it keeps happening, check what else calls Shipmondo with the same API user. The remaining orders wait for the next run.',
         ];
         yield 'temporary failures in a row' => [
             UploadRunProblem::TemporaryFailuresInARow,
@@ -93,23 +94,6 @@ final class UploadOrdersCommandTest extends TestCase
         $commandTester = new CommandTester(new UploadOrdersCommand($orderUploader->reveal()));
 
         self::assertSame(Command::FAILURE, $commandTester->execute([]));
-        self::assertSame([self::LOOKUPS_RATE_LIMITED, self::UNREAD_SUCCESSES_IN_A_ROW, self::CREDENTIALS_FAILURE], self::errors($commandTester));
-    }
-
-    /**
-     * The messages of the error block the command printed, each with its line breaks and padding folded into single
-     * spaces
-     *
-     * @return list<string>
-     */
-    private static function errors(CommandTester $commandTester): array
-    {
-        $display = $commandTester->getDisplay();
-        self::assertStringStartsWith('[ERROR] ', trim($display));
-
-        $messages = preg_split('/\n\s*\n/', trim(str_replace('[ERROR]', '', $display)));
-        self::assertIsArray($messages);
-
-        return array_values(array_map(static fn (string $message): string => trim((string) preg_replace('/\s+/', ' ', $message)), $messages));
+        self::assertSame([self::LOOKUPS_RATE_LIMITED, self::UNREAD_SUCCESSES_IN_A_ROW, self::CREDENTIALS_FAILURE], CommandErrors::of($commandTester));
     }
 }

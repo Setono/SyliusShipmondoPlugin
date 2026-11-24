@@ -10,6 +10,7 @@ use Symfony\Component\Console\Command\Command;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
+use Tests\Setono\SyliusShipmondoPlugin\Support\CommandErrors;
 use Tests\Setono\SyliusShipmondoPlugin\Support\PickupPoints;
 
 final class UploadOrdersCommandTest extends FunctionalTestCase
@@ -283,7 +284,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         // fails, so whatever runs the command (cron, a scheduler) notices that no order can be uploaded
         $tester = $this->executeCommand(self::COMMAND);
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
-        self::assertSame([$error], self::errors($tester));
+        self::assertSame([$error], CommandErrors::of($tester));
 
         self::assertCount(1, $this->shipmondo->requests('POST', 'sales_orders'));
         foreach ([$turnedAway, $notTried] as $order) {
@@ -301,7 +302,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
 
         yield 'credentials failure (401)' => [401, $credentialsFailure];
         yield 'credentials failure (403)' => [403, $credentialsFailure];
-        yield 'rate limited (429)' => [429, 'The upload run stopped, because Shipmondo rate limited an upload. The remaining orders wait for the next run.'];
+        yield 'rate limited (429)' => [429, 'The upload run stopped, because Shipmondo rate limited an upload. If it keeps happening, check what else calls Shipmondo with the same API user. The remaining orders wait for the next run.'];
     }
 
     /**
@@ -324,7 +325,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertSame(
             ['The upload run stopped after three uploads in a row that made the order failed, which suggests a shop-wide problem, such as a payment gateway or shipment template that no longer exists in Shipmondo, or a data mapper that fails for every order. The log has the errors. The remaining orders wait for the next run.'],
-            self::errors($tester),
+            CommandErrors::of($tester),
         );
         self::assertCount(2, $this->shipmondo->requests('POST', 'sales_orders'));
         foreach ([...$rejected, $unmappable] as $order) {
@@ -355,7 +356,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertSame(
             ['The upload run stopped after three temporary failures in a row: Shipmondo answered with a server error, or not in time. Check whether Shipmondo is down, and the log. The remaining orders wait for the next run.'],
-            self::errors($tester),
+            CommandErrors::of($tester),
         );
         self::assertCount(3, $this->shipmondo->requests('POST', 'sales_orders'));
         foreach ($unlinked as $order) {
@@ -389,7 +390,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertSame(
             ['Shipmondo answered three uploads in a row with a success that was cut off or could not be read, so it created the sales orders, but the orders are unlinked until sales order lookups link them, at least ten minutes later. Its answers can\'t be read or arrive too late: check the log, the time limits of the requests to Shipmondo and the version of the Shipmondo SDK.'],
-            self::errors($tester),
+            CommandErrors::of($tester),
         );
         foreach ($unlinked as $order) {
             self::assertSame(OrderInterface::SHIPMONDO_STATE_UNLINKED, $this->orderRow(self::id($order))['shipmondo_state']);

@@ -169,6 +169,16 @@ final class ShipmondoApiStub
     }
 
     /**
+     * Each request's method and path relative to the API base, e.g. 'GET sales_orders', in order
+     *
+     * @return list<string>
+     */
+    public function requestLines(): array
+    {
+        return array_map(static fn (RequestInterface $request): string => $request->getMethod() . ' ' . self::path($request), $this->requests);
+    }
+
+    /**
      * @return array<array-key, mixed>
      */
     public static function jsonBody(RequestInterface $request): array

@@ -22,7 +22,7 @@ final class UploadRun
      * This many temporary failures, failed uploads, failed lookups or unread successes in a row most likely hit every
      * order, not just these
      */
-    private const IN_A_ROW = 3;
+    private const MAX_IN_A_ROW = 3;
 
     private int $temporaryFailuresInARow = 0;
 
@@ -47,7 +47,7 @@ final class UploadRun
      * @param ShipmondoFailure|null $failure why Shipmondo couldn't be searched for the order's sales order, or null when
      *                                       it was, whatever it found
      */
-    public function lookedUp(OrderInterface $order, ?ShipmondoFailure $failure): void
+    public function recordLookup(OrderInterface $order, ?ShipmondoFailure $failure): void
     {
         $kind = $failure?->kind;
 
@@ -74,9 +74,9 @@ final class UploadRun
                 'The sales order lookups stopped, because Shipmondo answered the lookup of the order {order} with a {outcome}. The remaining unlinked orders wait for the next run, and the pending orders are uploaded',
                 ['order' => $order->getNumber(), 'outcome' => $kind->value],
             );
-        } elseif (self::IN_A_ROW === $this->temporaryFailuresInARow) {
+        } elseif (self::MAX_IN_A_ROW === $this->temporaryFailuresInARow) {
             $this->stopOnTemporaryFailures();
-        } elseif (self::IN_A_ROW === $this->failedLookupsInARow) {
+        } elseif (self::MAX_IN_A_ROW === $this->failedLookupsInARow) {
             $this->stopLookups(
                 UploadRunProblem::FailedLookupsInARow,
                 'The sales order lookups stopped after {count} lookups in a row that failed, which suggests a problem with every lookup, such as Shipmondo rejecting the search, or answering in a way the SDK can\'t read. The remaining unlinked orders wait for the next run, and the pending orders are uploaded',
@@ -85,7 +85,7 @@ final class UploadRun
         }
     }
 
-    public function uploaded(OrderInterface $order, UploadOutcome $outcome): void
+    public function recordUpload(OrderInterface $order, UploadOutcome $outcome): void
     {
         $this->temporaryFailuresInARow = match ($outcome) {
             UploadOutcome::TemporaryFailure => $this->temporaryFailuresInARow + 1,
@@ -110,20 +110,20 @@ final class UploadRun
 
         if (UploadOutcome::CredentialsFailure === $outcome || UploadOutcome::RateLimited === $outcome) {
             $this->stop(
-                UploadOutcome::CredentialsFailure === $outcome ? UploadRunProblem::CredentialsFailure : UploadRunProblem::RateLimited,
+                UploadOutcome::CredentialsFailure === $outcome ? UploadRunProblem::CredentialsFailure : UploadRunProblem::UploadRateLimited,
                 'The upload run stopped, because Shipmondo answered the upload of the order {order} with a {outcome}. The remaining orders stay pending for the next run',
                 ['order' => $order->getNumber(), 'outcome' => $outcome->value],
             );
-        } elseif (self::IN_A_ROW === $this->temporaryFailuresInARow) {
+        } elseif (self::MAX_IN_A_ROW === $this->temporaryFailuresInARow) {
             $this->stopOnTemporaryFailures();
-        } elseif (self::IN_A_ROW === $this->failedUploadsInARow) {
+        } elseif (self::MAX_IN_A_ROW === $this->failedUploadsInARow) {
             // Shipmondo answers 422 whether the order or a shop-wide setting (e.g. a deleted payment gateway) is the problem
             $this->stop(
                 UploadRunProblem::FailedUploadsInARow,
                 'The upload run stopped after {count} uploads in a row that made the order failed, which suggests a shop-wide problem, such as a payment gateway or shipment template that no longer exists in Shipmondo, or a data mapper that fails for every order. The remaining orders stay pending for the next run',
                 ['count' => $this->failedUploadsInARow],
             );
-        } elseif (UploadOutcome::UnreadSuccess === $outcome && self::IN_A_ROW === $this->unreadSuccessesInARow) {
+        } elseif (UploadOutcome::UnreadSuccess === $outcome && self::MAX_IN_A_ROW === $this->unreadSuccessesInARow) {
             // Shipmondo created the sales orders, and sales order lookups link the orders to them
             $this->report(
                 UploadRunProblem::UnreadSuccessesInARow,

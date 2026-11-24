@@ -820,7 +820,7 @@ final class OrderUploaderTest extends TestCase
     {
         yield 'credentials failure (401)' => [401, UploadOutcome::CredentialsFailure, UploadRunProblem::CredentialsFailure];
         yield 'credentials failure (403)' => [403, UploadOutcome::CredentialsFailure, UploadRunProblem::CredentialsFailure];
-        yield 'rate limited (429)' => [429, UploadOutcome::RateLimited, UploadRunProblem::RateLimited];
+        yield 'rate limited (429)' => [429, UploadOutcome::RateLimited, UploadRunProblem::UploadRateLimited];
     }
 
     /**

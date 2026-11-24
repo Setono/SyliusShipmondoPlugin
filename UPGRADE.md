@@ -1318,8 +1318,9 @@ synchronously (the default). How an upload sent to an asynchronous transport goe
   log, the time limits of the requests to Shipmondo (section 22) and the version of the Shipmondo SDK. It stays silent
   otherwise, also after fewer than three of each in a row.
 - **Its messages for a 429 changed**: after a 429 in an upload it says that the run stopped because Shipmondo rate
-  limited an upload, and after a 429 in a lookup that the lookups stopped and the pending orders were uploaded. Before,
-  both said that Shipmondo rate limited the upload run. If your monitoring matches on the command's output, update it.
+  limited an upload, and after a 429 in a lookup that the lookups stopped and the pending orders were uploaded, each with
+  what to check if it keeps happening. Before, both said that Shipmondo rate limited the upload run. If your monitoring
+  matches on the command's output, update it.
 - **The counts aren't configurable**, and the time limits, the ten minutes before a lookup and the rules for a 429 are
   unchanged.
 
@@ -1328,8 +1329,8 @@ Only if you extend or call the code involved: `Uploader\OrderUploaderInterface::
 none, instead of `?Uploader\UploadOutcome`, the outcome that stopped the run (section 6). Implement it so if you
 implement the interface, and if you call it, read the problems instead of the outcome.
 
-New: the `Uploader\UploadRunProblem` enum. `CredentialsFailure`, `RateLimited` (an upload's), `TemporaryFailuresInARow`
-and `FailedUploadsInARow` stopped the run; `LookupsRateLimited` and `FailedLookupsInARow` stopped the lookups; and
+New: the `Uploader\UploadRunProblem` enum. `CredentialsFailure`, `UploadRateLimited`, `TemporaryFailuresInARow` and
+`FailedUploadsInARow` stopped the run; `LookupsRateLimited` and `FailedLookupsInARow` stopped the lookups; and
 `UnreadSuccessesInARow` is only reported. The counts live in `Uploader\UploadRun`, which is internal.
 
 ### Unchanged

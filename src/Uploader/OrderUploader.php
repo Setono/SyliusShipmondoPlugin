@@ -148,7 +148,7 @@ final class OrderUploader implements OrderUploaderInterface
                 continue;
             }
 
-            $run->uploaded($order, $outcome);
+            $run->recordUpload($order, $outcome);
             if ($run->stopped()) {
                 return;
             }
@@ -162,7 +162,7 @@ final class OrderUploader implements OrderUploaderInterface
     private function lookUpSalesOrders(UploadRun $run): void
     {
         foreach ($this->unlinkedOrdersProvider->getOrders() as $order) {
-            $run->lookedUp($order, $this->lookUp($order));
+            $run->recordLookup($order, $this->lookUp($order));
             if ($run->lookupsStopped()) {
                 return;
             }

@@ -11,6 +11,7 @@ use Sylius\Component\Core\Model\CustomerInterface;
 use Symfony\Component\Console\Command\Command;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
+use Tests\Setono\SyliusShipmondoPlugin\Support\CommandErrors;
 use Tests\Setono\SyliusShipmondoPlugin\Support\SalesOrders;
 
 /**
@@ -129,7 +130,7 @@ final class SalesOrderLookupTest extends FunctionalTestCase
 
         self::assertSame(
             ['GET sales_orders', 'GET payment_gateways', 'POST sales_orders', 'POST sales_orders'],
-            array_map(static fn (RequestInterface $request): string => $request->getMethod() . ' ' . str_replace('/api/public/v3/', '', $request->getUri()->getPath()), $this->shipmondo->requests()),
+            $this->shipmondo->requestLines(),
         );
         $uploaded = array_map(
             static fn (RequestInterface $request): mixed => ShipmondoApiStub::jsonBody($request)['order_id'],
@@ -248,8 +249,8 @@ final class SalesOrderLookupTest extends FunctionalTestCase
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertSame(
-            ['The sales order lookups stopped, because Shipmondo rate limited one. The pending orders were uploaded, and the remaining unlinked orders wait for the next run.'],
-            self::errors($tester),
+            ['The sales order lookups stopped, because Shipmondo rate limited one. If it keeps happening, check the unlinked orders in Shipmondo: an order with several sales orders is looked up in every run. The pending orders were uploaded, and the remaining unlinked orders wait for the next run.'],
+            CommandErrors::of($tester),
         );
         self::assertSame(OrderInterface::SHIPMONDO_STATE_UNLINKED, $this->orderRow(self::id($unlinked))['shipmondo_state']);
         self::assertSame(1002, $this->orderRow(self::id($pending))['shipmondo_id']);
@@ -279,7 +280,7 @@ final class SalesOrderLookupTest extends FunctionalTestCase
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertSame(
             ['The sales order lookups stopped after three lookups in a row that failed: Shipmondo rejected them, or its answers could not be read. Check the log and the version of the Shipmondo SDK. The pending orders were uploaded, and the remaining unlinked orders wait for the next run.'],
-            self::errors($tester),
+            CommandErrors::of($tester),
         );
         self::assertCount(3, $this->shipmondo->requests('GET', 'sales_orders'));
         foreach ($unlinked as $order) {
@@ -308,12 +309,9 @@ final class SalesOrderLookupTest extends FunctionalTestCase
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
         self::assertSame(
             ['The upload run stopped after three temporary failures in a row: Shipmondo answered with a server error, or not in time. Check whether Shipmondo is down, and the log. The remaining orders wait for the next run.'],
-            self::errors($tester),
+            CommandErrors::of($tester),
         );
-        self::assertSame(['GET sales_orders', 'GET sales_orders', 'GET sales_orders'], array_map(
-            static fn (RequestInterface $request): string => $request->getMethod() . ' ' . str_replace('/api/public/v3/', '', $request->getUri()->getPath()),
-            $this->shipmondo->requests(),
-        ));
+        self::assertSame(['GET sales_orders', 'GET sales_orders', 'GET sales_orders'], $this->shipmondo->requestLines());
         self::assertSame(OrderInterface::SHIPMONDO_STATE_PENDING, $this->orderRow(self::id($pending))['shipmondo_state']);
     }
 
