@@ -1213,8 +1213,8 @@ without reading the logs ([#70](https://github.com/Setono/SyliusShipmondoPlugin/
 - **The order page's Shipmondo section shows it** (section 24): the explanation the flashes and the admin Shipmondo page
   give for its kind (the `setono_sylius_shipmondo.shipmondo_failure.<kind>` keys), the status code when there is one,
   when it happened (when the Shipmondo state last changed, section 25), and what happens next: for a `failed` order to
-  fix the cause and retry the upload, for an `unlinked` one that a sales order lookup settles it, for a `pending` one
-  that the next upload run uploads it again. An order without a failure shows the section as before. The order grid is
+  fix the cause and retry the upload, for an `unlinked` one that there is nothing to retry, since a sales order lookup
+  settles it, for a `pending` one that the next upload run uploads it again. An order without a failure shows the section as before. The order grid is
   unchanged. If you override `@SetonoSyliusShipmondoPlugin/admin/order/show/_shipmondo.html.twig`, add the failure
   (`order.shipmondoFailure`) to yours.
 
@@ -1231,8 +1231,8 @@ the plugin doesn't know reads as having none. If your order entity maps the plug
 `OrderTrait`, map these too.
 
 New translation keys in the `messages` domain: `setono_sylius_shipmondo.ui.last_upload`,
-`setono_sylius_shipmondo.ui.last_upload_failed`, `setono_sylius_shipmondo.ui.last_upload_pending`,
-`setono_sylius_shipmondo.ui.last_upload_unlinked`, `setono_sylius_shipmondo.ui.status_code` and
+`setono_sylius_shipmondo.ui.last_upload_next_step_failed`, `setono_sylius_shipmondo.ui.last_upload_next_step_pending`,
+`setono_sylius_shipmondo.ui.last_upload_next_step_unlinked`, `setono_sylius_shipmondo.ui.status_code` and
 `setono_sylius_shipmondo.ui.when`.
 
 Only if you extend or call the code involved:

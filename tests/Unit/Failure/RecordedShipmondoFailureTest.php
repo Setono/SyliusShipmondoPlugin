@@ -81,27 +81,13 @@ final class RecordedShipmondoFailureTest extends TestCase
      *
      * @test
      *
-     * @dataProvider kinds
+     * @dataProvider \Tests\Setono\SyliusShipmondoPlugin\Unit\Failure\ShipmondoFailureTest::kinds
      */
     public function every_kind_explains_itself_as_the_failure_it_records(ShipmondoFailureKind $kind, string $explanation): void
     {
         $failure = new RecordedShipmondoFailure($kind, 422, 'Invalid or not found parameter(s)');
 
         self::assertSame($explanation, $failure->trans(Translations::translator()));
-    }
-
-    /**
-     * @return iterable<string, array{ShipmondoFailureKind, string}>
-     */
-    public static function kinds(): iterable
-    {
-        yield 'credentials failure' => [ShipmondoFailureKind::CredentialsFailure, 'Shipmondo did not accept the API credentials. Check SHIPMONDO_USERNAME and SHIPMONDO_KEY, and that SHIPMONDO_SANDBOX matches the Shipmondo account they belong to.'];
-        yield 'rate limited' => [ShipmondoFailureKind::RateLimited, 'Shipmondo is limiting how often the store may call it. Try again in a minute.'];
-        yield 'temporary failure' => [ShipmondoFailureKind::TemporaryFailure, 'Shipmondo could not be reached, or had a server error. Try again later.'];
-        yield 'not found' => [ShipmondoFailureKind::NotFound, 'Shipmondo could not find what was asked for: Invalid or not found parameter(s)'];
-        yield 'rejected' => [ShipmondoFailureKind::Rejected, 'Shipmondo refused the request: Invalid or not found parameter(s)'];
-        yield 'unexpected failure' => [ShipmondoFailureKind::UnexpectedFailure, 'Something unexpected went wrong when calling Shipmondo: Invalid or not found parameter(s)'];
-        yield 'unread success' => [ShipmondoFailureKind::UnreadSuccess, 'Shipmondo did what was asked, but its answer was cut off or could not be read: Invalid or not found parameter(s)'];
     }
 
     /**

@@ -37,7 +37,7 @@ final class RecordedShipmondoFailure implements TranslatableInterface
         public readonly ?int $statusCode,
         string $message,
     ) {
-        $this->message = u(self::utf8($message))->truncate(self::MAX_MESSAGE_LENGTH, '…')->toString();
+        $this->message = u(self::toValidUtf8($message))->truncate(self::MAX_MESSAGE_LENGTH, '…')->toString();
     }
 
     public static function of(ShipmondoFailure $failure): self
@@ -59,7 +59,7 @@ final class RecordedShipmondoFailure implements TranslatableInterface
      * A message that isn't UTF-8 keeps its ASCII characters, and every other byte becomes a question mark: which
      * encoding it is in is unknown
      */
-    private static function utf8(string $message): string
+    private static function toValidUtf8(string $message): string
     {
         return 1 === preg_match('//u', $message) ? $message : preg_replace('/[\x80-\xFF]/', '?', $message) ?? '';
     }

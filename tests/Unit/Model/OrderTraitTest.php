@@ -39,10 +39,8 @@ final class OrderTraitTest extends TestCase
             OrderWorkflow::CONTEXT_SHIPMONDO_FAILURE => new RecordedShipmondoFailure(ShipmondoFailureKind::Rejected, 422, 'The payment gateway does not exist'),
         ]);
 
-        self::assertSame(
-            [OrderInterface::SHIPMONDO_STATE_FAILED, ShipmondoFailureKind::Rejected, 422, 'The payment gateway does not exist'],
-            [$order->getShipmondoState(), ...self::failure($order)],
-        );
+        self::assertSame(OrderInterface::SHIPMONDO_STATE_FAILED, $order->getShipmondoState());
+        self::assertEquals(new RecordedShipmondoFailure(ShipmondoFailureKind::Rejected, 422, 'The payment gateway does not exist'), $order->getShipmondoFailure());
     }
 
     /**
@@ -89,7 +87,7 @@ final class OrderTraitTest extends TestCase
             OrderWorkflow::CONTEXT_SHIPMONDO_FAILURE => new RecordedShipmondoFailure(ShipmondoFailureKind::TemporaryFailure, null, 'Idle timeout reached'),
         ]);
 
-        self::assertSame([ShipmondoFailureKind::TemporaryFailure, null, 'Idle timeout reached'], self::failure($order));
+        self::assertEquals(new RecordedShipmondoFailure(ShipmondoFailureKind::TemporaryFailure, null, 'Idle timeout reached'), $order->getShipmondoFailure());
     }
 
     /**
@@ -211,16 +209,5 @@ final class OrderTraitTest extends TestCase
         (new \ReflectionProperty($order, 'shipmondoFailureKind'))->setValue($order, 'conflict');
 
         self::assertNull($order->getShipmondoFailure());
-    }
-
-    /**
-     * @return array{ShipmondoFailureKind, int|null, string}
-     */
-    private static function failure(Order $order): array
-    {
-        $failure = $order->getShipmondoFailure();
-        self::assertNotNull($failure, 'The order recorded a Shipmondo failure');
-
-        return [$failure->kind, $failure->statusCode, $failure->message];
     }
 }

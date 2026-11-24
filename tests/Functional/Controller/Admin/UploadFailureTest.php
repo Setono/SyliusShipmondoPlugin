@@ -17,7 +17,7 @@ final class UploadFailureTest extends FunctionalTestCase
 {
     private const NOTE_FAILED = 'Fix what made the upload fail, then retry the upload.';
 
-    private const NOTE_UNLINKED = 'Shipmondo may have a sales order for the order, so the order is not uploaded again until a sales order lookup has looked for it: the first upload run ten minutes after this links the order to the sales order it finds, or uploads the order again if Shipmondo has none.';
+    private const NOTE_UNLINKED = 'Nothing to retry: Shipmondo may have a sales order for the order, so the first upload run 10 minutes after this looks for it, links the order to it if it finds one, and uploads the order again only if Shipmondo has none.';
 
     private const NOTE_PENDING = 'The next upload run uploads the order again.';
 
