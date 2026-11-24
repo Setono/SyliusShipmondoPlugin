@@ -133,6 +133,21 @@ abstract class FunctionalTestCase extends WebTestCase
     }
 
     /**
+     * The messages of the error block the command printed, each with its line breaks and padding folded into single
+     * spaces
+     *
+     * @return list<string>
+     */
+    protected static function errors(CommandTester $tester): array
+    {
+        $display = trim(str_replace('[ERROR]', '', $tester->getDisplay()));
+        $messages = preg_split('/\n\s*\n/', $display);
+        Assert::isList($messages);
+
+        return array_map(static fn (string $message): string => trim((string) preg_replace('/\s+/', ' ', $message)), $messages);
+    }
+
+    /**
      * Answers the request for Shipmondo's payment gateways with the one the baseline's payment method is mapped to, as
      * the upload of an order paid with it asks for them
      */

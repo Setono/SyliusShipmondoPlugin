@@ -247,12 +247,74 @@ final class SalesOrderLookupTest extends FunctionalTestCase
         $tester = $this->executeCommand(self::COMMAND);
 
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
-        self::assertStringContainsString(
-            'Shipmondo rate limited the upload run, so it did not get through every order. The remaining orders wait for the next run.',
-            (string) preg_replace('/\s+/', ' ', $tester->getDisplay()),
+        self::assertSame(
+            ['The sales order lookups stopped, because Shipmondo rate limited one. The pending orders were uploaded, and the remaining unlinked orders wait for the next run.'],
+            self::errors($tester),
         );
         self::assertSame(OrderInterface::SHIPMONDO_STATE_UNLINKED, $this->orderRow(self::id($unlinked))['shipmondo_state']);
         self::assertSame(1002, $this->orderRow(self::id($pending))['shipmondo_id']);
+    }
+
+    /**
+     * Each lookup would fail the same way, e.g. after a change to Shipmondo's answers the SDK can't read, and leave its
+     * order unlinked for good. The uploads may work, so the pending orders are still uploaded
+     *
+     * @test
+     */
+    public function it_stops_the_lookups_but_uploads_the_pending_orders_after_three_lookups_in_a_row_that_fail(): void
+    {
+        $customer = $this->fixtures->createCustomer();
+        $unlinked = [];
+        foreach (range(1, 4) as $i) {
+            $unlinked[] = $this->unlinkedOrder($customer);
+        }
+        $pending = $this->fixtures->createOrder($customer);
+
+        $this->shipmondo->respond('GET', 'sales_orders', 422, ['error' => 'Unknown filter order_id']);
+        $this->respondWithThePaymentGateway();
+        $this->shipmondo->respond('POST', 'sales_orders', 201, ['id' => 1005]);
+
+        $tester = $this->executeCommand(self::COMMAND);
+
+        self::assertSame(Command::FAILURE, $tester->getStatusCode());
+        self::assertSame(
+            ['The sales order lookups stopped after three lookups in a row that failed: Shipmondo rejected them, or its answers could not be read. Check the log and the version of the Shipmondo SDK. The pending orders were uploaded, and the remaining unlinked orders wait for the next run.'],
+            self::errors($tester),
+        );
+        self::assertCount(3, $this->shipmondo->requests('GET', 'sales_orders'));
+        foreach ($unlinked as $order) {
+            self::assertSame(OrderInterface::SHIPMONDO_STATE_UNLINKED, $this->orderRow(self::id($order))['shipmondo_state']);
+        }
+        self::assertSame(1005, $this->orderRow(self::id($pending))['shipmondo_id']);
+    }
+
+    /**
+     * Shipmondo is most likely down, so the uploads would wait out the time limit too
+     *
+     * @test
+     */
+    public function it_stops_the_upload_run_before_any_upload_after_three_lookups_in_a_row_that_fail_temporarily(): void
+    {
+        $customer = $this->fixtures->createCustomer();
+        foreach (range(1, 3) as $i) {
+            $this->unlinkedOrder($customer);
+        }
+        $pending = $this->fixtures->createOrder($customer);
+
+        $this->shipmondo->failToConnect('GET', 'sales_orders');
+
+        $tester = $this->executeCommand(self::COMMAND);
+
+        self::assertSame(Command::FAILURE, $tester->getStatusCode());
+        self::assertSame(
+            ['The upload run stopped after three temporary failures in a row: Shipmondo answered with a server error, or not in time. Check whether Shipmondo is down, and the log. The remaining orders wait for the next run.'],
+            self::errors($tester),
+        );
+        self::assertSame(['GET sales_orders', 'GET sales_orders', 'GET sales_orders'], array_map(
+            static fn (RequestInterface $request): string => $request->getMethod() . ' ' . str_replace('/api/public/v3/', '', $request->getUri()->getPath()),
+            $this->shipmondo->requests(),
+        ));
+        self::assertSame(OrderInterface::SHIPMONDO_STATE_PENDING, $this->orderRow(self::id($pending))['shipmondo_state']);
     }
 
     /**

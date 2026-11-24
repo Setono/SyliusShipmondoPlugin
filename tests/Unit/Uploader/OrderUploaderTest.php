@@ -41,6 +41,7 @@ use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderIn
 use Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProviderInterface;
 use Setono\SyliusShipmondoPlugin\Uploader\OrderUploader;
 use Setono\SyliusShipmondoPlugin\Uploader\UploadOutcome;
+use Setono\SyliusShipmondoPlugin\Uploader\UploadRunProblem;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Component\Order\Repository\OrderRepositoryInterface;
 use Symfony\Component\EventDispatcher\EventDispatcher;
@@ -100,6 +101,14 @@ final class OrderUploaderTest extends TestCase
     private const UNREAD_SUCCESS_MESSAGE = 'Shipmondo answered the upload of the order {order} with a success that was cut off or could not be read, so Shipmondo created a sales order for it, but which is unknown. The order is unlinked until a sales order lookup links it';
 
     private const UNEXPECTED_FAILURE_MESSAGE = 'The upload of the order {order} failed unexpectedly, so the order is failed';
+
+    private const FAILED_UPLOADS_IN_A_ROW_MESSAGE = 'The upload run stopped after {count} uploads in a row that made the order failed, which suggests a shop-wide problem, such as a payment gateway or shipment template that no longer exists in Shipmondo, or a data mapper that fails for every order. The remaining orders stay pending for the next run';
+
+    private const FAILED_LOOKUPS_IN_A_ROW_MESSAGE = 'The sales order lookups stopped after {count} lookups in a row that failed, which suggests a problem with every lookup, such as Shipmondo rejecting the search, or answering in a way the SDK can\'t read. The remaining unlinked orders wait for the next run, and the pending orders are uploaded';
+
+    private const UNREAD_SUCCESSES_IN_A_ROW_MESSAGE = 'Shipmondo answered {count} uploads in a row with a success that was cut off or could not be read, which suggests a problem with every upload, such as time limits too tight for Shipmondo, or a change to its answers the SDK can\'t read. The upload run goes on, since Shipmondo created the sales orders, and sales order lookups link the orders to them';
+
+    private const TEMPORARY_FAILURES_IN_A_ROW_MESSAGE = 'The upload run stopped after {count} temporary failures in a row, sales order lookups and uploads alike, which suggests that Shipmondo is down or too slow to answer in time. The remaining orders wait for the next run';
 
     private ScriptedHttpClient $shipmondo;
 
@@ -646,7 +655,7 @@ final class OrderUploaderTest extends TestCase
         $this->deleteOrderFails = true;
         $this->shipmondo->respond(201, ['id' => 1001])->respond(201, ['id' => 1002]);
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         // the order stays uploaded and linked, so deleting its sales order in Shipmondo later makes it cancelled
         self::assertSame([self::UPLOADED, 1001], [$cancelled->getShipmondoState(), $cancelled->getShipmondoId()]);
@@ -694,7 +703,7 @@ final class OrderUploaderTest extends TestCase
         $this->entityManager->refresh($first, LockMode::PESSIMISTIC_WRITE)->shouldBeCalledTimes(2);
         $this->entityManager->refresh($second, LockMode::PESSIMISTIC_WRITE)->shouldBeCalledTimes(2);
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame(['#001', '#002'], $this->uploadedOrderNumbers());
         self::assertSame([self::UPLOADED, 1001], [$first->getShipmondoState(), $first->getShipmondoId()]);
@@ -715,7 +724,7 @@ final class OrderUploaderTest extends TestCase
             $changed->setVersion(2);
         });
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame(['#002'], $this->uploadedOrderNumbers());
         // nothing at all was attempted for the skipped order, so only the other upload was logged
@@ -740,7 +749,7 @@ final class OrderUploaderTest extends TestCase
             },
         );
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame(['#002'], $this->uploadedOrderNumbers());
         self::assertSame([['#002', 'uploaded']], $this->loggedOutcomes());
@@ -767,7 +776,7 @@ final class OrderUploaderTest extends TestCase
             ->respond(201, ['id' => 1005])
         ;
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame(['#001', '#002', '#004', '#005'], $this->uploadedOrderNumbers());
         self::assertSame(self::FAILED, $rejected->getShipmondoState());
@@ -782,14 +791,14 @@ final class OrderUploaderTest extends TestCase
      *
      * @dataProvider answersThatStopTheUploadRun
      */
-    public function it_stops_the_upload_run_when_shipmondo_turns_the_store_away(int $statusCode, UploadOutcome $outcome): void
+    public function it_stops_the_upload_run_when_shipmondo_turns_the_store_away(int $statusCode, UploadOutcome $outcome, UploadRunProblem $problem): void
     {
         $turnedAway = $this->order(1);
         $notTried = $this->order(2);
         $this->shipmondo->respond($statusCode);
         $this->entityManager->refresh($notTried, Argument::cetera())->shouldNotBeCalled();
 
-        self::assertSame($outcome, $this->uploader()->upload());
+        self::assertSame([$problem], $this->uploader()->upload());
 
         self::assertSame(['#001'], $this->uploadedOrderNumbers());
         self::assertSame(self::PENDING, $turnedAway->getShipmondoState());
@@ -805,33 +814,224 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
-     * @return iterable<string, array{int, UploadOutcome}>
+     * @return iterable<string, array{int, UploadOutcome, UploadRunProblem}>
      */
     public static function answersThatStopTheUploadRun(): iterable
     {
-        yield 'credentials failure (401)' => [401, UploadOutcome::CredentialsFailure];
-        yield 'credentials failure (403)' => [403, UploadOutcome::CredentialsFailure];
-        yield 'rate limited (429)' => [429, UploadOutcome::RateLimited];
+        yield 'credentials failure (401)' => [401, UploadOutcome::CredentialsFailure, UploadRunProblem::CredentialsFailure];
+        yield 'credentials failure (403)' => [403, UploadOutcome::CredentialsFailure, UploadRunProblem::CredentialsFailure];
+        yield 'rate limited (429)' => [429, UploadOutcome::RateLimited, UploadRunProblem::RateLimited];
+    }
+
+    /**
+     * Shipmondo is most likely down, or too slow to answer in time, so each remaining upload would wait out the time
+     * limit, and make its order unlinked too
+     *
+     * @test
+     */
+    public function it_stops_the_upload_run_after_three_uploads_in_a_row_that_fail_temporarily(): void
+    {
+        $orders = [$this->order(1), $readFailed = $this->order(2), $this->order(3)];
+        $notTried = $this->order(4);
+        // a temporary failure of a read before the sales order is created, e.g. of the payment gateways, counts too
+        $shipmondoClient = ShipmondoApi::client($this->shipmondo);
+        $this->salesOrderDataMapper->map($readFailed, Argument::any())->will(static function () use ($shipmondoClient): void {
+            $shipmondoClient->paymentGateways()->getPage();
+        });
+        $this->shipmondo->respond(500)->respond(503)->failToConnect();
+        $this->entityManager->refresh($notTried, Argument::cetera())->shouldNotBeCalled();
+
+        self::assertSame([UploadRunProblem::TemporaryFailuresInARow], $this->uploader()->upload());
+
+        self::assertSame(['POST sales_orders', 'GET payment_gateways', 'POST sales_orders'], $this->shipmondo->requestLines());
+        self::assertSame(
+            [self::UNLINKED, self::PENDING, self::UNLINKED, self::PENDING],
+            array_map(static fn (Order $order): string => $order->getShipmondoState(), [...$orders, $notTried]),
+        );
+        self::assertCount(4, $this->logger->records);
+        self::assertSame([
+            'level' => LogLevel::ERROR,
+            'message' => self::TEMPORARY_FAILURES_IN_A_ROW_MESSAGE,
+            'context' => ['count' => 3],
+        ], $this->logger->records[3]);
+    }
+
+    /**
+     * The uploads would most likely fail the same way
+     *
+     * @test
+     */
+    public function it_stops_the_upload_run_after_three_lookups_in_a_row_that_fail_temporarily(): void
+    {
+        $unlinked = [$this->unlinkedOrder(1), $this->unlinkedOrder(2), $this->unlinkedOrder(3)];
+        $notLookedUp = $this->unlinkedOrder(4);
+        $notTried = $this->order(5);
+        // for a lookup, a success that did not arrive in full is a temporary failure too
+        $this->shipmondo->respond(500)->failToConnect()->respondWithAnUnreadableBody(200);
+
+        self::assertSame([UploadRunProblem::TemporaryFailuresInARow], $this->uploader()->upload());
+
+        self::assertSame(['GET sales_orders', 'GET sales_orders', 'GET sales_orders'], $this->shipmondo->requestLines());
+        self::assertSame(
+            [self::UNLINKED, self::UNLINKED, self::UNLINKED, self::UNLINKED, self::PENDING],
+            array_map(static fn (Order $order): string => $order->getShipmondoState(), [...$unlinked, $notLookedUp, $notTried]),
+        );
+        self::assertCount(4, $this->logger->records);
+        self::assertSame([
+            'level' => LogLevel::ERROR,
+            'message' => self::TEMPORARY_FAILURES_IN_A_ROW_MESSAGE,
+            'context' => ['count' => 3],
+        ], $this->logger->records[3]);
     }
 
     /**
      * @test
      */
-    public function it_stops_the_upload_run_after_three_rejected_uploads_with_no_successful_upload_between_them(): void
+    public function it_counts_the_temporary_failures_of_lookups_and_uploads_together(): void
+    {
+        $this->unlinkedOrder(1);
+        $orders = [$this->order(2), $this->order(3)];
+        $notTried = $this->order(4);
+        $this->shipmondo->respond(503)->respond(500)->failToConnect();
+
+        self::assertSame([UploadRunProblem::TemporaryFailuresInARow], $this->uploader()->upload());
+
+        self::assertSame(['GET sales_orders', 'POST sales_orders', 'POST sales_orders'], $this->shipmondo->requestLines());
+        self::assertSame(
+            [self::UNLINKED, self::UNLINKED, self::PENDING],
+            array_map(static fn (Order $order): string => $order->getShipmondoState(), [...$orders, $notTried]),
+        );
+    }
+
+    /**
+     * Shipmondo answered the upload, so it isn't down: two temporary failures before it and two after it don't stop the
+     * run, but a third after it does
+     *
+     * @test
+     *
+     * @dataProvider uploadsShipmondoAnswered
+     */
+    public function it_starts_counting_temporary_failures_over_after_an_upload_shipmondo_answered(\Closure $answer): void
+    {
+        foreach (range(1, 6) as $id) {
+            $this->order($id);
+        }
+        $notTried = $this->order(7);
+        $this->shipmondo->respond(500)->failToConnect();
+        $answer($this->shipmondo);
+        $this->shipmondo->respond(500)->failToConnect()->respond(503);
+
+        self::assertSame([UploadRunProblem::TemporaryFailuresInARow], $this->uploader()->upload());
+
+        self::assertSame(['#001', '#002', '#003', '#004', '#005', '#006'], $this->uploadedOrderNumbers());
+        self::assertSame(self::PENDING, $notTried->getShipmondoState());
+    }
+
+    /**
+     * @return iterable<string, array{\Closure(ScriptedHttpClient): mixed}>
+     */
+    public static function uploadsShipmondoAnswered(): iterable
+    {
+        yield 'uploaded' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->respond(201, ['id' => 1003])];
+        yield 'unread success' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->respondWithAnUnreadableBody(201)];
+        yield 'rejected' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->respond(422)];
+        yield 'not found' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->respond(404)];
+        yield 'unexpected failure (a redirect)' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->respond(302)];
+    }
+
+    /**
+     * Shipmondo answered the lookup, so it isn't down, whatever the lookup found: two temporary failures before it and
+     * two after it don't stop the run, but a third after it does
+     *
+     * @test
+     *
+     * @dataProvider lookupsShipmondoAnswered
+     */
+    public function it_starts_counting_temporary_failures_over_after_a_lookup_shipmondo_answered(\Closure $answer): void
+    {
+        foreach (range(1, 6) as $id) {
+            $this->unlinkedOrder($id);
+        }
+        $notTried = $this->order(7);
+        $this->shipmondo->respond(500)->failToConnect();
+        $answer($this);
+        $this->shipmondo->respond(500)->failToConnect()->respond(503);
+
+        self::assertSame([UploadRunProblem::TemporaryFailuresInARow], $this->uploader()->upload());
+
+        self::assertSame(array_fill(0, 6, 'GET sales_orders'), $this->shipmondo->requestLines());
+        self::assertSame(self::PENDING, $notTried->getShipmondoState());
+    }
+
+    /**
+     * @return iterable<string, array{\Closure(self): mixed}>
+     */
+    public static function lookupsShipmondoAnswered(): iterable
+    {
+        yield 'no sales order' => [static function (self $test): void {
+            $test->respondWithSalesOrders([]);
+        }];
+        yield 'one sales order' => [static function (self $test): void {
+            $test->respondWithSalesOrders([1003 => '#003']);
+        }];
+        yield 'several sales orders' => [static function (self $test): void {
+            $test->respondWithSalesOrders([1003 => '#003', 1004 => '#003']);
+        }];
+        yield 'rejected' => [static fn (self $test): mixed => $test->shipmondo->respond(422)];
+        yield 'a success that cannot be read' => [static fn (self $test): mixed => $test->shipmondo->respond(200, body: 'not JSON')];
+    }
+
+    /**
+     * An upload that made no call says nothing about Shipmondo
+     *
+     * @test
+     *
+     * @dataProvider uploadsThatMadeNoCall
+     */
+    public function it_keeps_counting_temporary_failures_after_an_upload_that_made_no_call(UploadOutcome $noCall): void
     {
         $orders = [$this->order(1), $this->order(2), $this->order(3), $this->order(4)];
         $notTried = $this->order(5);
+        $this->handleUploadsWith(UploadOutcome::TemporaryFailure, UploadOutcome::TemporaryFailure, $noCall, UploadOutcome::TemporaryFailure);
+
+        self::assertSame([UploadRunProblem::TemporaryFailuresInARow], $this->uploader()->upload());
+
+        self::assertSame(
+            [self::UPLOADING, self::UPLOADING, self::UPLOADING, self::UPLOADING, self::PENDING],
+            array_map(static fn (Order $order): string => $order->getShipmondoState(), [...$orders, $notTried]),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{UploadOutcome}>
+     */
+    public static function uploadsThatMadeNoCall(): iterable
+    {
+        yield 'changed while uploading' => [UploadOutcome::ChangedWhileUploading];
+        yield 'skipped' => [UploadOutcome::Skipped];
+    }
+
+    /**
+     * Shipmondo answers 422 whether the order or a shop-wide setting (e.g. a deleted payment gateway) is the problem, and
+     * a data mapper may fail for every order
+     *
+     * @test
+     */
+    public function it_stops_the_upload_run_after_three_uploads_in_a_row_that_make_the_order_failed(): void
+    {
+        $orders = [$this->order(1), $this->order(2), $unmappable = $this->order(3), $this->order(4)];
+        $notTried = $this->order(5);
+        $this->salesOrderDataMapper->map($unmappable, Argument::any())->willThrow(new \RuntimeException('The order has no shipping address'));
         $this->shipmondo
             ->respond(422)
             ->respond(500) // a temporary failure doesn't count, and doesn't start the count over either
-            ->respond(422)
-            ->respond(422)
+            ->respond(404)
         ;
         $this->entityManager->refresh($notTried, Argument::cetera())->shouldNotBeCalled();
 
-        self::assertSame(UploadOutcome::Rejected, $this->uploader()->upload());
+        self::assertSame([UploadRunProblem::FailedUploadsInARow], $this->uploader()->upload());
 
-        self::assertSame(['#001', '#002', '#003', '#004'], $this->uploadedOrderNumbers());
+        self::assertSame(['#001', '#002', '#004'], $this->uploadedOrderNumbers());
         self::assertSame(
             [self::FAILED, self::UNLINKED, self::FAILED, self::FAILED, self::PENDING],
             array_map(static fn (Order $order): string => $order->getShipmondoState(), [...$orders, $notTried]),
@@ -841,7 +1041,7 @@ final class OrderUploaderTest extends TestCase
         self::assertCount(5, $records);
         self::assertSame([
             'level' => LogLevel::ERROR,
-            'message' => 'The upload run stopped after {count} rejected uploads in a row, which suggests a shop-wide problem, such as a payment gateway or shipment template that no longer exists in Shipmondo. The remaining orders stay pending for the next run',
+            'message' => self::FAILED_UPLOADS_IN_A_ROW_MESSAGE,
             'context' => ['count' => 3],
         ], $records[4]);
     }
@@ -849,55 +1049,200 @@ final class OrderUploaderTest extends TestCase
     /**
      * @test
      */
-    public function it_starts_counting_rejected_uploads_over_after_a_successful_upload(): void
+    public function it_stops_the_upload_run_after_three_uploads_in_a_row_that_fail_unexpectedly(): void
     {
-        $orders = [$this->order(1), $this->order(2), $this->order(3), $this->order(4), $this->order(5), $this->order(6)];
-        $notTried = $this->order(7);
-        $this->shipmondo
-            ->respond(422)
-            ->respond(422)
-            ->respond(201, ['id' => 1003])
-            ->respond(422)
-            ->respond(422)
-            ->respond(422)
-        ;
+        $orders = [$unmappable = $this->order(1), $this->order(2), $this->order(3)];
+        $notTried = $this->order(4);
+        $this->salesOrderDataMapper->map($unmappable, Argument::any())->willThrow(new \RuntimeException('The order has no shipping address'));
+        // an unfollowed redirect, and a read by a data mapper whose answer can't be read
+        $this->shipmondo->respond(302);
+        $shipmondoClient = ShipmondoApi::client($this->shipmondo);
+        $this->salesOrderDataMapper->map($orders[2], Argument::any())->will(static function () use ($shipmondoClient): void {
+            $shipmondoClient->paymentGateways()->getPage();
+        });
+        $this->shipmondo->respond(200, body: 'not JSON');
         $this->entityManager->refresh($notTried, Argument::cetera())->shouldNotBeCalled();
 
-        self::assertSame(UploadOutcome::Rejected, $this->uploader()->upload());
+        self::assertSame([UploadRunProblem::FailedUploadsInARow], $this->uploader()->upload());
 
-        self::assertSame(['#001', '#002', '#003', '#004', '#005', '#006'], $this->uploadedOrderNumbers());
+        self::assertSame(['POST sales_orders', 'GET payment_gateways'], $this->shipmondo->requestLines());
         self::assertSame(
-            [self::FAILED, self::FAILED, self::UPLOADED, self::FAILED, self::FAILED, self::FAILED, self::PENDING],
+            [self::FAILED, self::FAILED, self::FAILED, self::PENDING],
             array_map(static fn (Order $order): string => $order->getShipmondoState(), [...$orders, $notTried]),
         );
     }
 
     /**
-     * Shipmondo accepted the order, even though its answer couldn't be read, so nothing shop-wide is wrong
+     * Shipmondo accepted the order, even when its answer couldn't be read, so nothing shop-wide is wrong
+     *
+     * @test
+     *
+     * @dataProvider uploadsShipmondoAccepted
+     */
+    public function it_starts_counting_failed_uploads_over_after_an_upload_shipmondo_accepted(\Closure $accept, string $state): void
+    {
+        $orders = [$this->order(1), $unmappable = $this->order(2), $this->order(3), $this->order(4), $this->order(5), $this->order(6)];
+        $notTried = $this->order(7);
+        $this->salesOrderDataMapper->map($unmappable, Argument::any())->willThrow(new \RuntimeException('The order has no shipping address'));
+        $this->shipmondo->respond(422);
+        $accept($this->shipmondo);
+        $this->shipmondo->respond(422)->respond(302)->respond(404);
+        $this->entityManager->refresh($notTried, Argument::cetera())->shouldNotBeCalled();
+
+        self::assertSame([UploadRunProblem::FailedUploadsInARow], $this->uploader()->upload());
+
+        self::assertSame(['#001', '#003', '#004', '#005', '#006'], $this->uploadedOrderNumbers());
+        self::assertSame(
+            [self::FAILED, self::FAILED, $state, self::FAILED, self::FAILED, self::FAILED, self::PENDING],
+            array_map(static fn (Order $order): string => $order->getShipmondoState(), [...$orders, $notTried]),
+        );
+    }
+
+    /**
+     * @return iterable<string, array{\Closure(ScriptedHttpClient): mixed, string}>
+     */
+    public static function uploadsShipmondoAccepted(): iterable
+    {
+        yield 'uploaded' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->respond(201, ['id' => 1003]), self::UPLOADED];
+        yield 'unread success' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->respondWithAnUnreadableBody(201), self::UNLINKED];
+    }
+
+    /**
+     * Shipmondo created the sales orders, and sales order lookups link them, so the run goes on, but every upload may be
+     * hit, e.g. by time limits too tight for Shipmondo, or a change to its answers the SDK can't read
      *
      * @test
      */
-    public function it_starts_counting_rejected_uploads_over_after_an_upload_whose_answer_cannot_be_read(): void
+    public function it_reports_three_unread_successes_in_a_row_but_goes_on(): void
     {
-        $orders = [$this->order(1), $this->order(2), $this->order(3), $this->order(4), $this->order(5), $this->order(6)];
-        $notTried = $this->order(7);
+        $orders = [$this->order(1), $this->order(2), $this->order(3), $this->order(4), $this->order(5)];
         $this->shipmondo
-            ->respond(422)
-            ->respond(422)
             ->respondWithAnUnreadableBody(201)
-            ->respond(422)
-            ->respond(422)
-            ->respond(422)
+            ->respond(201, body: 'not JSON')
+            ->respond(201, ['not' => 'a sales order'])
+            ->respondWithAnUnreadableBody(201)
+            ->respond(201, ['id' => 1005])
         ;
-        $this->entityManager->refresh($notTried, Argument::cetera())->shouldNotBeCalled();
 
-        self::assertSame(UploadOutcome::Rejected, $this->uploader()->upload());
+        self::assertSame([UploadRunProblem::UnreadSuccessesInARow], $this->uploader()->upload());
+
+        self::assertSame(['#001', '#002', '#003', '#004', '#005'], $this->uploadedOrderNumbers());
+        self::assertSame(
+            [self::UNLINKED, self::UNLINKED, self::UNLINKED, self::UNLINKED, self::UPLOADED],
+            array_map(static fn (Order $order): string => $order->getShipmondoState(), $orders),
+        );
+        // reported once, when the third came
+        self::assertSame([[
+            'level' => LogLevel::ERROR,
+            'message' => self::UNREAD_SUCCESSES_IN_A_ROW_MESSAGE,
+            'context' => ['count' => 3],
+        ]], array_values(array_filter($this->logger->records, static fn (array $record): bool => LogLevel::ERROR === $record['level'])));
+        self::assertSame(self::UNREAD_SUCCESSES_IN_A_ROW_MESSAGE, $this->logger->records[3]['message']);
+    }
+
+    /**
+     * Only an uploaded order shows that Shipmondo's answers can be read
+     *
+     * @test
+     */
+    public function it_starts_counting_unread_successes_over_after_an_uploaded_order(): void
+    {
+        foreach (range(1, 6) as $id) {
+            $this->order($id);
+        }
+        $this->shipmondo
+            ->respondWithAnUnreadableBody(201)
+            ->respondWithAnUnreadableBody(201)
+            ->respond(201, ['id' => 1003])
+            ->respondWithAnUnreadableBody(201)
+            ->respondWithAnUnreadableBody(201)
+            ->respond(201, ['id' => 1006])
+        ;
+
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame(['#001', '#002', '#003', '#004', '#005', '#006'], $this->uploadedOrderNumbers());
+    }
+
+    /**
+     * @test
+     *
+     * @dataProvider uploadsThatAreNotUploaded
+     */
+    public function it_keeps_counting_unread_successes_after_an_upload_that_does_not_upload_the_order(\Closure $fail): void
+    {
+        foreach (range(1, 5) as $id) {
+            $this->order($id);
+        }
+        $this->shipmondo->respondWithAnUnreadableBody(201)->respondWithAnUnreadableBody(201);
+        $fail($this->shipmondo);
+        $this->shipmondo->respondWithAnUnreadableBody(201)->respond(201, ['id' => 1005]);
+
+        self::assertSame([UploadRunProblem::UnreadSuccessesInARow], $this->uploader()->upload());
+
+        self::assertSame(['#001', '#002', '#003', '#004', '#005'], $this->uploadedOrderNumbers());
+    }
+
+    /**
+     * @return iterable<string, array{\Closure(ScriptedHttpClient): mixed}>
+     */
+    public static function uploadsThatAreNotUploaded(): iterable
+    {
+        yield 'rejected' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->respond(422)];
+        yield 'unexpected failure (a redirect)' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->respond(302)];
+        yield 'temporary failure' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->respond(500)];
+    }
+
+    /**
+     * @test
+     */
+    public function it_reports_unread_successes_in_a_row_once_however_often_they_come(): void
+    {
+        foreach (range(1, 7) as $id) {
+            $this->order($id);
+        }
+        $this->shipmondo
+            ->respondWithAnUnreadableBody(201)
+            ->respondWithAnUnreadableBody(201)
+            ->respondWithAnUnreadableBody(201)
+            ->respond(201, ['id' => 1004])
+            ->respondWithAnUnreadableBody(201)
+            ->respondWithAnUnreadableBody(201)
+            ->respondWithAnUnreadableBody(201)
+        ;
+
+        self::assertSame([UploadRunProblem::UnreadSuccessesInARow], $this->uploader()->upload());
+
+        // logged each time three came in a row
+        self::assertCount(2, array_filter($this->logger->records, static fn (array $record): bool => self::UNREAD_SUCCESSES_IN_A_ROW_MESSAGE === $record['message']));
+    }
+
+    /**
+     * Unread successes in a row, and lookups that stopped, don't stop the run, so it can still stop after them
+     *
+     * @test
+     */
+    public function it_reports_every_problem_of_the_run_in_the_order_they_arose(): void
+    {
+        foreach (range(1, 3) as $id) {
+            $this->unlinkedOrder($id);
+        }
+        foreach (range(4, 10) as $id) {
+            $this->order($id);
+        }
+        $this->shipmondo
+            ->respond(422)->respond(422)->respond(422)
+            ->respondWithAnUnreadableBody(201)->respondWithAnUnreadableBody(201)->respondWithAnUnreadableBody(201)
+            ->respond(422)->respond(422)->respond(422)
+        ;
+
         self::assertSame(
-            [self::FAILED, self::FAILED, self::UNLINKED, self::FAILED, self::FAILED, self::FAILED, self::PENDING],
-            array_map(static fn (Order $order): string => $order->getShipmondoState(), [...$orders, $notTried]),
+            [UploadRunProblem::FailedLookupsInARow, UploadRunProblem::UnreadSuccessesInARow, UploadRunProblem::FailedUploadsInARow],
+            $this->uploader()->upload(),
         );
+
+        // the tenth order isn't uploaded
+        self::assertSame([...array_fill(0, 3, 'GET sales_orders'), ...array_fill(0, 6, 'POST sales_orders')], $this->shipmondo->requestLines());
     }
 
     /**
@@ -922,7 +1267,7 @@ final class OrderUploaderTest extends TestCase
         });
         $this->commandBus = $commandBus->reveal();
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame([[1, 7], [2, 1]], array_map(static fn (UploadOrder $message): array => [$message->order, $message->version], $dispatched));
         self::assertSame(self::UPLOADING, $first->getShipmondoState());
@@ -949,7 +1294,7 @@ final class OrderUploaderTest extends TestCase
         });
         $this->commandBus = $commandBus->reveal();
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame(self::UPLOADING, $order->getShipmondoState());
         self::assertNull($order->getShipmondoFailure());
@@ -978,7 +1323,7 @@ final class OrderUploaderTest extends TestCase
         $this->entityManager->wrapInTransaction(Argument::type('callable'))->shouldBeCalledOnce();
         $this->entityManager->refresh($order, LockMode::PESSIMISTIC_WRITE)->shouldBeCalledOnce();
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame([self::UPLOADED, 1001], [$order->getShipmondoState(), $order->getShipmondoId()]);
         self::assertSame(['GET sales_orders'], $this->shipmondo->requestLines());
@@ -999,7 +1344,7 @@ final class OrderUploaderTest extends TestCase
         $this->respondWithSalesOrders([1001 => '#001']);
         $this->respondWithSalesOrders([]);
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame([self::UPLOADED, 1001], [$linked->getShipmondoState(), $linked->getShipmondoId()]);
         self::assertSame([self::CANCELLED, null], [$retried->getShipmondoState(), $retried->getShipmondoId()]);
@@ -1018,7 +1363,7 @@ final class OrderUploaderTest extends TestCase
         $order = $this->unlinkedOrder(1);
         $this->respondWithSalesOrders([1001 => '#001', 1002 => 'WEB-#001']);
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame('order_id=WEB-%23001&page=1&per_page=25', $this->shipmondo->requests()[0]->getUri()->getQuery());
         self::assertSame([self::UPLOADED, 1002], [$order->getShipmondoState(), $order->getShipmondoId()]);
@@ -1053,7 +1398,7 @@ final class OrderUploaderTest extends TestCase
         $this->respondWithSalesOrders([]);
         $this->shipmondo->respond(201, ['id' => 1001]);
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame([self::UPLOADED, 1001], [$order->getShipmondoState(), $order->getShipmondoId()]);
         self::assertSame(['GET sales_orders', 'POST sales_orders'], $this->shipmondo->requestLines());
@@ -1075,7 +1420,7 @@ final class OrderUploaderTest extends TestCase
         $order = $this->unlinkedOrder(1);
         $this->respondWithSalesOrders([1001 => '#0011', 1002 => '#001', 1003 => '001', 1004 => null, 1005 => '#001 ']);
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame([self::UPLOADED, 1002], [$order->getShipmondoState(), $order->getShipmondoId()]);
     }
@@ -1089,7 +1434,7 @@ final class OrderUploaderTest extends TestCase
         $order->setState(OrderInterface::STATE_CANCELLED);
         $this->respondWithSalesOrders([1001 => '#0011']);
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         // cancelled right away, since Shipmondo has no sales order for it
         self::assertSame([self::CANCELLED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
@@ -1107,7 +1452,7 @@ final class OrderUploaderTest extends TestCase
         $this->respondWithSalesOrders([1001 => '#001', 1002 => 'another', 1003 => '#001']);
         $this->entityManager->wrapInTransaction(Argument::cetera())->shouldNotBeCalled();
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
         // it still explains why the order is unlinked
@@ -1130,7 +1475,7 @@ final class OrderUploaderTest extends TestCase
         $order = $this->unlinkedOrder(1, OrderInterface::STATE_CANCELLED);
         $this->respondWithSalesOrders([1001 => '#001', 1002 => '#001']);
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
         self::assertSame(['GET sales_orders'], $this->shipmondo->requestLines());
@@ -1149,7 +1494,7 @@ final class OrderUploaderTest extends TestCase
         $this->entityManager->wrapInTransaction(Argument::type('callable'))->shouldBeCalledTimes(2);
         $this->entityManager->refresh($order, LockMode::PESSIMISTIC_WRITE)->shouldBeCalledTimes(2);
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame([self::CANCELLED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
         self::assertSame(['GET sales_orders', 'DELETE sales_orders/1001'], $this->shipmondo->requestLines());
@@ -1169,7 +1514,7 @@ final class OrderUploaderTest extends TestCase
         $this->respondWithSalesOrders([]);
         $this->entityManager->wrapInTransaction(Argument::type('callable'))->shouldBeCalledTimes(2);
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         // and so it isn't uploaded
         self::assertSame([self::CANCELLED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
@@ -1195,7 +1540,7 @@ final class OrderUploaderTest extends TestCase
         $this->respondWithSalesOrders([1001 => '#001']);
         $this->shipmondo->respond(201, ['id' => 1002]);
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame([self::UPLOADED, 1001], [$cancelled->getShipmondoState(), $cancelled->getShipmondoId()]);
         self::assertSame([self::UPLOADED, 1002], [$other->getShipmondoState(), $other->getShipmondoId()]);
@@ -1226,7 +1571,7 @@ final class OrderUploaderTest extends TestCase
             $change($order);
         });
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame([$state, $salesOrderId], [$order->getShipmondoState(), $order->getShipmondoId()]);
         self::assertSame(['GET sales_orders'], $this->shipmondo->requestLines());
@@ -1278,7 +1623,7 @@ final class OrderUploaderTest extends TestCase
             },
         );
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
         self::assertSame(['GET sales_orders'], $this->shipmondo->requestLines());
@@ -1305,7 +1650,7 @@ final class OrderUploaderTest extends TestCase
             },
         );
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame($state, $order->getShipmondoState());
         self::assertNull($order->getShipmondoFailure());
@@ -1343,7 +1688,7 @@ final class OrderUploaderTest extends TestCase
         $notUploaded = $this->order(3);
         $this->shipmondo->respond($statusCode, ['error' => 'No']);
 
-        self::assertSame(UploadOutcome::CredentialsFailure, $this->uploader()->upload());
+        self::assertSame([UploadRunProblem::CredentialsFailure], $this->uploader()->upload());
 
         self::assertSame(['GET sales_orders'], $this->shipmondo->requestLines());
         self::assertSame(
@@ -1389,7 +1734,7 @@ final class OrderUploaderTest extends TestCase
         $uploaded = $this->order(3);
         $this->shipmondo->respond(429)->respond(201, ['id' => 1003]);
 
-        self::assertSame(UploadOutcome::RateLimited, $this->uploader()->upload());
+        self::assertSame([UploadRunProblem::LookupsRateLimited], $this->uploader()->upload());
 
         self::assertSame(['GET sales_orders', 'POST sales_orders'], $this->shipmondo->requestLines());
         self::assertSame(
@@ -1405,17 +1750,15 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
-     * What stopped the uploads says more than the rate limit of the lookups
-     *
      * @test
      */
-    public function it_reports_what_stopped_the_uploads_after_shipmondo_rate_limited_a_lookup(): void
+    public function it_reports_both_that_the_lookups_stopped_and_what_stopped_the_uploads_after_shipmondo_rate_limited_a_lookup(): void
     {
         $this->unlinkedOrder(1);
         $this->order(2);
         $this->shipmondo->respond(429)->respond(401);
 
-        self::assertSame(UploadOutcome::CredentialsFailure, $this->uploader()->upload());
+        self::assertSame([UploadRunProblem::LookupsRateLimited, UploadRunProblem::CredentialsFailure], $this->uploader()->upload());
     }
 
     /**
@@ -1434,7 +1777,7 @@ final class OrderUploaderTest extends TestCase
         $this->shipmondo->respond(201, ['id' => 1003]);
         $uploaded = $this->order(3);
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame(['GET sales_orders', 'GET sales_orders', 'POST sales_orders'], $this->shipmondo->requestLines());
         self::assertSame(
@@ -1462,6 +1805,78 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
+     * The remaining lookups would most likely fail the same way, e.g. after a change to Shipmondo's answers the SDK can't
+     * read. They say nothing about the uploads, so the pending orders are still uploaded
+     *
+     * @test
+     */
+    public function it_stops_the_lookups_but_uploads_the_pending_orders_after_three_lookups_in_a_row_that_fail(): void
+    {
+        $unlinked = [$this->unlinkedOrder(1), $this->unlinkedOrder(2), $this->unlinkedOrder(3)];
+        $notLookedUp = $this->unlinkedOrder(4);
+        $uploaded = $this->order(5);
+        $this->shipmondo
+            ->respond(422)
+            ->respond(500) // a temporary failure doesn't count, and doesn't start the count over either
+            ->respond(404)
+            ->respond(200, body: 'not JSON')
+            ->respond(201, ['id' => 1005])
+        ;
+
+        self::assertSame([UploadRunProblem::FailedLookupsInARow], $this->uploader()->upload());
+
+        self::assertSame(['GET sales_orders', 'GET sales_orders', 'GET sales_orders', 'GET sales_orders', 'POST sales_orders'], $this->shipmondo->requestLines());
+        self::assertSame(
+            [self::UNLINKED, self::UNLINKED, self::UNLINKED, self::UNLINKED, self::UPLOADED],
+            array_map(static fn (Order $order): string => $order->getShipmondoState(), [...$unlinked, $notLookedUp, $uploaded]),
+        );
+        self::assertSame([
+            'level' => LogLevel::ERROR,
+            'message' => self::FAILED_LOOKUPS_IN_A_ROW_MESSAGE,
+            'context' => ['count' => 3],
+        ], $this->logger->records[4]);
+    }
+
+    /**
+     * Shipmondo could be searched, so the lookups work, whatever the search found: two failed lookups before it and two
+     * after it don't stop the lookups, but a third after it does
+     *
+     * @test
+     *
+     * @dataProvider searchesThatFoundSomething
+     *
+     * @param array<int, string> $salesOrders the sales orders the search found, by their id and order id
+     */
+    public function it_starts_counting_failed_lookups_over_after_a_lookup_whose_search_succeeded(array $salesOrders): void
+    {
+        foreach (range(1, 6) as $id) {
+            $this->unlinkedOrder($id);
+        }
+        $notLookedUp = $this->unlinkedOrder(7);
+        $uploaded = $this->order(8);
+        $this->shipmondo->respond(422)->respond(404);
+        $this->respondWithSalesOrders($salesOrders);
+        // the order a lookup finds no sales order for goes back to pending, and is uploaded too
+        $this->shipmondo->respond(422)->respond(404)->respond(422)->respond(201, ['id' => 1008])->respond(201, ['id' => 1003]);
+
+        self::assertSame([UploadRunProblem::FailedLookupsInARow], $this->uploader()->upload());
+
+        self::assertCount(6, array_filter($this->shipmondo->requestLines(), static fn (string $line): bool => 'GET sales_orders' === $line));
+        self::assertSame(self::UNLINKED, $notLookedUp->getShipmondoState());
+        self::assertSame([self::UPLOADED, 1008], [$uploaded->getShipmondoState(), $uploaded->getShipmondoId()]);
+    }
+
+    /**
+     * @return iterable<string, array{array<int, string>}>
+     */
+    public static function searchesThatFoundSomething(): iterable
+    {
+        yield 'no sales order' => [[]];
+        yield 'one sales order' => [[1003 => '#003']];
+        yield 'several sales orders' => [[1003 => '#003', 1004 => '#003']];
+    }
+
+    /**
      * A failed lookup says nothing about the uploads, so it is no rejected upload, and doesn't count towards the stop rule
      *
      * @test
@@ -1473,7 +1888,7 @@ final class OrderUploaderTest extends TestCase
         $uploaded = $this->order(4);
         $this->shipmondo->respond(422)->respond(422)->respond(422)->respond(201, ['id' => 1004]);
 
-        self::assertNull($this->uploader()->upload());
+        self::assertSame([], $this->uploader()->upload());
 
         self::assertSame([self::FAILED, self::FAILED], array_map(static fn (Order $order): string => $order->getShipmondoState(), $rejected));
         self::assertSame([self::UPLOADED, 1004], [$uploaded->getShipmondoState(), $uploaded->getShipmondoId()]);
@@ -1589,6 +2004,20 @@ final class OrderUploaderTest extends TestCase
     private function respondWithSalesOrders(array $orderIds): void
     {
         $this->shipmondo->respond(200, SalesOrders::withOrderIds($orderIds));
+    }
+
+    /**
+     * Handles the UploadOrder commands with these outcomes, in order, without uploading the orders, so they stay uploading
+     */
+    private function handleUploadsWith(UploadOutcome ...$outcomes): void
+    {
+        $commandBus = $this->prophesize(MessageBusInterface::class);
+        $commandBus->dispatch(Argument::type(UploadOrder::class))->will(static function (array $args) use (&$outcomes): Envelope {
+            Assert::isInstanceOf($args[0], UploadOrder::class);
+
+            return new Envelope($args[0], [new HandledStamp(array_shift($outcomes), 'handler')]);
+        });
+        $this->commandBus = $commandBus->reveal();
     }
 
     /**

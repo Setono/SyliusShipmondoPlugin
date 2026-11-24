@@ -269,7 +269,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
      *
      * @dataProvider answersThatStopTheUploadRun
      */
-    public function it_stops_the_upload_run_when_shipmondo_turns_the_store_away(int $statusCode): void
+    public function it_stops_the_upload_run_when_shipmondo_turns_the_store_away(int $statusCode, string $error): void
     {
         $customer = $this->fixtures->createCustomer();
         $turnedAway = $this->fixtures->createOrder($customer);
@@ -283,7 +283,7 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
         // fails, so whatever runs the command (cron, a scheduler) notices that no order can be uploaded
         $tester = $this->executeCommand(self::COMMAND);
         self::assertSame(Command::FAILURE, $tester->getStatusCode());
-        self::assertStringContainsString('The remaining orders wait for the next run.', (string) preg_replace('/\s+/', ' ', $tester->getDisplay()));
+        self::assertSame([$error], self::errors($tester));
 
         self::assertCount(1, $this->shipmondo->requests('POST', 'sales_orders'));
         foreach ([$turnedAway, $notTried] as $order) {
@@ -293,37 +293,137 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
     }
 
     /**
-     * @return iterable<string, array{int}>
+     * @return iterable<string, array{int, string}>
      */
     public static function answersThatStopTheUploadRun(): iterable
     {
-        yield 'credentials failure (401)' => [401];
-        yield 'credentials failure (403)' => [403];
-        yield 'rate limited (429)' => [429];
+        $credentialsFailure = 'The upload run stopped, because Shipmondo did not accept the API credentials. Check the Shipmondo API user and key. The remaining orders wait for the next run.';
+
+        yield 'credentials failure (401)' => [401, $credentialsFailure];
+        yield 'credentials failure (403)' => [403, $credentialsFailure];
+        yield 'rate limited (429)' => [429, 'The upload run stopped, because Shipmondo rate limited an upload. The remaining orders wait for the next run.'];
     }
 
     /**
      * @test
      */
-    public function it_stops_the_upload_run_after_three_rejected_uploads_in_a_row(): void
+    public function it_stops_the_upload_run_after_three_uploads_in_a_row_that_make_the_order_failed(): void
     {
         $customer = $this->fixtures->createCustomer();
-        $rejected = [$this->fixtures->createOrder($customer), $this->fixtures->createOrder($customer), $this->fixtures->createOrder($customer)];
+        $rejected = [$this->fixtures->createOrder($customer), $this->fixtures->createOrder($customer)];
+        $unmappable = $this->fixtures->createOrder($customer);
         $notTried = $this->fixtures->createOrder($customer);
 
         // e.g. the payment gateway every order is mapped to was deleted in Shipmondo
         $this->respondWithThePaymentGateway();
-        $this->shipmondo
-            ->respond('POST', 'sales_orders', 422, ['error' => 'The payment gateway does not exist'])
-        ;
+        $this->shipmondo->respond('POST', 'sales_orders', 422, ['error' => 'The payment gateway does not exist']);
+        $this->failToMap($unmappable);
 
-        self::assertSame(Command::FAILURE, $this->executeCommand(self::COMMAND)->getStatusCode());
+        $tester = $this->executeCommand(self::COMMAND);
 
-        self::assertCount(3, $this->shipmondo->requests('POST', 'sales_orders'));
-        foreach ($rejected as $order) {
+        self::assertSame(Command::FAILURE, $tester->getStatusCode());
+        self::assertSame(
+            ['The upload run stopped after three uploads in a row that made the order failed, which suggests a shop-wide problem, such as a payment gateway or shipment template that no longer exists in Shipmondo, or a data mapper that fails for every order. The log has the errors. The remaining orders wait for the next run.'],
+            self::errors($tester),
+        );
+        self::assertCount(2, $this->shipmondo->requests('POST', 'sales_orders'));
+        foreach ([...$rejected, $unmappable] as $order) {
             self::assertSame(OrderInterface::SHIPMONDO_STATE_FAILED, $this->orderRow(self::id($order))['shipmondo_state']);
         }
         self::assertSame(OrderInterface::SHIPMONDO_STATE_PENDING, $this->orderRow(self::id($notTried))['shipmondo_state']);
+    }
+
+    /**
+     * During an outage, each upload would wait out the time limit and make its order unlinked
+     *
+     * @test
+     */
+    public function it_stops_the_upload_run_after_three_uploads_in_a_row_that_fail_temporarily(): void
+    {
+        $customer = $this->fixtures->createCustomer();
+        $unlinked = [$this->fixtures->createOrder($customer), $this->fixtures->createOrder($customer), $this->fixtures->createOrder($customer)];
+        $notTried = $this->fixtures->createOrder($customer);
+
+        $this->respondWithThePaymentGateway();
+        $this->shipmondo
+            ->respond('POST', 'sales_orders', 503, ['error' => 'Service Unavailable'])
+            ->failToConnect('POST', 'sales_orders')
+        ;
+
+        $tester = $this->executeCommand(self::COMMAND);
+
+        self::assertSame(Command::FAILURE, $tester->getStatusCode());
+        self::assertSame(
+            ['The upload run stopped after three temporary failures in a row: Shipmondo answered with a server error, or not in time. Check whether Shipmondo is down, and the log. The remaining orders wait for the next run.'],
+            self::errors($tester),
+        );
+        self::assertCount(3, $this->shipmondo->requests('POST', 'sales_orders'));
+        foreach ($unlinked as $order) {
+            self::assertSame(OrderInterface::SHIPMONDO_STATE_UNLINKED, $this->orderRow(self::id($order))['shipmondo_state']);
+        }
+        self::assertSame(OrderInterface::SHIPMONDO_STATE_PENDING, $this->orderRow(self::id($notTried))['shipmondo_state']);
+    }
+
+    /**
+     * Shipmondo created the sales orders, so the run goes on, but the command fails, so cron monitoring notices that
+     * every order may be hit
+     *
+     * @test
+     */
+    public function it_uploads_every_order_but_fails_after_three_unread_successes_in_a_row(): void
+    {
+        $customer = $this->fixtures->createCustomer();
+        $unlinked = [$this->fixtures->createOrder($customer), $this->fixtures->createOrder($customer), $this->fixtures->createOrder($customer)];
+        $uploaded = $this->fixtures->createOrder($customer);
+
+        $this->respondWithThePaymentGateway();
+        $this->shipmondo
+            ->respond('POST', 'sales_orders', 201, null)
+            ->respond('POST', 'sales_orders', 201, null)
+            ->respond('POST', 'sales_orders', 201, null)
+            ->respond('POST', 'sales_orders', 201, ['id' => 1004])
+        ;
+
+        $tester = $this->executeCommand(self::COMMAND);
+
+        self::assertSame(Command::FAILURE, $tester->getStatusCode());
+        self::assertSame(
+            ['Shipmondo answered three uploads in a row with a success that was cut off or could not be read, so it created the sales orders, but the orders are unlinked until sales order lookups link them, at least ten minutes later. Its answers can\'t be read or arrive too late: check the log, the time limits of the requests to Shipmondo and the version of the Shipmondo SDK.'],
+            self::errors($tester),
+        );
+        foreach ($unlinked as $order) {
+            self::assertSame(OrderInterface::SHIPMONDO_STATE_UNLINKED, $this->orderRow(self::id($order))['shipmondo_state']);
+        }
+        self::assertSame(1004, $this->orderRow(self::id($uploaded))['shipmondo_id']);
+    }
+
+    /**
+     * Each kind of failure starts the count of another over
+     *
+     * @test
+     */
+    public function it_succeeds_silently_when_the_run_has_fewer_than_three_of_each_in_a_row(): void
+    {
+        $customer = $this->fixtures->createCustomer();
+        foreach (range(1, 7) as $i) {
+            $this->fixtures->createOrder($customer);
+        }
+
+        $this->respondWithThePaymentGateway();
+        $this->shipmondo
+            ->respond('POST', 'sales_orders', 500, ['error' => 'Internal Server Error'])
+            ->respond('POST', 'sales_orders', 500, ['error' => 'Internal Server Error'])
+            ->respond('POST', 'sales_orders', 422, ['error' => 'Invalid'])
+            ->respond('POST', 'sales_orders', 422, ['error' => 'Invalid'])
+            ->respond('POST', 'sales_orders', 201, null)
+            ->respond('POST', 'sales_orders', 201, null)
+            ->respond('POST', 'sales_orders', 201, ['id' => 1007])
+        ;
+
+        $tester = $this->executeCommand(self::COMMAND);
+        $tester->assertCommandIsSuccessful();
+        self::assertSame('', $tester->getDisplay());
+        self::assertCount(7, $this->shipmondo->requests('POST', 'sales_orders'));
     }
 
     /**
