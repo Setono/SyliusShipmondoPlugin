@@ -4,7 +4,7 @@ setono_sylius_shipmondo:
     order_not_deleted_in_shipmondo: 'The order was cancelled, but it could not be deleted in Shipmondo. Delete it in Shipmondo manually.'
     order_upload_not_retried: 'The upload of the order was not retried, because its Shipmondo state is no longer failed.'
     order_upload_retried: 'The order is pending again, so the next upload run will upload it to Shipmondo.'
-    order_unlinked_will_be_deleted_in_shipmondo: 'The order was cancelled. If Shipmondo has it, it will be deleted in Shipmondo once an upload run finds it there, at least 10 minutes from now. If it must not be packed before then, or it still shows as Unlinked later, cancel it in Shipmondo.'
+    order_unlinked_will_be_deleted_in_shipmondo: 'The order was cancelled. If Shipmondo has it, it will be deleted in Shipmondo once an upload run finds it there, at least 10 minutes after its upload. If it must not be packed before then, or it still shows as Unlinked later, cancel it in Shipmondo.'
     orders_upload_not_retried: '{1} 1 order was left as it was, because its Shipmondo state is not failed.|]1,Inf[ %count% orders were left as they were, because their Shipmondo state is not failed.'
     orders_upload_retried: '{0} No order was retried.|{1} 1 order is pending again, so the next upload run will upload it to Shipmondo.|]1,Inf[ %count% orders are pending again, so the next upload run will upload them to Shipmondo.'
     payment_gateways_not_fetched: 'Could not fetch the payment gateways from Shipmondo. %reason%'

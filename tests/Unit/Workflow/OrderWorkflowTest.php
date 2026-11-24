@@ -246,6 +246,44 @@ final class OrderWorkflowTest extends TestCase
 
     /**
      * @test
+     *
+     * @dataProvider everyTransition
+     */
+    public function it_builds_a_workflow_that_records_when_each_transition_changed_the_shipmondo_state(string $from, string $transition): void
+    {
+        $workflow = OrderWorkflow::getWorkflow(new EventDispatcher());
+        $order = new Order();
+        // only an order cancelled in Sylius may be cancelled
+        $order->setState(OrderInterface::STATE_CANCELLED);
+        $order->setShipmondoState($from, [OrderWorkflow::CONTEXT_SALES_ORDER_ID => 1001]);
+        $changedBefore = $order->getShipmondoStateChangedAt();
+        $before = new \DateTimeImmutable();
+
+        // a sales order id, for the transitions that link the order
+        $workflow->apply($order, $transition, [OrderWorkflow::CONTEXT_SALES_ORDER_ID => 1002]);
+
+        $changedAt = $order->getShipmondoStateChangedAt();
+        self::assertNotNull($changedAt);
+        // a new time, taken during the transition, not the one the order had
+        self::assertNotSame($changedBefore, $changedAt);
+        self::assertGreaterThanOrEqual($before, $changedAt);
+        self::assertLessThanOrEqual(new \DateTimeImmutable(), $changedAt);
+    }
+
+    /**
+     * @return iterable<string, array{string, string}>
+     */
+    public static function everyTransition(): iterable
+    {
+        foreach (OrderWorkflow::getTransitions() as $transition) {
+            foreach ($transition->getFroms() as $from) {
+                yield sprintf('%s from %s', $transition->getName(), $from) => [$from, $transition->getName()];
+            }
+        }
+    }
+
+    /**
+     * @test
      */
     public function it_builds_a_workflow_that_stores_the_state_as_a_string_on_the_order(): void
     {

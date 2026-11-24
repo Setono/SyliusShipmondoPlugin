@@ -20,7 +20,8 @@ For most installations the required changes are:
 - move the cancelled orders that 1.x left pending or failed to the new `cancelled` Shipmondo state (section 7)
 - if you override the order grid's Shipmondo state label templates, rename `dispatching.html.twig` and
   `dispatched.html.twig` (section 7)
-- run a database migration, which only adds a comment to the shipment's pickup point column (section 8)
+- run a database migration, which adds a comment to the shipment's pickup point column (section 8) and a column for
+  when the order's Shipmondo state last changed (section 25)
 - note that a shipping method with pickup point delivery now needs a pickup point in checkout, and don't let a
   channel skip the shipping step when its only shipping method has pickup point delivery (section 8)
 - if you monitor `setono:sylius-shipmondo:register-webhooks`, note that it now fails when Shipmondo does (section 9)
@@ -1115,11 +1116,12 @@ recorded in [ADR 0003](docs/adr/0003-a-sales-order-lookup-settles-every-unlinked
   order then. So do a credentials failure and a 429. The upload run's stop rules are unchanged.
 - **Each upload run starts with a sales order lookup** for every order that has been `unlinked` for at least ten
   minutes, newest first, whatever its state in Sylius, before it uploads the pending orders. Shipmondo lists a sales
-  order it just created only after a short delay, so the run waits ten minutes (a fixed delay), measured from the
-  order's `updatedAt`. So an order whose upload failed temporarily is uploaded again at least ten minutes later, not in
-  the next run. Conditions you add through `PreQualifiedUploadableOrdersQueryBuilderCreatedEvent` don't narrow the
-  lookups. They run in the upload run, never through the command bus, also when you route `UploadOrder` to an async
-  transport.
+  order it just created only after a short delay, so the run waits ten minutes (a fixed delay), measured from when the
+  order became `unlinked`, which the order now records (see the database migration below). A later change to the order,
+  e.g. a payment or a cancel in Sylius, doesn't put its lookup off. So an order whose upload failed temporarily is
+  uploaded again at least ten minutes later, not in the next run. Conditions you add through
+  `PreQualifiedUploadableOrdersQueryBuilderCreatedEvent` don't narrow the lookups. They run in the upload run, never
+  through the command bus, also when you route `UploadOrder` to an async transport.
 - **The lookup searches Shipmondo's sales orders by the exact order id the upload sent** (`GET /sales_orders` with
   `order_id`, archived sales orders included), and settles the order by what it finds, locked and read again. An order
   that changed while Shipmondo was searched is left as it is.
@@ -1132,10 +1134,10 @@ recorded in [ADR 0003](docs/adr/0003-a-sales-order-lookup-settles-every-unlinked
 
 - **An `unlinked` order that is cancelled in Sylius is settled by its lookup too** (section 7): the sales order the lookup
   finds is deleted, and the order becomes `cancelled`; with none found, it becomes `cancelled` right away; with several,
-  it stays `unlinked`. The cancel changes the order, so its lookup waits ten minutes from the cancel, and then for the
-  next upload run, and with several matches nothing is deleted. So cancelling it in the admin flashes that its sales
-  order will be deleted once an upload run finds it, at least ten minutes later, and to cancel it in Shipmondo when the
-  order must not be packed before then, or still shows as Unlinked later.
+  it stays `unlinked`. Its lookup is still due ten minutes after the order became `unlinked`, not after the cancel, but
+  it waits for the next upload run, and with several matches nothing is deleted. So cancelling it in the admin flashes
+  that its sales order will be deleted once an upload run finds it, at least ten minutes after its upload, and to cancel
+  it in Shipmondo when the order must not be packed before then, or still shows as Unlinked later.
 - **A lookup that fails leaves the order `unlinked`**, logs the failure, and the next run tries again. A credentials
   failure stops the upload run, as for an upload. A 429 stops the lookups, which have their own rate limit in Shipmondo
   (about 100 searches a minute), but the pending orders are still uploaded. **Either way, the command fails**, so your
@@ -1149,6 +1151,20 @@ recorded in [ADR 0003](docs/adr/0003-a-sales-order-lookup-settles-every-unlinked
   yet ([#76](https://github.com/Setono/SyliusShipmondoPlugin/issues/76)). That should be rare: a sales order is seldom
   shipped, or its payment captured, within minutes of its upload.
 
+**Run a database migration.** The order now records when its Shipmondo state last changed, which for an `unlinked`
+order is when it became `unlinked`, in a new nullable column, `shipmondoStateChangedAt`, mapped in `OrderTrait`. It is
+set whenever the Shipmondo state is (`setShipmondoState()`, which every transition of the
+`setono_sylius_shipmondo__order` workflow calls), and has no setter of its own. The plugin ships no migration: generate
+it with `bin/console doctrine:migrations:diff` as usual. On MySQL it is:
+
+```sql
+ALTER TABLE sylius_order ADD shipmondoStateChangedAt DATETIME DEFAULT NULL COMMENT '(DC2Type:datetime_immutable)';
+```
+
+An order has no such time until its Shipmondo state changes after the upgrade. An `unlinked` order without one counts
+as unlinked for long enough, so its lookup is due in the next upload run. If your order entity maps the plugin's
+columns itself instead of through `OrderTrait`, map this one too.
+
 New translation key: `setono_sylius_shipmondo.order_unlinked_will_be_deleted_in_shipmondo` in the `flashes` domain.
 
 Only if you extend or call the code involved:
@@ -1157,6 +1173,7 @@ Only if you extend or call the code involved:
 |---|---|
 | `DataMapper\SalesOrderDataMapper::__construct()` | `__construct(Provider\OrderIdProviderInterface $orderIdProvider)` |
 | `Uploader\OrderUploader::__construct(...)` | takes the unlinked orders provider and the order id provider too (section 6) |
+| | new `Model\OrderInterface::getShipmondoStateChangedAt(): ?\DateTimeImmutable`, when the Shipmondo state last changed, which `OrderTrait` implements. Implement it if your order entity doesn't use the trait |
 
 New: the `OrderWorkflow::TRANSITION_LINK` constant; `Provider\UnlinkedOrdersProviderInterface` (a private alias of
 `Provider\UnlinkedOrdersProvider`, section 13), which finds the unlinked orders due a lookup
