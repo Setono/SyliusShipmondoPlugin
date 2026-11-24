@@ -7,11 +7,11 @@ namespace Setono\SyliusShipmondoPlugin\DataMapper;
 use Setono\Shipmondo\Request\SalesOrder\Recipient;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
-use Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider;
+use Setono\SyliusShipmondoPlugin\Provider\OrderIdProviderInterface;
 
 final class SalesOrderDataMapper implements SalesOrderDataMapperInterface
 {
-    public function __construct(private readonly OrderIdProvider $orderIdProvider)
+    public function __construct(private readonly OrderIdProviderInterface $orderIdProvider)
     {
     }
 

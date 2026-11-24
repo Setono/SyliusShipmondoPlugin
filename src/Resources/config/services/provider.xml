@@ -19,6 +19,9 @@
 
         <service id="Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider"/>
 
+        <service id="Setono\SyliusShipmondoPlugin\Provider\OrderIdProviderInterface"
+                 alias="Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider"/>
+
         <service id="Setono\SyliusShipmondoPlugin\Provider\SetupProvider">
             <argument type="service" id="Setono\Shipmondo\Client\Client"/>
 

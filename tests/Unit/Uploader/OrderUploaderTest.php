@@ -35,6 +35,7 @@ use Setono\SyliusShipmondoPlugin\Message\CommandHandler\UploadOrderHandler;
 use Setono\SyliusShipmondoPlugin\Message\Middleware\AbsorbDeleteOrderFailureMiddleware;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider;
+use Setono\SyliusShipmondoPlugin\Provider\OrderIdProviderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProviderInterface;
 use Setono\SyliusShipmondoPlugin\Uploader\OrderUploader;
@@ -55,6 +56,7 @@ use Symfony\Component\Messenger\Middleware\StackInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Workflow\Event\GuardEvent;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
+use Tests\Setono\SyliusShipmondoPlugin\Support\PrefixedOrderIdProvider;
 use Tests\Setono\SyliusShipmondoPlugin\Support\SalesOrders;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\Orders;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\RecordingLogger;
@@ -134,6 +136,11 @@ final class OrderUploaderTest extends TestCase
     private ?MessageBusInterface $commandBus = null;
 
     /**
+     * Gives the order id the upload sent, and so the one a sales order lookup searches by
+     */
+    private OrderIdProviderInterface $orderIdProvider;
+
+    /**
      * Whether the default command bus fails to handle DeleteOrder, as when its asynchronous transport is down
      */
     private bool $deleteOrderFails = false;
@@ -142,6 +149,7 @@ final class OrderUploaderTest extends TestCase
     {
         $this->shipmondo = new ScriptedHttpClient();
         $this->logger = new RecordingLogger();
+        $this->orderIdProvider = new OrderIdProvider();
         $this->eventDispatcher = new EventDispatcher();
 
         // the mapper puts the order number on the sales order, so a test can tell which order a request uploads
@@ -959,6 +967,23 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
+     * A shop that changes its order ids, e.g. with a prefix, has its sales orders found by the order id it sent
+     *
+     * @test
+     */
+    public function it_looks_up_the_sales_order_by_the_order_id_the_order_id_provider_gives(): void
+    {
+        $this->orderIdProvider = new PrefixedOrderIdProvider();
+        $order = $this->unlinkedOrder(1);
+        $this->respondWithSalesOrders([1001 => '#001', 1002 => 'WEB-#001']);
+
+        self::assertNull($this->uploader()->upload());
+
+        self::assertSame('order_id=WEB-%23001&page=1&per_page=25', $this->shipmondo->requests()[0]->getUri()->getQuery());
+        self::assertSame([self::UPLOADED, 1002], [$order->getShipmondoState(), $order->getShipmondoId()]);
+    }
+
+    /**
      * Shipmondo lists archived sales orders too when no archived filter is sent, so an order whose sales order was
      * archived is still found
      *
@@ -1561,7 +1586,7 @@ final class OrderUploaderTest extends TestCase
         $uploader = new OrderUploader(
             $provider->reveal(),
             $unlinkedOrdersProvider->reveal(),
-            new OrderIdProvider(),
+            $this->orderIdProvider,
             $commandBus,
             $orderWorkflow,
             $shipmondoClient,

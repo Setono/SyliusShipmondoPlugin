@@ -333,7 +333,7 @@ Only if you extend or call the upload code:
 |---|---|
 | `Uploader\OrderUploaderInterface::upload(): void` | `upload(): ?Uploader\UploadOutcome`: the outcome that stopped the run early, or `null` |
 | | new `OrderUploaderInterface::uploadOrder(OrderInterface $order, ?int $version = null): UploadOutcome`, which uploads one order in `uploading_to_shipmondo` and settles its state |
-| `Uploader\OrderUploader::__construct($provider, $commandBus, $orderWorkflow, $managerRegistry)` | `__construct($provider, Provider\UnlinkedOrdersProviderInterface $unlinkedOrdersProvider, Provider\OrderIdProvider $orderIdProvider, $commandBus, $orderWorkflow, Setono\Shipmondo\Client\ClientInterface $shipmondoClient, SalesOrderDataMapperInterface $salesOrderDataMapper, Canceller\OrderCancellerInterface $orderCanceller, Psr\Log\LoggerInterface $logger, $managerRegistry)` |
+| `Uploader\OrderUploader::__construct($provider, $commandBus, $orderWorkflow, $managerRegistry)` | `__construct($provider, Provider\UnlinkedOrdersProviderInterface $unlinkedOrdersProvider, Provider\OrderIdProviderInterface $orderIdProvider, $commandBus, $orderWorkflow, Setono\Shipmondo\Client\ClientInterface $shipmondoClient, SalesOrderDataMapperInterface $salesOrderDataMapper, Canceller\OrderCancellerInterface $orderCanceller, Psr\Log\LoggerInterface $logger, $managerRegistry)` |
 | `Message\CommandHandler\UploadOrderHandler::__construct($orderRepository, $shipmondoClient, $salesOrderDataMapper, $orderWorkflow)`; `__invoke()` returns `void` | `__construct($orderRepository, OrderUploaderInterface $orderUploader)`; `__invoke()` returns the `UploadOutcome` |
 | `Workflow\OrderWorkflow::getWorkflow()` returns a `Workflow`, on which `fail` is never enabled | returns a `StateMachine` with the transitions the container registers (see [#38](https://github.com/Setono/SyliusShipmondoPlugin/issues/38)) |
 
@@ -649,6 +649,7 @@ in a service of your own (autowiring) and decorate it:
 | `Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface` | `Setono\SyliusShipmondoPlugin\DataMapper\CompositeSalesOrderDataMapper`, which runs every data mapper |
 | `Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface` | `Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProvider` |
 | `Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProviderInterface` | `Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProvider` (section 25) |
+| `Setono\SyliusShipmondoPlugin\Provider\OrderIdProviderInterface` | `Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider` (section 25) |
 | `Setono\SyliusShipmondoPlugin\Provider\SetupProviderInterface` | `Setono\SyliusShipmondoPlugin\Provider\SetupProvider` (section 14) |
 | `Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface` | `Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar` |
 | `Setono\SyliusShipmondoPlugin\Uploader\OrderUploaderInterface` | `Setono\SyliusShipmondoPlugin\Uploader\OrderUploader` |
@@ -1154,13 +1155,16 @@ Only if you extend or call the code involved:
 
 | 1.x | 2.x |
 |---|---|
-| `DataMapper\SalesOrderDataMapper::__construct()` | `__construct(Provider\OrderIdProvider $orderIdProvider)` |
+| `DataMapper\SalesOrderDataMapper::__construct()` | `__construct(Provider\OrderIdProviderInterface $orderIdProvider)` |
 | `Uploader\OrderUploader::__construct(...)` | takes the unlinked orders provider and the order id provider too (section 6) |
 
 New: the `OrderWorkflow::TRANSITION_LINK` constant; `Provider\UnlinkedOrdersProviderInterface` (a private alias of
 `Provider\UnlinkedOrdersProvider`, section 13), which finds the unlinked orders due a lookup
-(`UnlinkedOrdersProvider::LOOKUP_DELAY`); and `Provider\OrderIdProvider`, the one place the order id the plugin sends
-Shipmondo comes from, which the upload and the lookup both use. `UploadOutcome::TemporaryFailure` now leaves an order `unlinked` when the call that creates the
+(`UnlinkedOrdersProvider::LOOKUP_DELAY`); and `Provider\OrderIdProviderInterface` (a private alias of
+`Provider\OrderIdProvider`, which gives the order number), the one place the order id the plugin sends Shipmondo comes
+from, which the upload and the lookup both use. Decorate or replace it to send another order id, e.g. one with a prefix,
+but only while no order is `unlinked`: a lookup searches by the order id it gives now, so an unlinked order's lookup
+would find no sales order, and the order would be uploaded a second time. `UploadOutcome::TemporaryFailure` now leaves an order `unlinked` when the call that creates the
 sales order failed. If your code relies on `unlinked` being final, or on `retry` leaving only `uploading_to_shipmondo`
 and `failed`, adjust it.
 

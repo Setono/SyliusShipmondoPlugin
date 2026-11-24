@@ -10,7 +10,7 @@
                  alias="Setono\SyliusShipmondoPlugin\DataMapper\CompositeSalesOrderDataMapper"/>
 
         <service id="Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapper">
-            <argument type="service" id="Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider"/>
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\Provider\OrderIdProviderInterface"/>
 
             <tag name="setono_sylius_shipmondo.sales_order_data_mapper" priority="10"/>
         </service>

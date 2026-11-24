@@ -7,10 +7,9 @@ namespace Setono\SyliusShipmondoPlugin\Provider;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 
 /**
- * The order id the plugin sends Shipmondo for an order: the sales order's `order_id`. The upload sends it, and a sales
- * order lookup searches Shipmondo by it, so both take it from here
+ * Sends the order number as the order id
  */
-final class OrderIdProvider
+final class OrderIdProvider implements OrderIdProviderInterface
 {
     public function getOrderId(OrderInterface $order): string
     {

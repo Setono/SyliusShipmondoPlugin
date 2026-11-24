@@ -19,7 +19,7 @@ use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailureKind;
 use Setono\SyliusShipmondoPlugin\Message\Command\UploadOrder;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
-use Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider;
+use Setono\SyliusShipmondoPlugin\Provider\OrderIdProviderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProviderInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
@@ -48,7 +48,7 @@ final class OrderUploader implements OrderUploaderInterface
     public function __construct(
         private readonly PreQualifiedUploadableOrdersProviderInterface $preQualifiedUploadableOrdersProvider,
         private readonly UnlinkedOrdersProviderInterface $unlinkedOrdersProvider,
-        private readonly OrderIdProvider $orderIdProvider,
+        private readonly OrderIdProviderInterface $orderIdProvider,
         private readonly MessageBusInterface $commandBus,
         private readonly WorkflowInterface $orderWorkflow,
         private readonly ClientInterface $shipmondoClient,
