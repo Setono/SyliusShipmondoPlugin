@@ -98,39 +98,19 @@ final class WebhookRegistrar implements WebhookRegistrarInterface
                 continue;
             }
 
-            $wanted = self::find($webhook, $missing);
-            if (null === $wanted) {
-                // it isn't wanted, or another webhook already is the wanted one
-                $unwanted[] = $webhook;
+            foreach ($missing as $key => $wanted) {
+                if ($wanted->isListedAs($webhook)) {
+                    unset($missing[$key]);
 
-                continue;
+                    continue 2;
+                }
             }
 
-            unset($missing[$wanted]);
+            // it isn't wanted, or another webhook already is the wanted one
+            $unwanted[] = $webhook;
         }
 
-        return new WebhookComparison($endpoint, array_values($missing), $unwanted);
-    }
-
-    /**
-     * @param array<array-key, Webhook> $wanted
-     *
-     * @return array-key|null the key of the wanted webhook the webhook in Shipmondo is
-     */
-    private static function find(WebhookResponse $webhook, array $wanted): int|string|null
-    {
-        foreach ($wanted as $key => $wantedWebhook) {
-            if ($webhook->active &&
-                $webhook->name === $wantedWebhook->name &&
-                $webhook->endpoint === $wantedWebhook->endpoint &&
-                $webhook->action === $wantedWebhook->action &&
-                $webhook->resourceName === $wantedWebhook->resource
-            ) {
-                return $key;
-            }
-        }
-
-        return null;
+        return new WebhookComparison(array_values($missing), $unwanted);
     }
 
     /**

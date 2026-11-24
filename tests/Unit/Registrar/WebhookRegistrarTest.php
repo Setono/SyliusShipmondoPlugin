@@ -184,7 +184,8 @@ final class WebhookRegistrarTest extends TestCase
         yield 'another name' => [self::webhook(1, 'Shop [ab9f9937] - [orders:delete] (edited)', self::ENDPOINT, 'delete')];
         yield 'another endpoint' => [self::webhook(1, 'Shop [ab9f9937] - [orders:delete]', 'https://shop.example.com/another-webhook', 'delete')];
         yield 'another action' => [self::webhook(1, 'Shop [ab9f9937] - [orders:delete]', self::ENDPOINT, 'create')];
-        yield 'another resource' => [self::webhook(1, 'Shop [ab9f9937] - [orders:delete]', self::ENDPOINT, 'create', resource: 'Shipments')];
+        // the SDK reads a listed webhook's resource and action each on its own, so only the resource differs
+        yield 'another resource' => [self::webhook(1, 'Shop [ab9f9937] - [orders:delete]', self::ENDPOINT, 'delete', resource: 'Shipment Monitor')];
     }
 
     /**
@@ -471,7 +472,6 @@ final class WebhookRegistrarTest extends TestCase
         $comparison = $this->registrar($shipmondo)->compare(self::ENDPOINT);
 
         self::assertFalse($comparison->matches());
-        self::assertSame(self::ENDPOINT, $comparison->endpoint);
         self::assertEquals([
             new Webhook('Shop [ab9f9937] - [orders:create_shipment]', self::ENDPOINT, self::KEY, WebhookAction::CreateShipment, WebhookResourceName::Orders),
             new Webhook('Shop [ab9f9937] - [orders:delete]', self::ENDPOINT, self::KEY, WebhookAction::Delete, WebhookResourceName::Orders),
@@ -508,7 +508,7 @@ final class WebhookRegistrarTest extends TestCase
      */
     public function it_wants_no_webhooks_without_webhook_handlers(): void
     {
-        $shipmondo = (new ScriptedHttpClient())->respond(200, [])->respond(204);
+        $shipmondo = (new ScriptedHttpClient())->respond(200, []);
 
         self::assertTrue($this->registrar($shipmondo, new OrderWebhookHandlers([]))->compare(self::ENDPOINT)->matches());
     }

@@ -19,7 +19,6 @@ final class WebhookComparison
      *                                        webhook handler handles, inactive, sent to another endpoint, or a duplicate
      */
     public function __construct(
-        public readonly string $endpoint,
         public readonly array $missing,
         public readonly array $unwanted,
     ) {

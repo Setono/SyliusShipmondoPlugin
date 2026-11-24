@@ -26,6 +26,8 @@ final class Webhooks
 
         $webhooksKey = $container->getParameter('setono_sylius_shipmondo.webhooks.key');
         Assert::string($webhooksKey);
+        $namePrefix = $container->getParameter('setono_sylius_shipmondo.webhooks.name_prefix');
+        Assert::string($namePrefix);
         $shopId = substr(hash_hmac('sha256', 'shop id', $webhooksKey), 0, 8);
 
         $webhooks = [];
@@ -34,7 +36,7 @@ final class Webhooks
                 'id' => $firstId + count($webhooks),
                 'endpoint' => $endpoint,
                 'active' => true,
-                'name' => sprintf('Setono Sylius Shipmondo Plugin [%s] - [orders:%s]', $shopId, $action->value),
+                'name' => sprintf('%s [%s] - [orders:%s]', $namePrefix, $shopId, $action->value),
                 'action' => $action->value,
                 'resource_name' => 'Orders',
             ];

@@ -1394,7 +1394,13 @@ reason, else once per list. **If you override its template** (`admin/shipmondo/i
 before they are registered, or when they couldn't be fetched) and `registerWebhooksAutomatically`.
 
 **Run a database migration**: the `setono_sylius_shipmondo__registered_webhooks` table loses its `version` column and
-gets a nullable `endpoint` column. Generate it with `doctrine:migrations:diff`. Its rows keep their `registeredAt`.
+gets a nullable `endpoint` column. Generate it with `bin/console doctrine:migrations:diff` as usual. On MySQL it is:
+
+```sql
+ALTER TABLE setono_sylius_shipmondo__registered_webhooks ADD endpoint VARCHAR(255) DEFAULT NULL, DROP version;
+```
+
+Its rows keep their `registeredAt`, and have no endpoint until the webhooks are registered again.
 
 Translations, in the `messages` domain under `setono_sylius_shipmondo.ui`: new `missing_webhook`, `unwanted_webhook`,
 `unwanted_inactive_webhook` (all take `%name%`, the last two `%endpoint%` too), `webhooks_do_not_match`,

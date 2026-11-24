@@ -2079,7 +2079,7 @@ final class OrderUploaderTest extends TestCase
         $this->order(1);
         $this->shipmondo->respond(201, ['id' => 1001]);
         $this->registerWebhooksAutomatically = false;
-        $this->webhookRegistrar->registerAgain()->willThrow(new NoRecordedEndpointException())->shouldNotBeCalled();
+        $this->webhookRegistrar->registerAgain()->shouldNotBeCalled();
 
         self::assertSame([], $this->uploader()->upload());
     }

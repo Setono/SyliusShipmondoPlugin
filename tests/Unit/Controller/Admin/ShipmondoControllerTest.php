@@ -179,7 +179,7 @@ final class ShipmondoControllerTest extends TestCase
     {
         $this->givenShipmondoApi();
         $this->registeredWebhooks->setEndpoint(self::ENDPOINT);
-        $comparison = new WebhookComparison(self::ENDPOINT, [], []);
+        $comparison = new WebhookComparison([], []);
         $this->webhookRegistrar->compare(self::ENDPOINT)->willReturn($comparison)->shouldBeCalledOnce();
 
         $this->twig->render(self::TEMPLATE, Argument::that(function (array $context) use ($comparison): bool {
@@ -282,7 +282,7 @@ final class ShipmondoControllerTest extends TestCase
         $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'payment_gateways'))->willReturn(ShipmondoApi::empty(429));
         $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'shipment_templates'))->willReturn(ShipmondoApi::empty(429));
         $this->registeredWebhooks->setEndpoint(self::ENDPOINT);
-        $this->webhookRegistrar->compare(self::ENDPOINT)->willReturn(new WebhookComparison(self::ENDPOINT, [], []));
+        $this->webhookRegistrar->compare(self::ENDPOINT)->willReturn(new WebhookComparison([], []));
         $this->givenRendered();
 
         $this->controller()->index(new Request());
