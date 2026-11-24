@@ -16,6 +16,10 @@ setono_sylius_shipmondo:
     ui:
         cancelled: Cancelled
         failed: Failed
+        last_upload: Last upload
+        last_upload_next_step_failed: Fix what made the upload fail, then retry the upload.
+        last_upload_next_step_pending: The next upload run uploads the order again.
+        last_upload_next_step_unlinked: 'Nothing to retry: Shipmondo may have a sales order for the order, so the first upload run 10 minutes after this looks for it, links the order to it if it finds one, and uploads the order again only if Shipmondo has none.'
         map_payment_methods: Map payment methods
         map_payment_methods_empty_information: 'There are no configured payment gateways inside Shipmondo. Go to <a href="https://app.shipmondo.com/main/app/#/setting/integration/payment-gateway" target="_blank">Shipmondo</a> and create your first payment gateway.'
         map_payment_methods_information: Map your payment methods to the payment gateways in Shipmondo. This way, you will be able to capture the payment inside Shipmondo when fulfilling the order. If there's no equivalent payment gateway in Shipmondo, leave it empty.
@@ -43,9 +47,11 @@ setono_sylius_shipmondo:
         shipping_method_in_sylius: Shipping method in Sylius
         stale_payment_gateways: 'These payment methods are mapped to a payment gateway that no longer exists in Shipmondo, so Shipmondo may not capture their payments. Map them to an existing payment gateway, or remove the mapping:'
         stale_shipment_templates: 'These shipping methods allow shipment templates that no longer exist in Shipmondo, so their orders may get another shipment template, or none. Remove them, or allow existing ones instead:'
+        status_code: Status code
         try_again: Try again
         unlinked: Unlinked
         uploaded_to_shipmondo: Uploaded to Shipmondo
         uploading_to_shipmondo: Uploading to Shipmondo
         webhooks: Webhooks
         webhooks_registered_information: Webhooks were registered on %date%.
+        when: When

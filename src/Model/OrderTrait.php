@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\Model;
 
 use Doctrine\ORM\Mapping as ORM;
+use Setono\SyliusShipmondoPlugin\Doctrine\Type\RecordedShipmondoFailureType;
+use Setono\SyliusShipmondoPlugin\Failure\RecordedShipmondoFailure;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 
 trait OrderTrait
@@ -33,6 +35,10 @@ trait OrderTrait
     /** @ORM\Column(type="datetime_immutable", nullable=true) */
     #[ORM\Column(type: 'datetime_immutable', nullable: true)]
     protected ?\DateTimeImmutable $shipmondoStateChangedAt = null;
+
+    /** @ORM\Column(type="setono_sylius_shipmondo_recorded_shipmondo_failure", nullable=true) */
+    #[ORM\Column(type: RecordedShipmondoFailureType::NAME, nullable: true)]
+    protected ?RecordedShipmondoFailure $shipmondoFailure = null;
 
     public function getVersion(): int
     {
@@ -64,9 +70,20 @@ trait OrderTrait
             }
         }
 
+        $failure = $context[OrderWorkflow::CONTEXT_SHIPMONDO_FAILURE] ?? null;
+
+        if (null !== $failure && !$failure instanceof RecordedShipmondoFailure) {
+            throw new \InvalidArgumentException(sprintf(
+                'The order workflow\'s context must hold a %s under "%s", or nothing',
+                RecordedShipmondoFailure::class,
+                OrderWorkflow::CONTEXT_SHIPMONDO_FAILURE,
+            ));
+        }
+
         $this->shipmondoState = $shipmondoState;
         $this->shipmondoId = $shipmondoId;
         $this->shipmondoStateChangedAt = new \DateTimeImmutable();
+        $this->shipmondoFailure = $failure;
     }
 
     public function getShipmondoId(): ?int
@@ -77,5 +94,10 @@ trait OrderTrait
     public function getShipmondoStateChangedAt(): ?\DateTimeImmutable
     {
         return $this->shipmondoStateChangedAt;
+    }
+
+    public function getShipmondoFailure(): ?RecordedShipmondoFailure
+    {
+        return $this->shipmondoFailure;
     }
 }

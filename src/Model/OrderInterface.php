@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Model;
 
+use Setono\SyliusShipmondoPlugin\Failure\RecordedShipmondoFailure;
 use Sylius\Component\Core\Model\OrderInterface as BaseOrderInterface;
 use Sylius\Component\Resource\Model\VersionedInterface;
 
@@ -32,12 +33,15 @@ interface OrderInterface extends BaseOrderInterface, VersionedInterface
      * Called by the order workflow's marking store, with the context of the transition being applied. The Shipmondo
      * state owns the link to the sales order: entering uploaded links the order to the sales order whose id the
      * context holds under {@see \Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow::CONTEXT_SALES_ORDER_ID}, and
-     * entering any other state unlinks it. It also records when the Shipmondo state changed
+     * entering any other state unlinks it. It owns the Shipmondo failure that put the order in it too: the order
+     * records the one the context holds under {@see \Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow::CONTEXT_SHIPMONDO_FAILURE},
+     * or none ({@see getShipmondoFailure()}). It also records when the Shipmondo state changed
      * ({@see getShipmondoStateChangedAt()})
      *
      * @param array<array-key, mixed> $context
      *
-     * @throws \InvalidArgumentException if the order enters uploaded without a sales order id in the context
+     * @throws \InvalidArgumentException if the order enters uploaded without a sales order id in the context, or the
+     *                                   context holds something else than a Shipmondo failure under its key
      */
     public function setShipmondoState(string $shipmondoState, array $context = []): void;
 
@@ -52,4 +56,12 @@ interface OrderInterface extends BaseOrderInterface, VersionedInterface
      * still pending, and for an order whose Shipmondo state hasn't changed since the plugin started recording it
      */
     public function getShipmondoStateChangedAt(): ?\DateTimeImmutable;
+
+    /**
+     * Returns the Shipmondo failure that put the order in its Shipmondo state, e.g. why Shipmondo rejected its upload,
+     * so an admin can tell why the order is failed, unlinked or back to pending. It happened when the Shipmondo state
+     * last changed ({@see getShipmondoStateChangedAt()}). It is null when the latest change of the Shipmondo state
+     * came without one, e.g. when the order was uploaded, retried or claimed by an upload run
+     */
+    public function getShipmondoFailure(): ?RecordedShipmondoFailure;
 }

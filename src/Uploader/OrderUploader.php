@@ -15,6 +15,7 @@ use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\Shipmondo\Request\SalesOrderSearch;
 use Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface;
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
+use Setono\SyliusShipmondoPlugin\Failure\RecordedShipmondoFailure;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailureKind;
 use Setono\SyliusShipmondoPlugin\Message\Command\UploadOrder;
@@ -397,7 +398,8 @@ final class OrderUploader implements OrderUploaderInterface
     }
 
     /**
-     * Records how the upload went on the order: moves its Shipmondo state, which links it to its sales order (or to none).
+     * Records how the upload went on the order: moves its Shipmondo state, which links it to its sales order (or to none),
+     * and records the Shipmondo failure the upload ended in (or none), so an admin can tell why the order is in it.
      *
      * Something may have changed the order while Shipmondo was called, e.g. its payment was captured. Flushing the stale
      * order would then fail and close the entity manager, leaving the order in uploading and the sales order Shipmondo
@@ -419,10 +421,13 @@ final class OrderUploader implements OrderUploaderInterface
     ): UploadOutcome {
         $manager = $this->getManager($order);
 
-        $manager->wrapInTransaction(function () use ($manager, $order, $outcome, $salesOrderId, $createFailed): void {
+        $manager->wrapInTransaction(function () use ($manager, $order, $outcome, $salesOrderId, $failure, $createFailed): void {
             $manager->refresh($order, LockMode::PESSIMISTIC_WRITE);
 
-            $this->orderWorkflow->apply($order, self::transitionOf($outcome, $createFailed), [OrderWorkflow::CONTEXT_SALES_ORDER_ID => $salesOrderId]);
+            $this->orderWorkflow->apply($order, self::transitionOf($outcome, $createFailed), [
+                OrderWorkflow::CONTEXT_SALES_ORDER_ID => $salesOrderId,
+                OrderWorkflow::CONTEXT_SHIPMONDO_FAILURE => null === $failure ? null : RecordedShipmondoFailure::of($failure),
+            ]);
         });
 
         $this->log($order, $outcome, $failure);

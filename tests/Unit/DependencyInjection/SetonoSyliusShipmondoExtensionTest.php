@@ -13,6 +13,7 @@ use Setono\SyliusShipmondoPlugin\DataMapper\CompositeSalesOrderDataMapper;
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
 use Setono\SyliusShipmondoPlugin\DependencyInjection\SetonoSyliusShipmondoExtension;
 use Setono\SyliusShipmondoPlugin\Doctrine\Type\PickupPointType;
+use Setono\SyliusShipmondoPlugin\Doctrine\Type\RecordedShipmondoFailureType;
 use Setono\SyliusShipmondoPlugin\EventListener\OrderCancellationListener;
 use Setono\SyliusShipmondoPlugin\HttpClient\ShipmondoHttpClient;
 use Setono\SyliusShipmondoPlugin\Message\Middleware\AbsorbDeleteOrderFailureMiddleware;
@@ -282,7 +283,7 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
     /**
      * @test
      */
-    public function it_registers_the_pickup_point_type_with_doctrine_when_it_is_installed(): void
+    public function it_registers_the_plugins_types_with_doctrine_when_it_is_installed(): void
     {
         $this->registerEmptyExtension('doctrine');
 
@@ -292,6 +293,7 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
             'dbal' => [
                 'types' => [
                     'setono_sylius_shipmondo_pickup_point' => PickupPointType::class,
+                    'setono_sylius_shipmondo_recorded_shipmondo_failure' => RecordedShipmondoFailureType::class,
                 ],
             ],
         ]], $this->container->getExtensionConfig('doctrine'));

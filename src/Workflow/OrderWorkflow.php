@@ -38,6 +38,13 @@ final class OrderWorkflow
      */
     final public const CONTEXT_SALES_ORDER_ID = 'sales_order_id';
 
+    /**
+     * The key of the Shipmondo failure that puts the order in its new Shipmondo state, a
+     * {@see \Setono\SyliusShipmondoPlugin\Failure\RecordedShipmondoFailure}, in the context of any transition: the order
+     * records it, and a transition without one clears the one the order recorded
+     */
+    final public const CONTEXT_SHIPMONDO_FAILURE = 'shipmondo_failure';
+
     private function __construct()
     {
     }

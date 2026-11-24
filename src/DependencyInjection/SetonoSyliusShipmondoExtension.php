@@ -6,6 +6,7 @@ namespace Setono\SyliusShipmondoPlugin\DependencyInjection;
 
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
 use Setono\SyliusShipmondoPlugin\Doctrine\Type\PickupPointType;
+use Setono\SyliusShipmondoPlugin\Doctrine\Type\RecordedShipmondoFailureType;
 use Setono\SyliusShipmondoPlugin\EventListener\OrderCancellationListener;
 use Setono\SyliusShipmondoPlugin\EventSubscriber\Grid\AddShipmondoToOrderGridSubscriber;
 use Setono\SyliusShipmondoPlugin\Message\Middleware\AbsorbDeleteOrderFailureMiddleware;
@@ -133,12 +134,14 @@ final class SetonoSyliusShipmondoExtension extends AbstractResourceExtension imp
             ]);
         }
 
-        // Stores the pickup point a customer chose on the shipment (ShipmentTrait)
+        // Store the pickup point a customer chose on the shipment (ShipmentTrait), and the Shipmondo failure that put an
+        // order in its Shipmondo state on the order (OrderTrait)
         if ($container->hasExtension('doctrine')) {
             $container->prependExtensionConfig('doctrine', [
                 'dbal' => [
                     'types' => [
                         PickupPointType::NAME => PickupPointType::class,
+                        RecordedShipmondoFailureType::NAME => RecordedShipmondoFailureType::class,
                     ],
                 ],
             ]);

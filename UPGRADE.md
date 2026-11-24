@@ -20,8 +20,9 @@ For most installations the required changes are:
 - move the cancelled orders that 1.x left pending or failed to the new `cancelled` Shipmondo state (section 7)
 - if you override the order grid's Shipmondo state label templates, rename `dispatching.html.twig` and
   `dispatched.html.twig` (section 7)
-- run a database migration, which adds a comment to the shipment's pickup point column (section 8) and a column for
-  when the order's Shipmondo state last changed (section 25)
+- run a database migration, which adds a comment to the shipment's pickup point column (section 8), a column for
+  when the order's Shipmondo state last changed (section 25), and one for the Shipmondo failure that put the order in
+  its Shipmondo state (section 26)
 - note that a shipping method with pickup point delivery now needs a pickup point in checkout, and don't let a
   channel skip the shipping step when its only shipping method has pickup point delivery (section 8)
 - if you monitor `setono:sylius-shipmondo:register-webhooks`, note that it now fails when Shipmondo does (section 9)
@@ -61,6 +62,8 @@ For most installations the required changes are:
 - note that an admin can now retry the upload of a failed order, from the order page or in bulk from the order grid,
   which gets a Shipmondo state filter, a bulk action and a column of checkboxes, and if you override Sylius's order page
   sidebar, keep the plugin's Shipmondo section (section 24)
+- note that the order page's Shipmondo section now shows why the order's latest upload didn't go through, and if your
+  order entity doesn't use `OrderTrait`, implement `getShipmondoFailure()` (section 26)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -1185,6 +1188,67 @@ would find no sales order, and the order would be uploaded a second time. `Uploa
 sales order failed. If your code relies on `unlinked` being final, or on `retry` leaving only `uploading_to_shipmondo`
 and `failed`, adjust it.
 
+### 26. The order records why its upload didn't go through, and the order page shows it
+
+An admin who saw a `failed` order (or an `unlinked` one, or one that keeps going back to `pending`) couldn't tell why
+without reading the logs ([#70](https://github.com/Setono/SyliusShipmondoPlugin/issues/70)).
+
+- **The order records the Shipmondo failure that put it in its Shipmondo state**: its kind (`ShipmondoFailureKind`),
+  Shipmondo's status code (none when Shipmondo didn't answer) and its message, which is Shipmondo's own message about the
+  failure, e.g. which data it found invalid, or else the exception's. The message is cut off at 1,000 characters
+  (`RecordedShipmondoFailure::MAX_MESSAGE_LENGTH`), since without Shipmondo's message the exception's holds Shipmondo's
+  whole answer, e.g. a proxy's HTML error page, and any bytes that aren't UTF-8 become question marks, so it can always be
+  stored. The log keeps the whole exception, as before.
+- **Every upload that settles with a Shipmondo failure records it**: one that makes the order `failed` (rejected, not
+  found, unexpected), `unlinked` (an unread success, or a temporary failure of the call that creates the sales order),
+  or `pending` again (a credentials failure, a 429, or a temporary failure before that call). How a failure settles the
+  Shipmondo state is unchanged.
+- **The Shipmondo state owns it**, as it owns the link to the sales order (section 7): it is passed in the context of the
+  transition that puts the order in its new state, under the new `OrderWorkflow::CONTEXT_SHIPMONDO_FAILURE`, as a
+  `Failure\RecordedShipmondoFailure`, and `setShipmondoState()` records it, or clears the one recorded before when the
+  context has none. So every later change of the Shipmondo state replaces or clears it: an admin's retry, the next
+  upload run claiming the order, a sales order lookup that links the order or puts it back to `pending`, a successful
+  upload, a cancel. A lookup that leaves the order `unlinked` keeps it. There is no history and no setter. A context
+  that holds anything else under that key makes `setShipmondoState()` throw an `\InvalidArgumentException`.
+- **The order page's Shipmondo section shows it** (section 24): the explanation the flashes and the admin Shipmondo page
+  give for its kind (the `setono_sylius_shipmondo.shipmondo_failure.<kind>` keys), the status code when there is one,
+  when it happened (when the Shipmondo state last changed, section 25), and what happens next: for a `failed` order to
+  fix the cause and retry the upload, for an `unlinked` one that there is nothing to retry, since a sales order lookup
+  settles it, for a `pending` one that the next upload run uploads it again. An order without a failure shows the section as before. The order grid is
+  unchanged. If you override `@SetonoSyliusShipmondoPlugin/admin/order/show/_shipmondo.html.twig`, add the failure
+  (`order.shipmondoFailure`) to yours.
+
+**Run a database migration.** The failure is mapped in `OrderTrait` to one new nullable JSON column, `shipmondoFailure`,
+with the new Doctrine type `setono_sylius_shipmondo_recorded_shipmondo_failure` (`Doctrine\Type\RecordedShipmondoFailureType`,
+which the plugin registers with Doctrine, as it does the pickup point's type, section 8). It holds the kind, the status
+code and the message, e.g. `{"kind":"rejected","statusCode":422,"message":"…"}`. The plugin ships no migration: generate
+it with `bin/console doctrine:migrations:diff` as usual. On MySQL it is:
+
+```sql
+ALTER TABLE sylius_order ADD shipmondoFailure JSON DEFAULT NULL COMMENT '(DC2Type:setono_sylius_shipmondo_recorded_shipmondo_failure)';
+```
+
+An order has no failure recorded until an upload settles with one after the upgrade. A stored value the type can't
+read as a failure, e.g. one of a kind the plugin doesn't know, reads as none, so the order still loads. If your order
+entity maps the plugin's columns itself instead of through `OrderTrait`, map this one too, with that type.
+
+New translation keys in the `messages` domain: `setono_sylius_shipmondo.ui.last_upload`,
+`setono_sylius_shipmondo.ui.last_upload_next_step_failed`, `setono_sylius_shipmondo.ui.last_upload_next_step_pending`,
+`setono_sylius_shipmondo.ui.last_upload_next_step_unlinked`, `setono_sylius_shipmondo.ui.status_code` and
+`setono_sylius_shipmondo.ui.when`.
+
+Only if you extend or call the code involved:
+
+| 1.x | 2.x |
+|---|---|
+| | new `Model\OrderInterface::getShipmondoFailure(): ?Failure\RecordedShipmondoFailure`, which `OrderTrait` implements. Implement it if your order entity doesn't use the trait, and have your `setShipmondoState()` record the failure in the context |
+| | `ShipmondoFailure::trans()` explains the failure through `RecordedShipmondoFailure`, so a flash with a failure's message cuts it off at 1,000 characters too |
+
+New: `Failure\RecordedShipmondoFailure` (`of(ShipmondoFailure)`, translatable), `Doctrine\Type\RecordedShipmondoFailureType`
+and the `OrderWorkflow::CONTEXT_SHIPMONDO_FAILURE` constant. If you apply a transition of the `setono_sylius_shipmondo__order`
+workflow yourself after a failed call to Shipmondo, pass `RecordedShipmondoFailure::of(ShipmondoFailure::of($e))`
+under it, so the order page explains the state.
+
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
@@ -1197,4 +1261,5 @@ counting the shipping promotions in the shipping line, replacing only this shop'
 registering them at the channels' hostname on the command line, registering nothing at an endpoint Shipmondo
 can't reach, registering them right away instead of through the command bus, taking the authorized amount, the
 payment method and the payment gateway from the payments that paid the order, the time limits on the requests to
-Shipmondo, the `unlinked` Shipmondo state, retrying the upload of a failed order, and the sales order lookup.
+Shipmondo, the `unlinked` Shipmondo state, retrying the upload of a failed order, the sales order lookup, and recording
+and showing why an order's upload didn't go through.
