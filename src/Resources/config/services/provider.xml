@@ -17,7 +17,9 @@
         <service id="Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProviderInterface"
                  alias="Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProvider"/>
 
-        <service id="Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider"/>
+        <service id="Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider">
+            <argument>%setono_sylius_shipmondo.order_id_prefix%</argument>
+        </service>
 
         <service id="Setono\SyliusShipmondoPlugin\Provider\OrderIdProviderInterface"
                  alias="Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider"/>

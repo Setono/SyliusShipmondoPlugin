@@ -64,6 +64,8 @@ For most installations the required changes are:
   sidebar, keep the plugin's Shipmondo section (section 24)
 - note that the order page's Shipmondo section now shows why the order's latest upload didn't go through, and if your
   order entity doesn't use `OrderTrait`, implement `getShipmondoFailure()` (section 26)
+- if several shops share a Shipmondo account, give each its own order id prefix, while no order is unlinked or
+  uploading (section 27)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -1148,8 +1150,8 @@ recorded in [ADR 0003](docs/adr/0003-a-sales-order-lookup-settles-every-unlinked
   in a row.
 - **The lookup matches on the order id alone.** Another shop on the same Shipmondo account that numbers its orders the
   same way can have sales orders with the same order ids: an order then stays `unlinked` with several matches, or, when
-  its own sales order is gone, is linked to the other shop's. Prefixing a shop's order ids will avoid that
-  ([#71](https://github.com/Setono/SyliusShipmondoPlugin/issues/71)).
+  its own sales order is gone, is linked to the other shop's. Give each such shop an order id prefix of its own to
+  avoid that (section 27).
 - **Webhooks about a sales order that arrive while its order is `unlinked` are lost**, since no order is linked to it
   yet ([#76](https://github.com/Setono/SyliusShipmondoPlugin/issues/76)). That should be rare: a sales order is seldom
   shipped, or its payment captured, within minutes of its upload.
@@ -1182,8 +1184,8 @@ New: the `OrderWorkflow::TRANSITION_LINK` constant; `Provider\UnlinkedOrdersProv
 `Provider\UnlinkedOrdersProvider`, section 13), which finds the unlinked orders due a lookup
 (`UnlinkedOrdersProvider::LOOKUP_DELAY`); and `Provider\OrderIdProviderInterface` (a private alias of
 `Provider\OrderIdProvider`, which gives the order number), the one place the order id the plugin sends Shipmondo comes
-from, which the upload and the lookup both use. Decorate or replace it to send another order id, e.g. one with a prefix,
-but only while no order is `unlinked`: a lookup searches by the order id it gives now, so an unlinked order's lookup
+from, which the upload and the lookup both use. Decorate or replace it to send another order id (to put a prefix before
+the order number, set the `order_id_prefix` option instead, section 27), but only while no order is `unlinked`: a lookup searches by the order id it gives now, so an unlinked order's lookup
 would find no sales order, and the order would be uploaded a second time. `UploadOutcome::TemporaryFailure` now leaves an order `unlinked` when the call that creates the
 sales order failed. If your code relies on `unlinked` being final, or on `retry` leaving only `uploading_to_shipmondo`
 and `failed`, adjust it.
@@ -1249,6 +1251,42 @@ and the `OrderWorkflow::CONTEXT_SHIPMONDO_FAILURE` constant. If you apply a tran
 workflow yourself after a failed call to Shipmondo, pass `RecordedShipmondoFailure::of(ShipmondoFailure::of($e))`
 under it, so the order page explains the state.
 
+### 27. A shop can prefix the order ids it sends to Shipmondo
+
+A sales order's order id is the Sylius order number, and Sylius numbers every shop's orders the same way (`000000001`,
+`000000002`, …). So shops that share a Shipmondo account sent the same order ids: warehouse staff couldn't tell which
+shop a sales order came from, and a sales order lookup (section 25) could find another shop's sales order, then link
+the order to it, or delete it when the order was cancelled ([#71](https://github.com/Setono/SyliusShipmondoPlugin/issues/71)).
+
+The new `order_id_prefix` option goes before the order number in the order id the plugin sends Shipmondo. It is empty
+by default, so nothing changes unless you set it:
+
+```yaml
+# config/packages/setono_sylius_shipmondo.yaml
+setono_sylius_shipmondo:
+    order_id_prefix: 'WEB-' # the order 000001234 becomes the sales order WEB-000001234
+```
+
+- **Give every shop that shares a Shipmondo account its own.** The upload sends the prefixed order id, and a sales
+  order lookup searches by it and matches only the sales orders whose order id is exactly that, so it can't find
+  another shop's.
+- **It shows wherever Shipmondo shows or prints the order id**, which may reach customers.
+- **It applies only to the sales orders uploaded after it is set.** The sales orders uploaded before keep their order
+  ids, and their orders stay linked to them: webhooks find an order by its link to the sales order, never by its order
+  id.
+- **Don't set or change it while any order is `unlinked` or `uploading_to_shipmondo`.** A sales order lookup searches
+  by the order id the order gets now, not by the one its upload sent. So it would find no sales order, and the order
+  would be uploaded a second time. Change it between two upload runs, once the order grid's Shipmondo state filter
+  (section 24) finds no such order. The same holds for a decorator of `Provider\OrderIdProviderInterface` (section 25)
+  that changes the order id it gives. A decorator keeps working with the option: the plugin's `OrderIdProvider` gives
+  it the prefixed order id.
+
+Only if you extend or call the code involved:
+
+| 1.x | 2.x |
+|---|---|
+| | `Provider\OrderIdProvider::__construct(string $prefix = '')`, which the plugin passes the new `setono_sylius_shipmondo.order_id_prefix` parameter |
+
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
@@ -1261,5 +1299,5 @@ counting the shipping promotions in the shipping line, replacing only this shop'
 registering them at the channels' hostname on the command line, registering nothing at an endpoint Shipmondo
 can't reach, registering them right away instead of through the command bus, taking the authorized amount, the
 payment method and the payment gateway from the payments that paid the order, the time limits on the requests to
-Shipmondo, the `unlinked` Shipmondo state, retrying the upload of a failed order, the sales order lookup, and recording
-and showing why an order's upload didn't go through.
+Shipmondo, the `unlinked` Shipmondo state, retrying the upload of a failed order, the sales order lookup, recording
+and showing why an order's upload didn't go through, and the order id prefix.

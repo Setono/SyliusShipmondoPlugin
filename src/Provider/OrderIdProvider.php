@@ -7,12 +7,17 @@ namespace Setono\SyliusShipmondoPlugin\Provider;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 
 /**
- * Sends the order number as the order id
+ * Sends the order number as the order id, after the order id prefix (setono_sylius_shipmondo.order_id_prefix, none by
+ * default)
  */
 final class OrderIdProvider implements OrderIdProviderInterface
 {
+    public function __construct(private readonly string $prefix = '')
+    {
+    }
+
     public function getOrderId(OrderInterface $order): string
     {
-        return (string) $order->getNumber();
+        return $this->prefix . $order->getNumber();
     }
 }

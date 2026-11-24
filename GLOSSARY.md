@@ -14,6 +14,9 @@ _Avoid_: Shipmondo order
 Creating the sales order for a Sylius order in Shipmondo.
 _Avoid_: Dispatch, sync, export, push
 
+**Order id**:
+The id a sales order carries of its Sylius order: the order number, after the store's order id prefix, if it has one. Stores on the same Shipmondo account number their orders the same way, so each gives its order ids a prefix of its own. A store's order id prefix applies only to the sales orders uploaded after it is set.
+
 **Upload run**:
 One pass of the order upload, which looks up the sales orders of the unlinked orders, then uploads every pending order that qualifies for upload, and last registers the webhooks again if the store's webhooks in Shipmondo no longer match. It stops early, and the remaining orders wait for the next run, after a sales order lookup or an upload that hits a credentials failure, after an upload that is rate limited, after three temporary failures in a row, lookups and uploads alike, with no call Shipmondo answered between them, or after three uploads in a row that make the order failed, with no upload Shipmondo accepted between them. The lookups alone stop after a lookup that is rate limited, or after three lookups in a row that fail in any other way: the pending orders are still uploaded. Three unread successes in a row, with no uploaded order between them, don't stop the run, since Shipmondo has the sales orders, but the run reports them as a problem, as it reports stopping early.
 _Avoid_: Sync, batch

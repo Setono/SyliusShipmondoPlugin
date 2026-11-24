@@ -17,7 +17,7 @@ The run waits ten minutes because Shipmondo lists a new sales order only after a
 ## Consequences
 
 - An order whose create call failed temporarily is uploaded again at least ten minutes later, not in the next upload run, and a Sylius cancel of it waits for the lookup.
-- The lookup matches on the order id alone. Another shop on the same Shipmondo account that numbers its orders the same way can be matched; a shop prefix for order ids (#71) avoids that.
+- The lookup matches on the order id alone. Another shop on the same Shipmondo account that numbers its orders the same way can be matched; giving each shop its own order id prefix (the `order_id_prefix` option, #71) avoids that.
 - An order with several matches stays unlinked for good, and Shipmondo's webhooks don't reach it: an admin ships and cancels it by hand.
 - Every upload run looks up an order with several matches again. Shipmondo allows about 100 sales order searches a minute, so enough of them could rate limit the lookups. A rate limited lookup therefore stops only the lookups, not the uploads, and the lookups go newest first, so such orders can't keep the others from being uploaded or looked up.
 - Shipmondo's webhooks about a sales order that arrive while its order is unlinked are lost, until #76.
