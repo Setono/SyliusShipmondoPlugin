@@ -21,7 +21,7 @@ For most installations the required changes are:
 - if you override the order grid's Shipmondo state label templates, rename `dispatching.html.twig` and
   `dispatched.html.twig` (section 7)
 - run a database migration, which adds a comment to the shipment's pickup point column (section 8), a column for
-  when the order's Shipmondo state last changed (section 25), and three for the Shipmondo failure that put the order in
+  when the order's Shipmondo state last changed (section 25), and one for the Shipmondo failure that put the order in
   its Shipmondo state (section 26)
 - note that a shipping method with pickup point delivery now needs a pickup point in checkout, and don't let a
   channel skip the shipping step when its only shipping method has pickup point delivery (section 8)
@@ -1218,17 +1218,19 @@ without reading the logs ([#70](https://github.com/Setono/SyliusShipmondoPlugin/
   unchanged. If you override `@SetonoSyliusShipmondoPlugin/admin/order/show/_shipmondo.html.twig`, add the failure
   (`order.shipmondoFailure`) to yours.
 
-**Run a database migration.** The failure is mapped in `OrderTrait` to three new nullable columns: `shipmondoFailureKind`,
-`shipmondoFailureStatusCode` and `shipmondoFailureMessage`. The plugin ships no migration: generate it with
-`bin/console doctrine:migrations:diff` as usual. On MySQL it is:
+**Run a database migration.** The failure is mapped in `OrderTrait` to one new nullable JSON column, `shipmondoFailure`,
+with the new Doctrine type `setono_sylius_shipmondo_recorded_shipmondo_failure` (`Doctrine\Type\RecordedShipmondoFailureType`,
+which the plugin registers with Doctrine, as it does the pickup point's type, section 8). It holds the kind, the status
+code and the message, e.g. `{"kind":"rejected","statusCode":422,"message":"…"}`. The plugin ships no migration: generate
+it with `bin/console doctrine:migrations:diff` as usual. On MySQL it is:
 
 ```sql
-ALTER TABLE sylius_order ADD shipmondoFailureKind VARCHAR(255) DEFAULT NULL, ADD shipmondoFailureStatusCode INT DEFAULT NULL, ADD shipmondoFailureMessage LONGTEXT DEFAULT NULL;
+ALTER TABLE sylius_order ADD shipmondoFailure JSON DEFAULT NULL COMMENT '(DC2Type:setono_sylius_shipmondo_recorded_shipmondo_failure)';
 ```
 
-An order has no failure recorded until an upload settles with one after the upgrade, and an order whose recorded kind
-the plugin doesn't know reads as having none. If your order entity maps the plugin's columns itself instead of through
-`OrderTrait`, map these too.
+An order has no failure recorded until an upload settles with one after the upgrade. A stored value the type can't
+read as a failure, e.g. one of a kind the plugin doesn't know, reads as none, so the order still loads. If your order
+entity maps the plugin's columns itself instead of through `OrderTrait`, map this one too, with that type.
 
 New translation keys in the `messages` domain: `setono_sylius_shipmondo.ui.last_upload`,
 `setono_sylius_shipmondo.ui.last_upload_next_step_failed`, `setono_sylius_shipmondo.ui.last_upload_next_step_pending`,
@@ -1242,8 +1244,8 @@ Only if you extend or call the code involved:
 | | new `Model\OrderInterface::getShipmondoFailure(): ?Failure\RecordedShipmondoFailure`, which `OrderTrait` implements. Implement it if your order entity doesn't use the trait, and have your `setShipmondoState()` record the failure in the context |
 | | `ShipmondoFailure::trans()` explains the failure through `RecordedShipmondoFailure`, so a flash with a failure's message cuts it off at 1,000 characters too |
 
-New: `Failure\RecordedShipmondoFailure` (`of(ShipmondoFailure)`, translatable) and the
-`OrderWorkflow::CONTEXT_SHIPMONDO_FAILURE` constant. If you apply a transition of the `setono_sylius_shipmondo__order`
+New: `Failure\RecordedShipmondoFailure` (`of(ShipmondoFailure)`, translatable), `Doctrine\Type\RecordedShipmondoFailureType`
+and the `OrderWorkflow::CONTEXT_SHIPMONDO_FAILURE` constant. If you apply a transition of the `setono_sylius_shipmondo__order`
 workflow yourself after a failed call to Shipmondo, pass `RecordedShipmondoFailure::of(ShipmondoFailure::of($e))`
 under it, so the order page explains the state.
 

@@ -149,6 +149,9 @@ final class UploadFailureTest extends FunctionalTestCase
     private function shipmondoSection(OrderInterface $order): Crawler
     {
         $this->loginAs($this->fixtures->admin(), 'admin');
+        // the kernel isn't rebooted between requests, so the page reads the order from the database, as stored, and not
+        // the one the upload run left in memory
+        $this->entityManager()->clear();
 
         $crawler = $this->browser->request('GET', sprintf('/admin/orders/%d', self::id($order)));
         self::assertResponseIsSuccessful();

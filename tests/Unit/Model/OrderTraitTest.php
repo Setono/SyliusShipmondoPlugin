@@ -193,21 +193,4 @@ final class OrderTraitTest extends TestCase
         self::assertSame(OrderInterface::SHIPMONDO_STATE_PENDING, $order->getShipmondoState());
         self::assertNull($order->getShipmondoStateChangedAt(), 'A refused change of the Shipmondo state is no change');
     }
-
-    /**
-     * E.g. after a downgrade of the plugin, so the order page still shows the order
-     *
-     * @test
-     */
-    public function it_reads_a_shipmondo_failure_of_a_kind_it_does_not_know_as_none(): void
-    {
-        $order = new Order();
-        $order->setShipmondoState(OrderInterface::SHIPMONDO_STATE_FAILED, [
-            OrderWorkflow::CONTEXT_SHIPMONDO_FAILURE => new RecordedShipmondoFailure(ShipmondoFailureKind::Rejected, 422, 'Invalid'),
-        ]);
-        // as the database could hold it
-        (new \ReflectionProperty($order, 'shipmondoFailureKind'))->setValue($order, 'conflict');
-
-        self::assertNull($order->getShipmondoFailure());
-    }
 }

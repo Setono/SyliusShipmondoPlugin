@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Setono\SyliusShipmondoPlugin\Model;
 
 use Doctrine\ORM\Mapping as ORM;
+use Setono\SyliusShipmondoPlugin\Doctrine\Type\RecordedShipmondoFailureType;
 use Setono\SyliusShipmondoPlugin\Failure\RecordedShipmondoFailure;
-use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailureKind;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 
 trait OrderTrait
@@ -36,22 +36,9 @@ trait OrderTrait
     #[ORM\Column(type: 'datetime_immutable', nullable: true)]
     protected ?\DateTimeImmutable $shipmondoStateChangedAt = null;
 
-    /**
-     * The kind of the Shipmondo failure that put the order in its Shipmondo state ({@see ShipmondoFailureKind}), or
-     * null when none did
-     *
-     * @ORM\Column(type="string", nullable=true)
-     */
-    #[ORM\Column(type: 'string', nullable: true)]
-    protected ?string $shipmondoFailureKind = null;
-
-    /** @ORM\Column(type="integer", nullable=true) */
-    #[ORM\Column(type: 'integer', nullable: true)]
-    protected ?int $shipmondoFailureStatusCode = null;
-
-    /** @ORM\Column(type="text", nullable=true) */
-    #[ORM\Column(type: 'text', nullable: true)]
-    protected ?string $shipmondoFailureMessage = null;
+    /** @ORM\Column(type="setono_sylius_shipmondo_recorded_shipmondo_failure", nullable=true) */
+    #[ORM\Column(type: RecordedShipmondoFailureType::NAME, nullable: true)]
+    protected ?RecordedShipmondoFailure $shipmondoFailure = null;
 
     public function getVersion(): int
     {
@@ -96,9 +83,7 @@ trait OrderTrait
         $this->shipmondoState = $shipmondoState;
         $this->shipmondoId = $shipmondoId;
         $this->shipmondoStateChangedAt = new \DateTimeImmutable();
-        $this->shipmondoFailureKind = $failure?->kind->value;
-        $this->shipmondoFailureStatusCode = $failure?->statusCode;
-        $this->shipmondoFailureMessage = $failure?->message;
+        $this->shipmondoFailure = $failure;
     }
 
     public function getShipmondoId(): ?int
@@ -113,9 +98,6 @@ trait OrderTrait
 
     public function getShipmondoFailure(): ?RecordedShipmondoFailure
     {
-        // none was recorded, or one of a kind this version of the plugin doesn't know
-        $kind = ShipmondoFailureKind::tryFrom($this->shipmondoFailureKind ?? '');
-
-        return null === $kind ? null : new RecordedShipmondoFailure($kind, $this->shipmondoFailureStatusCode, $this->shipmondoFailureMessage ?? '');
+        return $this->shipmondoFailure;
     }
 }
