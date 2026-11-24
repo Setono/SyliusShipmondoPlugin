@@ -64,6 +64,31 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
         $this->assertContainerBuilderHasParameter('setono_sylius_shipmondo.api.sandbox', '%env(bool:SHIPMONDO_SANDBOX)%');
         $this->assertContainerBuilderHasParameter('setono_sylius_shipmondo.webhooks.key', '%env(SHIPMONDO_WEBHOOKS_KEY)%');
         $this->assertContainerBuilderHasParameter('setono_sylius_shipmondo.webhooks.name_prefix', 'Setono Sylius Shipmondo Plugin');
+        $this->assertContainerBuilderHasParameter('setono_sylius_shipmondo.order_id_prefix', '');
+    }
+
+    /**
+     * @test
+     */
+    public function the_order_id_provider_puts_the_configured_order_id_prefix_before_the_order_number(): void
+    {
+        $this->load(['order_id_prefix' => 'WEB-']);
+
+        $this->assertContainerBuilderHasParameter('setono_sylius_shipmondo.order_id_prefix', 'WEB-');
+        $this->assertContainerBuilderHasServiceDefinitionWithArgument(OrderIdProvider::class, 0, '%setono_sylius_shipmondo.order_id_prefix%');
+    }
+
+    /**
+     * e.g. `order_id_prefix: ~`, which would otherwise make creating the order id provider fail
+     *
+     * @test
+     */
+    public function an_order_id_prefix_of_null_is_no_prefix(): void
+    {
+        $this->load(['order_id_prefix' => null]);
+
+        // the parameter assertion compares loosely, and null equals ''
+        self::assertSame('', $this->container->getParameter('setono_sylius_shipmondo.order_id_prefix'));
     }
 
     /**

@@ -59,6 +59,23 @@ If several shops share a Shipmondo account, give each its own key: the webhooks 
 and registering the webhooks in one shop replaces only that shop's.
 Set `SHIPMONDO_SANDBOX=true` to use the Shipmondo sandbox instead of the production API.
 
+### Several shops on one Shipmondo account
+
+A sales order's order id is the Sylius order number, and Sylius numbers every shop's orders the same way. If several
+shops share a Shipmondo account, give each its own order id prefix, so their sales orders can be told apart, and the
+plugin can't mistake another shop's sales order for one of its own when it looks a sales order up by its order id:
+
+```yaml
+# config/packages/setono_sylius_shipmondo.yaml
+setono_sylius_shipmondo:
+    order_id_prefix: 'WEB-' # the order 000001234 becomes the sales order WEB-000001234
+```
+
+The prefix shows wherever Shipmondo shows or prints the order id, which may reach customers. It applies only to the
+sales orders uploaded after it is set. Don't set or change it while any order's Shipmondo state is `unlinked` or
+`uploading_to_shipmondo` (filter the order grid by Shipmondo state to check): the plugin would look their sales orders up
+by the new order id, find none, and upload those orders a second time.
+
 ### Override template
 
 The shipping method form has to be overridden to be able to edit the `pickupPointDelivery` and `carrierCode` properties on the shipping methods.

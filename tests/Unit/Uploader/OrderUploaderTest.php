@@ -57,7 +57,6 @@ use Symfony\Component\Messenger\Middleware\StackInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Workflow\Event\GuardEvent;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
-use Tests\Setono\SyliusShipmondoPlugin\Support\PrefixedOrderIdProvider;
 use Tests\Setono\SyliusShipmondoPlugin\Support\SalesOrders;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\Orders;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\RecordingLogger;
@@ -1008,13 +1007,14 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
-     * A shop that changes its order ids, e.g. with a prefix, has its sales orders found by the order id it sent
+     * A shop that changes its order ids, e.g. with the order id prefix, has its sales orders found by the exact order id it
+     * sent, not by another shop's sales order with the order number alone
      *
      * @test
      */
     public function it_looks_up_the_sales_order_by_the_order_id_the_order_id_provider_gives(): void
     {
-        $this->orderIdProvider = new PrefixedOrderIdProvider();
+        $this->orderIdProvider = new OrderIdProvider('WEB-');
         $order = $this->unlinkedOrder(1);
         $this->respondWithSalesOrders([1001 => '#001', 1002 => 'WEB-#001']);
 

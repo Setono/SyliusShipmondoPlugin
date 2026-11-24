@@ -21,6 +21,11 @@ final class Configuration implements ConfigurationInterface
         $rootNode
             ->addDefaultsIfNotSet()
             ->children()
+                ->scalarNode('order_id_prefix')
+                    ->info('Put before the order number in the order id sent to Shipmondo, e.g. with WEB- the order 000001234 becomes the sales order WEB-000001234. Give each shop that shares a Shipmondo account its own. Don\'t set or change it while any order is unlinked or uploading, or those orders are uploaded a second time')
+                    ->defaultValue('')
+                    ->treatNullLike('')
+                ->end()
                 ->arrayNode('api')
                     ->addDefaultsIfNotSet()
                     ->children()

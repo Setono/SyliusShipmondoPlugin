@@ -11,7 +11,6 @@ use Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider;
 use Sylius\Component\Core\Model\Address;
 use Sylius\Component\Core\Model\Customer;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
-use Tests\Setono\SyliusShipmondoPlugin\Support\PrefixedOrderIdProvider;
 
 final class SalesOrderDataMapperTest extends TestCase
 {
@@ -101,7 +100,7 @@ final class SalesOrderDataMapperTest extends TestCase
     }
 
     /**
-     * A shop changes the order id it sends Shipmondo, e.g. to prefix it, by decorating or replacing the order id provider
+     * The order id comes from the order id provider, as the sales order lookup's does, e.g. with the shop's order id prefix
      *
      * @test
      */
@@ -111,7 +110,7 @@ final class SalesOrderDataMapperTest extends TestCase
         $order->setNumber('000000123');
         $salesOrder = new SalesOrderRequest();
 
-        (new SalesOrderDataMapper(new PrefixedOrderIdProvider()))->map($order, $salesOrder);
+        (new SalesOrderDataMapper(new OrderIdProvider('WEB-')))->map($order, $salesOrder);
 
         self::assertSame('WEB-000000123', $salesOrder->orderId);
     }
