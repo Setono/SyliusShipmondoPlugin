@@ -21,6 +21,8 @@ final class OrderTraitTest extends TestCase
         self::assertSame(1, $order->getVersion());
         self::assertSame(OrderInterface::SHIPMONDO_STATE_PENDING, $order->getShipmondoState());
         self::assertNull($order->getShipmondoId());
+        // a new order hasn't changed its Shipmondo state yet
+        self::assertNull($order->getShipmondoStateChangedAt());
     }
 
     /**
@@ -94,6 +96,7 @@ final class OrderTraitTest extends TestCase
         }
 
         self::assertSame([OrderInterface::SHIPMONDO_STATE_PENDING, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertNull($order->getShipmondoStateChangedAt(), 'A refused change of the Shipmondo state is no change');
     }
 
     /**

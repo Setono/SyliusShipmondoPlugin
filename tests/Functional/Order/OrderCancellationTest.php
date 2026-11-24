@@ -148,7 +148,7 @@ final class OrderCancellationTest extends FunctionalTestCase
         self::assertSame([], $this->shipmondo->requests());
 
         $this->browser->followRedirect();
-        self::assertSelectorTextContains('.message.info', 'The order was cancelled. If Shipmondo has it, it will be deleted in Shipmondo once an upload run finds it there, at least 10 minutes from now. If it must not be packed before then, or it still shows as Unlinked later, cancel it in Shipmondo.');
+        self::assertSelectorTextContains('.message.info', 'The order was cancelled. If Shipmondo has it, it will be deleted in Shipmondo once an upload run finds it there, at least 10 minutes after its upload. If it must not be packed before then, or it still shows as Unlinked later, cancel it in Shipmondo.');
     }
 
     /**

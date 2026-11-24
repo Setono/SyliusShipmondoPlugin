@@ -30,6 +30,10 @@ trait OrderTrait
     #[ORM\Column(type: 'integer', nullable: true)]
     protected ?int $shipmondoId = null;
 
+    /** @ORM\Column(type="datetime_immutable", nullable=true) */
+    #[ORM\Column(type: 'datetime_immutable', nullable: true)]
+    protected ?\DateTimeImmutable $shipmondoStateChangedAt = null;
+
     public function getVersion(): int
     {
         return $this->version;
@@ -62,10 +66,16 @@ trait OrderTrait
 
         $this->shipmondoState = $shipmondoState;
         $this->shipmondoId = $shipmondoId;
+        $this->shipmondoStateChangedAt = new \DateTimeImmutable();
     }
 
     public function getShipmondoId(): ?int
     {
         return $this->shipmondoId;
+    }
+
+    public function getShipmondoStateChangedAt(): ?\DateTimeImmutable
+    {
+        return $this->shipmondoStateChangedAt;
     }
 }

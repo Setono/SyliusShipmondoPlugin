@@ -22,7 +22,8 @@ final class SalesOrderLookupTest extends FunctionalTestCase
     private const COMMAND = 'setono:sylius-shipmondo:upload-orders';
 
     /**
-     * Shipmondo lists a sales order it just created only after a short delay
+     * Shipmondo lists a sales order it just created only after a short delay. The wait counts from when the order
+     * became unlinked, so a later change to the order, e.g. a payment, doesn't put its lookup off
      *
      * @test
      */
@@ -30,7 +31,9 @@ final class SalesOrderLookupTest extends FunctionalTestCase
     {
         $customer = $this->fixtures->createCustomer();
         $due = $this->unlinkedOrder($customer, '-10 minutes');
+        $this->updatedAt($due, '-1 minute');
         $notDue = $this->unlinkedOrder($customer, '-9 minutes');
+        $this->updatedAt($notDue, '-1 day');
 
         $this->respondWithSalesOrders([1001 => (string) $due->getNumber()]);
 
@@ -46,6 +49,61 @@ final class SalesOrderLookupTest extends FunctionalTestCase
         self::assertSame([OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, 1001], [$dueRow['shipmondo_state'], $dueRow['shipmondo_id']]);
         $notDueRow = $this->orderRow(self::id($notDue));
         self::assertSame([OrderInterface::SHIPMONDO_STATE_UNLINKED, null], [$notDueRow['shipmondo_state'], $notDueRow['shipmondo_id']]);
+    }
+
+    /**
+     * An order whose Shipmondo state hasn't changed since the plugin records when it does, has been unlinked for longer
+     *
+     * @test
+     */
+    public function it_looks_up_the_sales_order_of_an_order_unlinked_before_the_time_was_recorded(): void
+    {
+        $order = $this->unlinkedOrder($this->fixtures->createCustomer());
+        $this->becameUnlinkedBeforeTheTimeWasRecorded($order);
+        $this->updatedAt($order, '-1 minute');
+        $this->respondWithSalesOrders([1001 => (string) $order->getNumber()]);
+
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+
+        self::assertSame(1001, $this->orderRow(self::id($order))['shipmondo_id']);
+    }
+
+    /**
+     * Orders that stay unlinked, e.g. with several sales orders, are looked up in every run, so the most recently
+     * unlinked go first: when a rate limit stops the lookups, the older ones can't hold them back
+     *
+     * @test
+     */
+    public function it_looks_up_the_most_recently_unlinked_orders_first(): void
+    {
+        $customer = $this->fixtures->createCustomer();
+        // one time for both, so the one created last, with the higher id, goes first
+        $twentyMinutesAgo = (new \DateTimeImmutable('-20 minutes'))->format('Y-m-d H:i:s');
+        $unlinkedLongest = $this->unlinkedOrder($customer, '-30 minutes');
+        $this->updatedAt($unlinkedLongest, '-1 minute');
+        $unlinkedRecently = $this->unlinkedOrder($customer, $twentyMinutesAgo);
+        $this->updatedAt($unlinkedRecently, '-1 day');
+        $unlinkedRecentlyAndCreatedLast = $this->unlinkedOrder($customer, $twentyMinutesAgo);
+        $this->updatedAt($unlinkedRecentlyAndCreatedLast, '-2 days');
+
+        // two sales orders for each, so each stays unlinked
+        $salesOrders = [];
+        foreach ([$unlinkedLongest, $unlinkedRecently, $unlinkedRecentlyAndCreatedLast] as $i => $order) {
+            $salesOrders[1001 + 2 * $i] = (string) $order->getNumber();
+            $salesOrders[1002 + 2 * $i] = (string) $order->getNumber();
+        }
+        $this->respondWithSalesOrders($salesOrders);
+
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+
+        self::assertSame(
+            [$unlinkedRecentlyAndCreatedLast->getNumber(), $unlinkedRecently->getNumber(), $unlinkedLongest->getNumber()],
+            array_map(static function (RequestInterface $request): mixed {
+                parse_str($request->getUri()->getQuery(), $query);
+
+                return $query['order_id'] ?? null;
+            }, $this->shipmondo->requests('GET', 'sales_orders')),
+        );
     }
 
     /**
@@ -104,8 +162,13 @@ final class SalesOrderLookupTest extends FunctionalTestCase
         $row = $this->orderRow(self::id($order));
         self::assertSame([OrderInterface::SHIPMONDO_STATE_UNLINKED, null], [$row['shipmondo_state'], $row['shipmondo_id']]);
 
-        // ten minutes later, Shipmondo lists the sales order it created
-        $this->updatedAt($order, '-10 minutes');
+        // Shipmondo may not list the sales order it just created yet, so the next run doesn't look it up
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+
+        self::assertSame([], $this->shipmondo->requests('GET', 'sales_orders'));
+
+        // ten minutes later, Shipmondo lists it
+        $this->becameUnlinked($order, '-10 minutes');
         $this->respondWithSalesOrders([1001 => (string) $order->getNumber()]);
 
         $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
@@ -117,7 +180,7 @@ final class SalesOrderLookupTest extends FunctionalTestCase
 
     /**
      * The cancellation left the order to its sales order lookup, since which sales order Shipmondo may have for it was
-     * unknown
+     * unknown. The cancel doesn't put the lookup off: it is due ten minutes after the order became unlinked
      *
      * @test
      *
@@ -127,9 +190,9 @@ final class SalesOrderLookupTest extends FunctionalTestCase
      */
     public function it_settles_an_unlinked_order_that_is_cancelled_in_sylius(\Closure $respond, string $state): void
     {
-        $order = $this->unlinkedOrder($this->fixtures->createCustomer());
+        $order = $this->unlinkedOrder($this->fixtures->createCustomer(), '-10 minutes');
         $this->cancel($order);
-        $this->updatedAt($order, '-10 minutes');
+        self::assertGreaterThan(new \DateTimeImmutable('-1 minute'), $this->updatedAtOf($order), 'The cancel changed the order just now');
         $respond($this, (string) $order->getNumber());
 
         $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
@@ -221,7 +284,7 @@ final class SalesOrderLookupTest extends FunctionalTestCase
     }
 
     /**
-     * A placed and paid order whose upload made it unlinked, the given time ago
+     * A placed and paid order whose upload made it unlinked at the given time, e.g. '-10 minutes'
      */
     private function unlinkedOrder(CustomerInterface $customer, string $since = '-10 minutes'): OrderInterface
     {
@@ -229,19 +292,49 @@ final class SalesOrderLookupTest extends FunctionalTestCase
         $order->setShipmondoState(OrderInterface::SHIPMONDO_STATE_UNLINKED);
         $this->entityManager()->flush();
 
-        $this->updatedAt($order, $since);
+        $this->becameUnlinked($order, $since);
 
         return $order;
     }
 
     /**
-     * Moves the time the order was last changed, which tells how long it has been unlinked
+     * Moves the time the order's Shipmondo state last changed, which tells how long it has been unlinked
      */
-    private function updatedAt(OrderInterface $order, string $modifier): void
+    private function becameUnlinked(OrderInterface $order, string $time): void
+    {
+        $this->writeTime($order, 'shipmondoStateChangedAt', $time);
+    }
+
+    /**
+     * Clears the time the order's Shipmondo state last changed, as for an order whose Shipmondo state hasn't changed
+     * since the plugin records that time
+     */
+    private function becameUnlinkedBeforeTheTimeWasRecorded(OrderInterface $order): void
+    {
+        $this->writeTime($order, 'shipmondoStateChangedAt', null);
+    }
+
+    /**
+     * Moves the time the order was last changed, which doesn't tell how long it has been unlinked
+     */
+    private function updatedAt(OrderInterface $order, string $time): void
+    {
+        $this->writeTime($order, 'updated_at', $time);
+    }
+
+    private function updatedAtOf(OrderInterface $order): \DateTimeImmutable
+    {
+        $updatedAt = $this->database()->fetchOne('SELECT updated_at FROM sylius_order WHERE id = ?', [self::id($order)]);
+        self::assertIsString($updatedAt);
+
+        return new \DateTimeImmutable($updatedAt);
+    }
+
+    private function writeTime(OrderInterface $order, string $column, ?string $time): void
     {
         $this->connection()->executeStatement(
-            'UPDATE sylius_order SET updated_at = ? WHERE id = ?',
-            [(new \DateTimeImmutable($modifier))->format('Y-m-d H:i:s'), self::id($order)],
+            sprintf('UPDATE sylius_order SET %s = ? WHERE id = ?', $column),
+            [null === $time ? null : (new \DateTimeImmutable($time))->format('Y-m-d H:i:s'), self::id($order)],
         );
         // an upload run detaches the orders it loaded
         if ($this->entityManager()->contains($order)) {

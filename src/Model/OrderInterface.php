@@ -32,7 +32,8 @@ interface OrderInterface extends BaseOrderInterface, VersionedInterface
      * Called by the order workflow's marking store, with the context of the transition being applied. The Shipmondo
      * state owns the link to the sales order: entering uploaded links the order to the sales order whose id the
      * context holds under {@see \Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow::CONTEXT_SALES_ORDER_ID}, and
-     * entering any other state unlinks it
+     * entering any other state unlinks it. It also records when the Shipmondo state changed
+     * ({@see getShipmondoStateChangedAt()})
      *
      * @param array<array-key, mixed> $context
      *
@@ -44,4 +45,11 @@ interface OrderInterface extends BaseOrderInterface, VersionedInterface
      * Returns the id of the sales order the order is linked to. Only an uploaded order is linked to a sales order
      */
     public function getShipmondoId(): ?int;
+
+    /**
+     * Returns when the Shipmondo state last changed, i.e. when the order entered the state it is in: the time of the
+     * order workflow's latest transition. It is null until the Shipmondo state first changes: for a new order that is
+     * still pending, and for an order whose Shipmondo state hasn't changed since the plugin started recording it
+     */
+    public function getShipmondoStateChangedAt(): ?\DateTimeImmutable;
 }
