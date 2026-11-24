@@ -15,8 +15,8 @@ enum UploadOutcome: string
     case Uploaded = 'uploaded';
 
     /**
-     * Shipmondo answered the upload with a success, but its answer was cut off or couldn't be read: it most likely
-     * created the sales order, but which is unknown. The order is unlinked
+     * Shipmondo answered the upload with a success, but its answer was cut off or couldn't be read: it created the sales
+     * order, but which is unknown. The order is unlinked, until a sales order lookup settles it
      */
     case UnreadSuccess = 'unread_success';
 
@@ -43,7 +43,9 @@ enum UploadOutcome: string
     case RateLimited = 'rate_limited';
 
     /**
-     * A failure expected to pass, such as a Shipmondo server error or a network problem. The order goes back to pending
+     * A failure expected to pass, such as a Shipmondo server error or a network problem. When the call that creates the
+     * sales order failed so, Shipmondo may have created it before the failure, so the order is unlinked, until a sales
+     * order lookup settles it. When a read before it failed, e.g. of the payment gateways, the order goes back to pending
      */
     case TemporaryFailure = 'temporary_failure';
 

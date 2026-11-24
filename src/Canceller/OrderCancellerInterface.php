@@ -13,7 +13,8 @@ interface OrderCancellerInterface
      * cancelled right away. An uploaded order's sales order is deleted through the DeleteOrder command, which makes the
      * order cancelled once the sales order is gone; the command is dispatched once the command being handled (if any)
      * has finished, so a failure to send it can't undo that command. An order in uploading is left to its upload, which
-     * makes it cancelled once the upload is settled.
+     * makes it cancelled once the upload is settled. An unlinked order is left to the next sales order lookup, which
+     * deletes its sales order, or makes it cancelled if it finds none.
      */
     public function cancel(OrderInterface $order): Cancellation;
 }

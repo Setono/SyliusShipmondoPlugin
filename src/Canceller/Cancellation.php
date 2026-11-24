@@ -36,8 +36,9 @@ enum Cancellation
     case LeftToUpload;
 
     /**
-     * The order is unlinked: Shipmondo most likely has a sales order for it, but which is unknown, so it can't be
-     * deleted, and the order stays unlinked. Its sales order has to be cancelled in Shipmondo by hand
+     * The order is unlinked: Shipmondo may have a sales order for it, but which is unknown, so it can't be deleted yet,
+     * and the order stays unlinked. The next sales order lookup deletes its sales order, or makes the order cancelled
+     * if it finds none
      */
     case LeftUnlinked;
 

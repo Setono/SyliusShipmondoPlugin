@@ -4,6 +4,8 @@
     <services>
         <service id="Setono\SyliusShipmondoPlugin\Uploader\OrderUploader">
             <argument type="service" id="Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface"/>
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProviderInterface"/>
+            <argument type="service" id="Setono\SyliusShipmondoPlugin\Provider\OrderIdProviderInterface"/>
             <argument type="service" id="setono_sylius_shipmondo.command_bus"/>
             <argument type="service" id="state_machine.setono_sylius_shipmondo__order"/>
             <argument type="service" id="Setono\Shipmondo\Client\Client"/>

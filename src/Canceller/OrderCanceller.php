@@ -37,12 +37,12 @@ final class OrderCanceller implements OrderCancellerInterface
     }
 
     /**
-     * Shipmondo most likely has a sales order for the order, but which is unknown, so it can't be deleted, and the
-     * order can't become cancelled: someone has to cancel the sales order in Shipmondo
+     * Shipmondo may have a sales order for the order, but which is unknown, so it can't be deleted yet, and the order
+     * can't become cancelled: the next sales order lookup (the upload run's) settles that
      */
     private function leaveUnlinked(OrderInterface $order): Cancellation
     {
-        $this->logger->error('The order {order} was cancelled, but it is unlinked: Shipmondo most likely has a sales order for it, but which is unknown, so it can\'t be deleted. Find the sales order in Shipmondo and cancel it there', [
+        $this->logger->info('The order {order} was cancelled while it is unlinked, so the next sales order lookup deletes its sales order, or makes the order cancelled if it finds none', [
             'order' => $order->getNumber(),
         ]);
 

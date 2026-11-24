@@ -47,7 +47,7 @@ final class UploadOrdersCommandTest extends TestCase
         self::assertSame(Command::FAILURE, $commandTester->execute([]));
 
         $display = (string) preg_replace('/\s+/', ' ', $commandTester->getDisplay());
-        self::assertStringContainsString('[ERROR] ' . $reason . ' The remaining orders stay pending for the next run.', $display);
+        self::assertStringContainsString('[ERROR] ' . $reason . ' The remaining orders wait for the next run.', $display);
     }
 
     /**
@@ -61,7 +61,7 @@ final class UploadOrdersCommandTest extends TestCase
         ];
         yield 'rate limited' => [
             UploadOutcome::RateLimited,
-            'The upload run stopped, because Shipmondo rate limited it.',
+            'Shipmondo rate limited the upload run, so it did not get through every order.',
         ];
         yield 'three rejected uploads in a row' => [
             UploadOutcome::Rejected,

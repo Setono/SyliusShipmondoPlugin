@@ -16,8 +16,9 @@ interface OrderInterface extends BaseOrderInterface, VersionedInterface
     public const SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO = 'uploaded_to_shipmondo';
 
     /**
-     * Shipmondo most likely has a sales order for the order, but the order isn't linked to it: Shipmondo answered its
-     * upload with a success that was cut off or couldn't be read, so which sales order it created is unknown
+     * Shipmondo may have a sales order for the order, but the order isn't linked to it: Shipmondo answered the call that
+     * creates it with a success that was cut off or couldn't be read, or the call failed temporarily, so whether, and
+     * which, sales order it created is unknown. The upload run's sales order lookup settles it
      */
     public const SHIPMONDO_STATE_UNLINKED = 'unlinked';
 

@@ -79,9 +79,18 @@ final class UploadOrderTest extends FunctionalTestCase
         yield 'credentials failure (401)' => [$answer(401), UploadOutcome::CredentialsFailure, OrderInterface::SHIPMONDO_STATE_PENDING];
         yield 'credentials failure (403)' => [$answer(403), UploadOutcome::CredentialsFailure, OrderInterface::SHIPMONDO_STATE_PENDING];
         yield 'rate-limited upload (429)' => [$answer(429), UploadOutcome::RateLimited, OrderInterface::SHIPMONDO_STATE_PENDING];
-        yield 'temporary failure (500)' => [$answer(500), UploadOutcome::TemporaryFailure, OrderInterface::SHIPMONDO_STATE_PENDING];
+        // Shipmondo may have created the sales order before the failure, so a sales order lookup settles the order later
+        yield 'temporary failure (500)' => [$answer(500), UploadOutcome::TemporaryFailure, OrderInterface::SHIPMONDO_STATE_UNLINKED];
         yield 'temporary failure (network)' => [
             static fn (self $test): mixed => $test->shipmondo->failToConnect('POST', 'sales_orders'),
+            UploadOutcome::TemporaryFailure,
+            OrderInterface::SHIPMONDO_STATE_UNLINKED,
+        ];
+        yield 'temporary failure before the sales order is created (fetching the shipment templates)' => [
+            static function (self $test): void {
+                $test->fixtures->shippingMethod->setAllowedShipmentTemplates([664116]);
+                $test->shipmondo->failToConnect('GET', 'shipment_templates');
+            },
             UploadOutcome::TemporaryFailure,
             OrderInterface::SHIPMONDO_STATE_PENDING,
         ];

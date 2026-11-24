@@ -34,7 +34,10 @@ use Setono\SyliusShipmondoPlugin\Message\CommandHandler\DeleteOrderHandler;
 use Setono\SyliusShipmondoPlugin\Message\CommandHandler\UploadOrderHandler;
 use Setono\SyliusShipmondoPlugin\Message\Middleware\AbsorbDeleteOrderFailureMiddleware;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
+use Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider;
+use Setono\SyliusShipmondoPlugin\Provider\OrderIdProviderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface;
+use Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProviderInterface;
 use Setono\SyliusShipmondoPlugin\Uploader\OrderUploader;
 use Setono\SyliusShipmondoPlugin\Uploader\UploadOutcome;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
@@ -53,6 +56,8 @@ use Symfony\Component\Messenger\Middleware\StackInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Workflow\Event\GuardEvent;
 use Tests\Setono\SyliusShipmondoPlugin\Application\Model\Order;
+use Tests\Setono\SyliusShipmondoPlugin\Support\PrefixedOrderIdProvider;
+use Tests\Setono\SyliusShipmondoPlugin\Support\SalesOrders;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\Orders;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\RecordingLogger;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ScriptedHttpClient;
@@ -88,9 +93,11 @@ final class OrderUploaderTest extends TestCase
 
     private const RATE_LIMITED_MESSAGE = 'Shipmondo rate limited the upload of the order {order}, so the order goes back to pending';
 
-    private const TEMPORARY_FAILURE_MESSAGE = 'The upload of the order {order} failed temporarily, so the order goes back to pending';
+    private const TEMPORARY_FAILURE_MESSAGE = 'The upload of the order {order} failed temporarily before its sales order was created, so the order goes back to pending';
 
-    private const UNREAD_SUCCESS_MESSAGE = 'Shipmondo answered the upload of the order {order} with a success that was cut off or could not be read, so Shipmondo most likely has a sales order for it, but which is unknown. The order is unlinked: find its sales order in Shipmondo';
+    private const MAY_HAVE_CREATED_MESSAGE = 'The call that creates the sales order of the order {order} failed temporarily, so Shipmondo may have created it before the failure. The order is unlinked until a sales order lookup settles it';
+
+    private const UNREAD_SUCCESS_MESSAGE = 'Shipmondo answered the upload of the order {order} with a success that was cut off or could not be read, so Shipmondo created a sales order for it, but which is unknown. The order is unlinked until a sales order lookup links it';
 
     private const UNEXPECTED_FAILURE_MESSAGE = 'The upload of the order {order} failed unexpectedly, so the order is failed';
 
@@ -117,9 +124,21 @@ final class OrderUploaderTest extends TestCase
     private array $orders = [];
 
     /**
+     * The orders the upload run finds unlinked and due a sales order lookup, in this order
+     *
+     * @var list<Order>
+     */
+    private array $unlinkedOrders = [];
+
+    /**
      * The command bus the upload run dispatches UploadOrder on. By default, a bus that handles it synchronously
      */
     private ?MessageBusInterface $commandBus = null;
+
+    /**
+     * Gives the order id the upload sent, and so the one a sales order lookup searches by
+     */
+    private OrderIdProviderInterface $orderIdProvider;
 
     /**
      * Whether the default command bus fails to handle DeleteOrder, as when its asynchronous transport is down
@@ -130,6 +149,7 @@ final class OrderUploaderTest extends TestCase
     {
         $this->shipmondo = new ScriptedHttpClient();
         $this->logger = new RecordingLogger();
+        $this->orderIdProvider = new OrderIdProvider();
         $this->eventDispatcher = new EventDispatcher();
 
         // the mapper puts the order number on the sales order, so a test can tell which order a request uploads
@@ -238,20 +258,61 @@ final class OrderUploaderTest extends TestCase
         yield '404 Not Found' => $rejected(404, NotFoundException::class, ShipmondoFailureKind::NotFound);
         yield '422 Unprocessable Entity' => $rejected(422, ValidationException::class);
         yield '429 Too Many Requests' => [429, TooManyRequestsException::class, ShipmondoFailureKind::RateLimited, UploadOutcome::RateLimited, self::PENDING, LogLevel::WARNING, self::RATE_LIMITED_MESSAGE];
-        yield '500 Internal Server Error' => [500, InternalServerErrorException::class, ShipmondoFailureKind::TemporaryFailure, UploadOutcome::TemporaryFailure, self::PENDING, LogLevel::WARNING, self::TEMPORARY_FAILURE_MESSAGE];
+        // Shipmondo may have created the sales order before the server error
+        yield '500 Internal Server Error' => [500, InternalServerErrorException::class, ShipmondoFailureKind::TemporaryFailure, UploadOutcome::TemporaryFailure, self::UNLINKED, LogLevel::WARNING, self::MAY_HAVE_CREATED_MESSAGE];
     }
 
     /**
+     * Shipmondo may have created the sales order before the failure, e.g. when it didn't answer in time
+     *
      * @test
      */
-    public function it_sends_the_order_back_to_pending_when_shipmondo_cannot_be_reached(): void
+    public function it_makes_the_order_unlinked_when_shipmondo_does_not_answer_the_call_that_creates_the_sales_order(): void
     {
         $order = $this->order(1, self::UPLOADING);
         $this->shipmondo->failToConnect();
 
         self::assertSame(UploadOutcome::TemporaryFailure, $this->uploader()->uploadOrder($order));
 
-        self::assertSame(self::PENDING, $order->getShipmondoState());
+        self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame(['POST sales_orders'], $this->shipmondo->requestLines());
+        self::assertSame([[
+            'level' => LogLevel::WARNING,
+            'message' => self::MAY_HAVE_CREATED_MESSAGE,
+            'context' => [
+                'order' => '#001',
+                'outcome' => 'temporary_failure',
+                'state' => self::UNLINKED,
+                'salesOrder' => null,
+                'exception' => ConnectionException::class,
+                'shipmondoFailure' => 'temporary_failure',
+                'shipmondoStatusCode' => null,
+                'shipmondoError' => null,
+            ],
+        ]], $this->logRecords());
+    }
+
+    /**
+     * The data mappers read from Shipmondo, e.g. the payment gateways, before the sales order is created, so Shipmondo
+     * has no sales order for the order when such a read fails
+     *
+     * @test
+     *
+     * @dataProvider temporaryFailures
+     */
+    public function it_sends_the_order_back_to_pending_when_a_read_before_the_sales_order_is_created_fails_temporarily(\Closure $fail, ?int $statusCode): void
+    {
+        $order = $this->order(1, self::UPLOADING);
+        $fail($this->shipmondo);
+        $shipmondoClient = ShipmondoApi::client($this->shipmondo);
+        $this->salesOrderDataMapper->map($order, Argument::any())->will(static function () use ($shipmondoClient): void {
+            $shipmondoClient->paymentGateways()->getPage();
+        });
+
+        self::assertSame(UploadOutcome::TemporaryFailure, $this->uploader()->uploadOrder($order));
+
+        self::assertSame([self::PENDING, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame(['GET payment_gateways'], $this->shipmondo->requestLines());
         self::assertSame([[
             'level' => LogLevel::WARNING,
             'message' => self::TEMPORARY_FAILURE_MESSAGE,
@@ -260,12 +321,21 @@ final class OrderUploaderTest extends TestCase
                 'outcome' => 'temporary_failure',
                 'state' => self::PENDING,
                 'salesOrder' => null,
-                'exception' => ConnectionException::class,
+                'exception' => null === $statusCode ? ConnectionException::class : InternalServerErrorException::class,
                 'shipmondoFailure' => 'temporary_failure',
-                'shipmondoStatusCode' => null,
+                'shipmondoStatusCode' => $statusCode,
                 'shipmondoError' => null,
             ],
         ]], $this->logRecords());
+    }
+
+    /**
+     * @return iterable<string, array{\Closure(ScriptedHttpClient): mixed, int|null}>
+     */
+    public static function temporaryFailures(): iterable
+    {
+        yield 'server error' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->respond(500), 500];
+        yield 'no answer' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->failToConnect(), null];
     }
 
     /**
@@ -312,7 +382,7 @@ final class OrderUploaderTest extends TestCase
 
         self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
         self::assertSame([[
-            'level' => LogLevel::ERROR,
+            'level' => LogLevel::WARNING,
             'message' => self::UNREAD_SUCCESS_MESSAGE,
             'context' => [
                 'order' => '#001',
@@ -343,7 +413,7 @@ final class OrderUploaderTest extends TestCase
 
         self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
         self::assertSame([[
-            'level' => LogLevel::ERROR,
+            'level' => LogLevel::WARNING,
             'message' => self::UNREAD_SUCCESS_MESSAGE,
             'context' => [
                 'order' => '#001',
@@ -368,7 +438,8 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
-     * Shipmondo most likely has a sales order for it, but which is unknown, so it can't be deleted
+     * Shipmondo created a sales order for it, but which is unknown, so it can't be deleted until a sales order lookup
+     * finds it
      *
      * @test
      */
@@ -383,9 +454,9 @@ final class OrderUploaderTest extends TestCase
         self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
         self::assertSame(['POST sales_orders'], $this->shipmondo->requestLines());
         self::assertSame([
-            [LogLevel::ERROR, self::UNREAD_SUCCESS_MESSAGE],
+            [LogLevel::WARNING, self::UNREAD_SUCCESS_MESSAGE],
             [LogLevel::INFO, self::CANCELLED_WHILE_UPLOADING_MESSAGE],
-            [LogLevel::ERROR, 'The order {order} was cancelled, but it is unlinked: Shipmondo most likely has a sales order for it, but which is unknown, so it can\'t be deleted. Find the sales order in Shipmondo and cancel it there'],
+            [LogLevel::INFO, 'The order {order} was cancelled while it is unlinked, so the next sales order lookup deletes its sales order, or makes the order cancelled if it finds none'],
         ], array_map(static fn (array $record): array => [$record['level'], $record['message']], $this->logger->records));
     }
 
@@ -684,9 +755,9 @@ final class OrderUploaderTest extends TestCase
 
         self::assertSame(['#001', '#002', '#004', '#005'], $this->uploadedOrderNumbers());
         self::assertSame(self::FAILED, $rejected->getShipmondoState());
-        self::assertSame(self::PENDING, $serverError->getShipmondoState());
+        self::assertSame(self::UNLINKED, $serverError->getShipmondoState());
         self::assertSame(self::FAILED, $unmappable->getShipmondoState());
-        self::assertSame(self::PENDING, $unreachable->getShipmondoState());
+        self::assertSame(self::UNLINKED, $unreachable->getShipmondoState());
         self::assertSame(self::UPLOADED, $uploaded->getShipmondoState());
     }
 
@@ -746,7 +817,7 @@ final class OrderUploaderTest extends TestCase
 
         self::assertSame(['#001', '#002', '#003', '#004'], $this->uploadedOrderNumbers());
         self::assertSame(
-            [self::FAILED, self::PENDING, self::FAILED, self::FAILED, self::PENDING],
+            [self::FAILED, self::UNLINKED, self::FAILED, self::FAILED, self::PENDING],
             array_map(static fn (Order $order): string => $order->getShipmondoState(), [...$orders, $notTried]),
         );
 
@@ -854,6 +925,482 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
+     * The upload created the sales order, but which is unknown, so the upload run looks it up by the order id it sent
+     *
+     * @test
+     */
+    public function it_links_an_unlinked_order_to_the_one_sales_order_a_lookup_finds_and_creates_no_sales_order_for_it(): void
+    {
+        $order = $this->unlinkedOrder(1);
+        $this->respondWithSalesOrders([1001 => '#001']);
+
+        // the lookup is settled on the order as the database has it, locked, so nothing changes it in between
+        $this->entityManager->wrapInTransaction(Argument::type('callable'))->shouldBeCalledOnce();
+        $this->entityManager->refresh($order, LockMode::PESSIMISTIC_WRITE)->shouldBeCalledOnce();
+
+        self::assertNull($this->uploader()->upload());
+
+        self::assertSame([self::UPLOADED, 1001], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame(['GET sales_orders'], $this->shipmondo->requestLines());
+        self::assertSame([[
+            'level' => LogLevel::INFO,
+            'message' => 'A sales order lookup found the sales order {salesOrder} for the unlinked order {order}, so the order is uploaded and linked to it',
+            'context' => ['order' => '#001', 'salesOrder' => 1001],
+        ]], $this->logger->records);
+    }
+
+    /**
+     * @test
+     */
+    public function it_looks_up_the_sales_order_of_every_unlinked_order_due_a_lookup(): void
+    {
+        $linked = $this->unlinkedOrder(1);
+        $retried = $this->unlinkedOrder(2, OrderInterface::STATE_CANCELLED);
+        $this->respondWithSalesOrders([1001 => '#001']);
+        $this->respondWithSalesOrders([]);
+
+        self::assertNull($this->uploader()->upload());
+
+        self::assertSame([self::UPLOADED, 1001], [$linked->getShipmondoState(), $linked->getShipmondoId()]);
+        self::assertSame([self::CANCELLED, null], [$retried->getShipmondoState(), $retried->getShipmondoId()]);
+        self::assertSame(['GET sales_orders', 'GET sales_orders'], $this->shipmondo->requestLines());
+    }
+
+    /**
+     * A shop that changes its order ids, e.g. with a prefix, has its sales orders found by the order id it sent
+     *
+     * @test
+     */
+    public function it_looks_up_the_sales_order_by_the_order_id_the_order_id_provider_gives(): void
+    {
+        $this->orderIdProvider = new PrefixedOrderIdProvider();
+        $order = $this->unlinkedOrder(1);
+        $this->respondWithSalesOrders([1001 => '#001', 1002 => 'WEB-#001']);
+
+        self::assertNull($this->uploader()->upload());
+
+        self::assertSame('order_id=WEB-%23001&page=1&per_page=25', $this->shipmondo->requests()[0]->getUri()->getQuery());
+        self::assertSame([self::UPLOADED, 1002], [$order->getShipmondoState(), $order->getShipmondoId()]);
+    }
+
+    /**
+     * Shipmondo lists archived sales orders too when no archived filter is sent, so an order whose sales order was
+     * archived is still found
+     *
+     * @test
+     */
+    public function it_looks_up_the_sales_order_by_the_order_id_the_upload_sent_whether_or_not_it_is_archived(): void
+    {
+        $this->unlinkedOrder(1);
+        $this->respondWithSalesOrders([]);
+
+        $this->uploader()->upload();
+
+        $request = $this->shipmondo->requests()[0];
+        self::assertSame('GET', $request->getMethod());
+        self::assertSame('order_id=%23001&page=1&per_page=25', $request->getUri()->getQuery());
+    }
+
+    /**
+     * Someone deleted the sales order in Shipmondo, or the upload's call that failed temporarily didn't create one
+     *
+     * @test
+     */
+    public function it_puts_an_unlinked_order_back_to_pending_and_uploads_it_when_a_lookup_finds_no_sales_order(): void
+    {
+        $order = $this->unlinkedOrder(1);
+        $this->respondWithSalesOrders([]);
+        $this->shipmondo->respond(201, ['id' => 1001]);
+
+        self::assertNull($this->uploader()->upload());
+
+        self::assertSame([self::UPLOADED, 1001], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame(['GET sales_orders', 'POST sales_orders'], $this->shipmondo->requestLines());
+        self::assertSame([
+            'level' => LogLevel::INFO,
+            'message' => 'A sales order lookup found no sales order for the unlinked order {order}, so the order goes back to pending to be uploaded again',
+            'context' => ['order' => '#001'],
+        ], $this->logger->records[0]);
+        self::assertSame([['#001', null], ['#001', 'uploaded']], $this->loggedOutcomes());
+    }
+
+    /**
+     * Shipmondo's order_id filter matches exactly, but that isn't documented, so the lookup compares the order ids too
+     *
+     * @test
+     */
+    public function it_ignores_the_sales_orders_a_lookup_returns_with_another_order_id(): void
+    {
+        $order = $this->unlinkedOrder(1);
+        $this->respondWithSalesOrders([1001 => '#0011', 1002 => '#001', 1003 => '001', 1004 => null, 1005 => '#001 ']);
+
+        self::assertNull($this->uploader()->upload());
+
+        self::assertSame([self::UPLOADED, 1002], [$order->getShipmondoState(), $order->getShipmondoId()]);
+    }
+
+    /**
+     * @test
+     */
+    public function it_puts_an_unlinked_order_back_to_pending_when_a_lookup_returns_only_sales_orders_with_another_order_id(): void
+    {
+        $order = $this->unlinkedOrder(1);
+        $order->setState(OrderInterface::STATE_CANCELLED);
+        $this->respondWithSalesOrders([1001 => '#0011']);
+
+        self::assertNull($this->uploader()->upload());
+
+        // cancelled right away, since Shipmondo has no sales order for it
+        self::assertSame([self::CANCELLED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame(['GET sales_orders'], $this->shipmondo->requestLines());
+    }
+
+    /**
+     * Some may be another shop's on the same Shipmondo account, so the order is linked to none of them
+     *
+     * @test
+     */
+    public function it_leaves_an_unlinked_order_unlinked_when_a_lookup_finds_several_sales_orders(): void
+    {
+        $order = $this->unlinkedOrder(1);
+        $this->respondWithSalesOrders([1001 => '#001', 1002 => 'another', 1003 => '#001']);
+        $this->entityManager->wrapInTransaction(Argument::cetera())->shouldNotBeCalled();
+
+        self::assertNull($this->uploader()->upload());
+
+        self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame(['GET sales_orders'], $this->shipmondo->requestLines());
+        self::assertSame([[
+            'level' => LogLevel::ERROR,
+            'message' => 'A sales order lookup found several sales orders with the order id of the unlinked order {order}, so the order stays unlinked: they may be duplicates, or another shop\'s on the same Shipmondo account. Check the sales orders {salesOrders} in Shipmondo',
+            'context' => ['order' => '#001', 'salesOrders' => [1001, 1003]],
+        ]], $this->logger->records);
+    }
+
+    /**
+     * Nothing is known about whether Shipmondo has a sales order for it, so it stays unlinked
+     *
+     * @test
+     */
+    public function it_leaves_an_unlinked_order_that_is_cancelled_in_sylius_unlinked_when_a_lookup_finds_several_sales_orders(): void
+    {
+        $order = $this->unlinkedOrder(1, OrderInterface::STATE_CANCELLED);
+        $this->respondWithSalesOrders([1001 => '#001', 1002 => '#001']);
+
+        self::assertNull($this->uploader()->upload());
+
+        self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame(['GET sales_orders'], $this->shipmondo->requestLines());
+        self::assertCount(1, $this->logger->records);
+    }
+
+    /**
+     * @test
+     */
+    public function it_deletes_the_sales_order_a_lookup_finds_for_an_unlinked_order_that_is_cancelled_in_sylius(): void
+    {
+        $order = $this->unlinkedOrder(1, OrderInterface::STATE_CANCELLED);
+        $this->respondWithSalesOrders([1001 => '#001']);
+        $this->shipmondo->respond(204);
+        // the order is locked and read again to settle its lookup, and again to make it cancelled
+        $this->entityManager->wrapInTransaction(Argument::type('callable'))->shouldBeCalledTimes(2);
+        $this->entityManager->refresh($order, LockMode::PESSIMISTIC_WRITE)->shouldBeCalledTimes(2);
+
+        self::assertNull($this->uploader()->upload());
+
+        self::assertSame([self::CANCELLED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame(['GET sales_orders', 'DELETE sales_orders/1001'], $this->shipmondo->requestLines());
+        self::assertSame([
+            'level' => LogLevel::INFO,
+            'message' => 'The unlinked order {order} was cancelled, so it becomes cancelled once Shipmondo has no sales order for it',
+            'context' => ['order' => '#001', 'salesOrder' => 1001],
+        ], $this->logger->records[1]);
+    }
+
+    /**
+     * @test
+     */
+    public function it_cancels_an_unlinked_order_that_is_cancelled_in_sylius_when_a_lookup_finds_no_sales_order(): void
+    {
+        $order = $this->unlinkedOrder(1, OrderInterface::STATE_CANCELLED);
+        $this->respondWithSalesOrders([]);
+        $this->entityManager->wrapInTransaction(Argument::type('callable'))->shouldBeCalledTimes(2);
+
+        self::assertNull($this->uploader()->upload());
+
+        // and so it isn't uploaded
+        self::assertSame([self::CANCELLED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame(['GET sales_orders'], $this->shipmondo->requestLines());
+        self::assertSame([
+            'level' => LogLevel::INFO,
+            'message' => 'The unlinked order {order} was cancelled, so it becomes cancelled once Shipmondo has no sales order for it',
+            'context' => ['order' => '#001', 'salesOrder' => null],
+        ], $this->logger->records[1]);
+    }
+
+    /**
+     * Its sales order is deleted right away, also when the command bus would send DeleteOrder to an asynchronous
+     * transport, which may be down
+     *
+     * @test
+     */
+    public function it_keeps_an_order_a_lookup_linked_uploaded_when_the_command_that_deletes_its_sales_order_cannot_be_sent(): void
+    {
+        $cancelled = $this->unlinkedOrder(1, OrderInterface::STATE_CANCELLED);
+        $other = $this->order(2);
+        $this->deleteOrderFails = true;
+        $this->respondWithSalesOrders([1001 => '#001']);
+        $this->shipmondo->respond(201, ['id' => 1002]);
+
+        self::assertNull($this->uploader()->upload());
+
+        self::assertSame([self::UPLOADED, 1001], [$cancelled->getShipmondoState(), $cancelled->getShipmondoId()]);
+        self::assertSame([self::UPLOADED, 1002], [$other->getShipmondoState(), $other->getShipmondoId()]);
+        self::assertSame(['GET sales_orders', 'POST sales_orders'], $this->shipmondo->requestLines());
+
+        $failure = $this->logRecords()[2];
+        self::assertSame([
+            'level' => LogLevel::ERROR,
+            'message' => 'The sales order of the cancelled order {order} could not be deleted, because the command that deletes it failed, so the order stays uploaded and linked to it. Delete the sales order in Shipmondo',
+            'context' => ['order' => '#001', 'salesOrder' => 1001, 'exception' => TransportException::class],
+        ], $failure);
+    }
+
+    /**
+     * E.g. another upload run looked it up meanwhile: it may have linked it, or even uploaded it again
+     *
+     * @test
+     *
+     * @dataProvider changesWhileLookingUp
+     *
+     * @param \Closure(Order): void $change
+     */
+    public function it_leaves_an_order_that_changed_while_its_sales_order_was_looked_up_as_it_is(\Closure $change, string $state, ?int $salesOrderId): void
+    {
+        $order = $this->unlinkedOrder(1);
+        $this->respondWithSalesOrders([]);
+        $this->entityManager->refresh($order, LockMode::PESSIMISTIC_WRITE)->will(static function () use ($order, $change): void {
+            $change($order);
+        });
+
+        self::assertNull($this->uploader()->upload());
+
+        self::assertSame([$state, $salesOrderId], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame(['GET sales_orders'], $this->shipmondo->requestLines());
+        self::assertSame([[
+            'level' => LogLevel::INFO,
+            'message' => 'The sales order lookup of the order {order} was not settled, because the order changed while Shipmondo was searched, or a guard on the order workflow holds it back, so it is left as it is',
+            'context' => ['order' => '#001', 'state' => $state],
+        ]], $this->logger->records);
+    }
+
+    /**
+     * @return iterable<string, array{\Closure(Order): void, string, int|null}>
+     */
+    public static function changesWhileLookingUp(): iterable
+    {
+        yield 'linked by another upload run' => [
+            static function (Order $order): void {
+                $order->setShipmondoState(self::UPLOADED, [OrderWorkflow::CONTEXT_SALES_ORDER_ID => 1001]);
+                $order->setVersion(2);
+            },
+            self::UPLOADED,
+            1001,
+        ];
+        // e.g. another run found no sales order, uploaded it again, and that upload failed temporarily
+        yield 'still unlinked, but changed' => [
+            static function (Order $order): void {
+                $order->setVersion(4);
+            },
+            self::UNLINKED,
+            null,
+        ];
+    }
+
+    /**
+     * @test
+     *
+     * @dataProvider lookupTransitions
+     *
+     * @param array<int, string> $salesOrders
+     */
+    public function it_leaves_an_unlinked_order_a_guard_on_the_order_workflow_holds_back_as_it_is(array $salesOrders, string $transition): void
+    {
+        $order = $this->unlinkedOrder(1);
+        $this->respondWithSalesOrders($salesOrders);
+        $this->eventDispatcher->addListener(
+            'workflow.setono_sylius_shipmondo__order.guard.' . $transition,
+            static function (GuardEvent $event): void {
+                $event->setBlocked(true);
+            },
+        );
+
+        self::assertNull($this->uploader()->upload());
+
+        self::assertSame([self::UNLINKED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame(['GET sales_orders'], $this->shipmondo->requestLines());
+    }
+
+    /**
+     * @return iterable<string, array{array<int, string>, string}>
+     */
+    public static function lookupTransitions(): iterable
+    {
+        yield 'link' => [[1001 => '#001'], OrderWorkflow::TRANSITION_LINK];
+        yield 'retry' => [[], OrderWorkflow::TRANSITION_RETRY];
+    }
+
+    /**
+     * Each one would fail the same way. The uploads would too
+     *
+     * @test
+     *
+     * @dataProvider credentialsFailures
+     */
+    public function it_stops_the_upload_run_when_shipmondo_does_not_accept_the_credentials_for_a_lookup(int $statusCode): void
+    {
+        $order = $this->unlinkedOrder(1);
+        $notLookedUp = $this->unlinkedOrder(2);
+        $notUploaded = $this->order(3);
+        $this->shipmondo->respond($statusCode, ['error' => 'No']);
+
+        self::assertSame(UploadOutcome::CredentialsFailure, $this->uploader()->upload());
+
+        self::assertSame(['GET sales_orders'], $this->shipmondo->requestLines());
+        self::assertSame(
+            [self::UNLINKED, self::UNLINKED, self::PENDING],
+            [$order->getShipmondoState(), $notLookedUp->getShipmondoState(), $notUploaded->getShipmondoState()],
+        );
+        self::assertSame([[
+            'level' => LogLevel::ERROR,
+            'message' => 'The sales order lookup of the unlinked order {order} failed, so the order stays unlinked for the next upload run',
+            'context' => [
+                'order' => '#001',
+                'exception' => 401 === $statusCode ? UnauthorizedException::class : ForbiddenException::class,
+                'shipmondoFailure' => 'credentials_failure',
+                'shipmondoStatusCode' => $statusCode,
+                'shipmondoError' => 'No',
+            ],
+        ], [
+            'level' => LogLevel::ERROR,
+            'message' => 'The upload run stopped, because Shipmondo answered the sales order lookup of the order {order} with a {outcome}. The remaining orders wait for the next run',
+            'context' => ['order' => '#001', 'outcome' => 'credentials_failure'],
+        ]], $this->logRecords());
+    }
+
+    /**
+     * @return iterable<string, array{int}>
+     */
+    public static function credentialsFailures(): iterable
+    {
+        yield '401 Unauthorized' => [401];
+        yield '403 Forbidden' => [403];
+    }
+
+    /**
+     * The lookups have their own rate limit, so the pending orders are uploaded, and orders that stay unlinked, e.g.
+     * those with several sales orders, can't keep them from being uploaded. The run still reports it
+     *
+     * @test
+     */
+    public function it_stops_the_lookups_but_uploads_the_pending_orders_when_shipmondo_rate_limits_a_lookup(): void
+    {
+        $order = $this->unlinkedOrder(1);
+        $notLookedUp = $this->unlinkedOrder(2);
+        $uploaded = $this->order(3);
+        $this->shipmondo->respond(429)->respond(201, ['id' => 1003]);
+
+        self::assertSame(UploadOutcome::RateLimited, $this->uploader()->upload());
+
+        self::assertSame(['GET sales_orders', 'POST sales_orders'], $this->shipmondo->requestLines());
+        self::assertSame(
+            [self::UNLINKED, self::UNLINKED, self::UPLOADED],
+            [$order->getShipmondoState(), $notLookedUp->getShipmondoState(), $uploaded->getShipmondoState()],
+        );
+        self::assertSame([LogLevel::WARNING, 'rate_limited'], [$this->logger->records[0]['level'], $this->logger->records[0]['context']['shipmondoFailure']]);
+        self::assertSame([
+            'level' => LogLevel::ERROR,
+            'message' => 'The sales order lookups stopped, because Shipmondo answered the lookup of the order {order} with a {outcome}. The remaining unlinked orders wait for the next run, and the pending orders are uploaded',
+            'context' => ['order' => '#001', 'outcome' => 'rate_limited'],
+        ], $this->logger->records[1]);
+    }
+
+    /**
+     * What stopped the uploads says more than the rate limit of the lookups
+     *
+     * @test
+     */
+    public function it_reports_what_stopped_the_uploads_after_shipmondo_rate_limited_a_lookup(): void
+    {
+        $this->unlinkedOrder(1);
+        $this->order(2);
+        $this->shipmondo->respond(429)->respond(401);
+
+        self::assertSame(UploadOutcome::CredentialsFailure, $this->uploader()->upload());
+    }
+
+    /**
+     * Each failure says nothing about the other orders: the next upload run looks the order up again
+     *
+     * @test
+     *
+     * @dataProvider lookupFailuresTheRunCarriesOnAfter
+     */
+    public function it_leaves_an_unlinked_order_unlinked_and_goes_on_when_its_lookup_fails(\Closure $fail, string $level, string $exception, string $failure, ?int $statusCode): void
+    {
+        $order = $this->unlinkedOrder(1);
+        $linked = $this->unlinkedOrder(2);
+        $fail($this->shipmondo);
+        $this->respondWithSalesOrders([1002 => '#002']);
+        $this->shipmondo->respond(201, ['id' => 1003]);
+        $uploaded = $this->order(3);
+
+        self::assertNull($this->uploader()->upload());
+
+        self::assertSame(['GET sales_orders', 'GET sales_orders', 'POST sales_orders'], $this->shipmondo->requestLines());
+        self::assertSame(
+            [[self::UNLINKED, null], [self::UPLOADED, 1002], [self::UPLOADED, 1003]],
+            array_map(static fn (Order $order): array => [$order->getShipmondoState(), $order->getShipmondoId()], [$order, $linked, $uploaded]),
+        );
+        $record = $this->logRecords()[0];
+        self::assertSame(
+            [$level, 'The sales order lookup of the unlinked order {order} failed, so the order stays unlinked for the next upload run', '#001', $exception, $failure, $statusCode],
+            [$record['level'], $record['message'], $record['context']['order'], $record['context']['exception'], $record['context']['shipmondoFailure'], $record['context']['shipmondoStatusCode']],
+        );
+    }
+
+    /**
+     * @return iterable<string, array{\Closure(ScriptedHttpClient): mixed, string, string, string, int|null}>
+     */
+    public static function lookupFailuresTheRunCarriesOnAfter(): iterable
+    {
+        yield 'server error' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->respond(500), LogLevel::WARNING, InternalServerErrorException::class, 'temporary_failure', 500];
+        yield 'no answer' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->failToConnect(), LogLevel::WARNING, ConnectionException::class, 'temporary_failure', null];
+        yield 'a success that did not arrive in full' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->respondWithAnUnreadableBody(200), LogLevel::WARNING, ConnectionException::class, 'temporary_failure', 200];
+        yield 'not found' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->respond(404), LogLevel::ERROR, NotFoundException::class, 'not_found', 404];
+        yield 'rejected' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->respond(422), LogLevel::ERROR, ValidationException::class, 'rejected', 422];
+        yield 'a success that cannot be read' => [static fn (ScriptedHttpClient $shipmondo): mixed => $shipmondo->respond(200, body: 'not JSON'), LogLevel::ERROR, MalformedResponseException::class, 'unexpected_failure', 200];
+    }
+
+    /**
+     * A failed lookup says nothing about the uploads, so it is no rejected upload, and doesn't count towards the stop rule
+     *
+     * @test
+     */
+    public function it_does_not_count_a_rejected_lookup_as_a_rejected_upload(): void
+    {
+        $this->unlinkedOrder(1);
+        $rejected = [$this->order(2), $this->order(3)];
+        $uploaded = $this->order(4);
+        $this->shipmondo->respond(422)->respond(422)->respond(422)->respond(201, ['id' => 1004]);
+
+        self::assertNull($this->uploader()->upload());
+
+        self::assertSame([self::FAILED, self::FAILED], array_map(static fn (Order $order): string => $order->getShipmondoState(), $rejected));
+        self::assertSame([self::UPLOADED, 1004], [$uploaded->getShipmondoState(), $uploaded->getShipmondoId()]);
+    }
+
+    /**
      * An admin retries the upload of a failed order: it goes back to pending, so the next upload run uploads it if it
      * still qualifies for upload. Nothing is asked of Shipmondo
      *
@@ -945,6 +1492,24 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
+     * An unlinked order that is due a sales order lookup
+     */
+    private function unlinkedOrder(int $id, string $state = OrderInterface::STATE_NEW): Order
+    {
+        return $this->unlinkedOrders[] = Orders::create(self::UNLINKED, state: $state, id: $id, number: sprintf('#%03d', $id));
+    }
+
+    /**
+     * Answers a sales order lookup with these sales orders, by their id and order id
+     *
+     * @param array<int, string|null> $orderIds
+     */
+    private function respondWithSalesOrders(array $orderIds): void
+    {
+        $this->shipmondo->respond(200, SalesOrders::withOrderIds($orderIds));
+    }
+
+    /**
      * Reading the order again to settle its upload reveals that an admin cancelled it in the meantime
      */
     private function cancelWhenReadAgain(Order $order): void
@@ -956,10 +1521,17 @@ final class OrderUploaderTest extends TestCase
 
     private function uploader(): OrderUploader
     {
-        $orders = $this->orders;
+        $orders = [...$this->orders, ...$this->unlinkedOrders];
 
+        // as the database would answer once the sales order lookups are done, which may put unlinked orders back to pending
         $provider = $this->prophesize(PreQualifiedUploadableOrdersProviderInterface::class);
-        $provider->getOrders()->willReturn($orders);
+        $provider->getOrders()->will(static fn (): array => array_values(array_filter(
+            $orders,
+            static fn (Order $order): bool => self::PENDING === $order->getShipmondoState(),
+        )));
+
+        $unlinkedOrdersProvider = $this->prophesize(UnlinkedOrdersProviderInterface::class);
+        $unlinkedOrdersProvider->getOrders()->willReturn($this->unlinkedOrders);
 
         $managerRegistry = $this->prophesize(ManagerRegistry::class);
         $managerRegistry->getManagerForClass(Order::class)->willReturn($this->entityManager->reveal());
@@ -1013,6 +1585,8 @@ final class OrderUploaderTest extends TestCase
         $orderCanceller = new OrderCanceller($commandBus, $orderWorkflow, $this->logger);
         $uploader = new OrderUploader(
             $provider->reveal(),
+            $unlinkedOrdersProvider->reveal(),
+            $this->orderIdProvider,
             $commandBus,
             $orderWorkflow,
             $shipmondoClient,

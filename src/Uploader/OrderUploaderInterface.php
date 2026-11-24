@@ -13,23 +13,28 @@ use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 interface OrderUploaderInterface
 {
     /**
-     * Runs an upload run: puts each pending order that qualifies for upload in uploading, then uploads it through the
+     * Runs an upload run. First it looks up the sales order of each order that has been unlinked for at least ten
+     * minutes, by the exact order id its upload sent, and settles the order by what it finds: one sales order links the
+     * order to it, none puts it back to pending, and several leave it unlinked. The lookups run here, never through the
+     * command bus. Then it puts each pending order that qualifies for upload in uploading, and uploads it through the
      * UploadOrder command.
      *
-     * When UploadOrder is handled synchronously (the default), the run stops early after a credentials failure, a 429,
-     * or three rejected uploads in a row, because the remaining orders would most likely fail the same way. They stay
-     * pending for the next run.
+     * A credentials failure in a lookup stops the run, and a 429 stops the lookups, but not the uploads. When UploadOrder
+     * is handled synchronously (the default), the run stops early after an upload that hits a credentials failure or a
+     * 429, or after three rejected uploads in a row, because the remaining orders would most likely fail the same way.
+     * The remaining orders wait for the next run.
      *
      * @return UploadOutcome|null the outcome that stopped the run early ({@see UploadOutcome::CredentialsFailure},
      *                            {@see UploadOutcome::RateLimited}, or {@see UploadOutcome::Rejected} for the third
-     *                            rejected upload in a row), or null when the run got through every order
+     *                            rejected upload in a row) or stopped its lookups ({@see UploadOutcome::RateLimited},
+     *                            unless the uploads stopped too), or null when the run got through every order
      */
     public function upload(): ?UploadOutcome;
 
     /**
      * Uploads an order whose Shipmondo state is uploading, and settles that state: uploaded (and linked to its sales
-     * order), failed, or back to pending for the next upload run. The returned outcome says which, and why. A failed
-     * upload is logged, never thrown.
+     * order), unlinked, failed, or back to pending for the next upload run. The returned outcome says which, and why. A
+     * failed upload is logged, never thrown.
      *
      * An order in any other Shipmondo state is left alone ({@see UploadOutcome::Skipped}).
      *

@@ -10,6 +10,18 @@
         <service id="Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface"
                  alias="Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProvider"/>
 
+        <service id="Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProvider">
+            <argument type="service" id="sylius.repository.order"/>
+        </service>
+
+        <service id="Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProviderInterface"
+                 alias="Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProvider"/>
+
+        <service id="Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider"/>
+
+        <service id="Setono\SyliusShipmondoPlugin\Provider\OrderIdProviderInterface"
+                 alias="Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider"/>
+
         <service id="Setono\SyliusShipmondoPlugin\Provider\SetupProvider">
             <argument type="service" id="Setono\Shipmondo\Client\Client"/>
 
