@@ -235,17 +235,13 @@ or sends to another address, deletes the ones no longer wanted and any duplicate
 differs, it only fetches them. Then it records where it registered them, and when, which the Shipmondo page shows along
 with whether the shop's webhooks in Shipmondo still match.
 
-**Register them once.** After that, every run of `setono:sylius-shipmondo:upload-orders` ends by registering them
-again at the same address, so an upgrade that changes the webhooks the plugin handles, or a webhook deleted or
-deactivated in Shipmondo, is fixed by the next run. When nothing differs, that costs one request. Until they are
-registered once, the command uploads the orders and then fails, saying to register them. It also fails, after the
-uploads, when it can't register them again, and logs why. To keep the webhooks yourself, turn it off:
+**Schedule the command daily**, e.g. with cron, and run it on deploy, next to your database migrations. It only fixes
+what differs, so an upgrade that changes the webhooks the plugin handles, or a webhook deleted or deactivated in
+Shipmondo, is fixed by its next run. When nothing differs, it makes one request. Where the command can't ask which
+hostname to use, pass `--hostname` if your channels have several:
 
-```yaml
-# config/packages/setono_sylius_shipmondo.yaml
-setono_sylius_shipmondo:
-    webhooks:
-        register_automatically: false
+```bash
+php bin/console setono:sylius-shipmondo:register-webhooks --no-interaction --hostname=shop.example.com
 ```
 
 Shipmondo sends the webhooks to the shop's webhook endpoint, `/webhook/shipmondo`. The admin's button registers it at
@@ -277,9 +273,9 @@ kept.
 > `192.168.1.20`. With the production credentials and webhooks key, e.g. in a copy of the production `.env`,
 > registering there replaces the production shop's working webhooks with ones Shipmondo can't deliver. Locally, give
 > the shop a `SHIPMONDO_WEBHOOKS_KEY` of its own, or a Shipmondo sandbox account (`SHIPMONDO_SANDBOX=true` with its
-> credentials). The same goes for a staging copy of production that runs the upload command: with the same webhooks
-> key, each install's upload run replaces the other's webhooks on every run. Give it a key of its own, or turn off
-> `register_automatically` there.
+> credentials). The same goes for a staging copy of production that registers the webhooks, e.g. from its own scheduled
+> command: with the same webhooks key, each install's registration replaces the other's webhooks. Give it a key of its
+> own.
 
 ## Cancelled orders and asynchronous deletion
 

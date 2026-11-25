@@ -12,8 +12,7 @@ use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 /**
  * The stop rules of one upload run. It is told how each sales order lookup and each upload the run sees went, keeps
  * count of what happened in a row, and decides when the run, or its lookups, stop, and which problems the run reports.
- * It sees only the uploads handled synchronously: how an upload sent to an asynchronous transport goes is unknown to it.
- * It is also told the problems of the run's last step, which registers the webhooks again, and reports them too
+ * It sees only the uploads handled synchronously: how an upload sent to an asynchronous transport goes is unknown to it
  *
  * @internal
  */
@@ -186,12 +185,9 @@ final class UploadRun
     }
 
     /**
-     * Logs a problem of the run that stops nothing, as an error, and reports it, once however often it arises, e.g. that
-     * the run's last step couldn't register the webhooks again
-     *
      * @param array<string, mixed> $context
      */
-    public function report(UploadRunProblem $problem, string $message, array $context): void
+    private function report(UploadRunProblem $problem, string $message, array $context): void
     {
         $this->logger->error($message, $context);
 

@@ -40,9 +40,9 @@ final readonly class WebhookRegistrar implements WebhookRegistrarInterface
      * Creates the missing webhooks before it deletes the unwanted ones: Shipmondo calls a webhook's endpoint when it is
      * created, so a webhook it refuses to create leaves the webhooks it replaces working
      */
-    public function register(?string $endpoint = null): void
+    public function register(): void
     {
-        $endpoint ??= $this->endpoint();
+        $endpoint = $this->endpoint();
         if (!WebhookHost::isReachable((string) parse_url($endpoint, \PHP_URL_HOST))) {
             throw new UnreachableWebhookEndpointException($endpoint);
         }

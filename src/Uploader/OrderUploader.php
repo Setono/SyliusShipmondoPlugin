@@ -10,7 +10,6 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
 use Setono\Doctrine\ORMTrait;
 use Setono\Shipmondo\Client\ClientInterface;
-use Setono\Shipmondo\Exception\ShipmondoException;
 use Setono\Shipmondo\Request\CollectionRequestOptions;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\Shipmondo\Request\SalesOrderSearch;
@@ -24,9 +23,6 @@ use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\OrderIdProviderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProviderInterface;
-use Setono\SyliusShipmondoPlugin\Registrar\UnreachableWebhookEndpointException;
-use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
-use Setono\SyliusShipmondoPlugin\Repository\RegisteredWebhooksRepositoryInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Symfony\Component\Messenger\Exception\DelayedMessageHandlingException;
 use Symfony\Component\Messenger\Exception\ExceptionInterface as MessengerException;
@@ -55,9 +51,6 @@ final class OrderUploader implements OrderUploaderInterface
         private readonly OrderCancellerInterface $orderCanceller,
         private readonly LoggerInterface $logger,
         ManagerRegistry $managerRegistry,
-        private readonly WebhookRegistrarInterface $webhookRegistrar,
-        private readonly RegisteredWebhooksRepositoryInterface $registeredWebhooksRepository,
-        private readonly bool $registerWebhooksAutomatically,
     ) {
         $this->managerRegistry = $managerRegistry;
     }
@@ -69,10 +62,6 @@ final class OrderUploader implements OrderUploaderInterface
         $this->lookUpSalesOrders($run);
         if (!$run->stopped()) {
             $this->uploadPendingOrders($run);
-        }
-
-        if (!$run->stopped() && $this->registerWebhooksAutomatically) {
-            $this->registerWebhooksAgain($run);
         }
 
         return $run->problems();
@@ -163,42 +152,6 @@ final class OrderUploader implements OrderUploaderInterface
             if ($run->stopped()) {
                 return;
             }
-        }
-    }
-
-    /**
-     * The upload run's last step, so the orders are uploaded whatever happens to the webhooks: registers them again
-     * where an admin last registered them, which fixes this shop's webhooks in Shipmondo when they no longer match the
-     * wanted ones, e.g. after an upgrade changed the actions the webhook handlers handle. A failure is reported, not
-     * thrown, except one that isn't Shipmondo's, which is a bug
-     */
-    private function registerWebhooksAgain(UploadRun $run): void
-    {
-        $endpoint = $this->registeredWebhooksRepository->findLatest()?->getEndpoint();
-        if (null === $endpoint) {
-            $run->report(
-                UploadRunProblem::WebhooksNotRegisteredYet,
-                'The upload run did not register the webhooks again, because no registration with an endpoint is recorded: they have never been registered, or not since the plugin recorded where. Register them once from the admin\'s Shipmondo page or with setono:sylius-shipmondo:register-webhooks, after which the upload run keeps them current',
-                [],
-            );
-
-            return;
-        }
-
-        try {
-            $this->webhookRegistrar->register($endpoint);
-        } catch (UnreachableWebhookEndpointException $e) {
-            $run->report(
-                UploadRunProblem::WebhookEndpointUnreachable,
-                'The upload run did not register the webhooks again, because Shipmondo can\'t reach {endpoint}, where they were last registered. Register them from the admin\'s Shipmondo page, opened at the shop\'s hostname, or with setono:sylius-shipmondo:register-webhooks',
-                ['endpoint' => $e->endpoint],
-            );
-        } catch (ShipmondoException $e) {
-            $run->report(
-                UploadRunProblem::WebhookRegistrationFailed,
-                'The upload run could not register the webhooks again, because a call to Shipmondo failed. The next upload run tries again',
-                ShipmondoFailure::of($e)->logContext(),
-            );
         }
     }
 

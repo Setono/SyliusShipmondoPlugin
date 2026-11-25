@@ -45,7 +45,7 @@ use Webmozart\Assert\Assert;
 abstract class FunctionalTestCase extends WebTestCase
 {
     /**
-     * Where an admin registered the webhooks, in a test whose webhooks are registered ({@see self::theWebhooksAreRegistered()})
+     * Where an admin registered the webhooks, in a test that records a registration
      */
     protected const WEBHOOK_ENDPOINT = 'https://shop.example.com/webhook/shipmondo';
 
@@ -150,17 +150,6 @@ abstract class FunctionalTestCase extends WebTestCase
         $this->shipmondo->respond('GET', 'payment_gateways', 200, [
             ['id' => ShopFixtures::PAYMENT_METHOD_SHIPMONDO_ID, 'name' => 'Bank transfer', 'provider' => 'manual', 'merchant_number' => ''],
         ], ['X-Total-Pages' => '1']);
-    }
-
-    /**
-     * Makes this shop's webhooks registered and current, as in a shop where an admin registered them: records a
-     * registration at {@see self::WEBHOOK_ENDPOINT}, and answers Shipmondo's list of webhooks with exactly the ones the
-     * plugin wants there. An upload run's last step, which registers the webhooks again, then only fetches them
-     */
-    protected function theWebhooksAreRegistered(): void
-    {
-        $this->recordWebhookRegistration(self::WEBHOOK_ENDPOINT);
-        $this->shipmondo->respond('GET', 'webhooks', 200, $this->wantedWebhooks(self::WEBHOOK_ENDPOINT), ['X-Total-Pages' => '1']);
     }
 
     /**

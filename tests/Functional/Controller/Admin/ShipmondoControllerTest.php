@@ -50,7 +50,6 @@ final class ShipmondoControllerTest extends FunctionalTestCase
             $crawler->filter(sprintf('select[name="shipping_methods[%d][]"] option', self::id($this->fixtures->shippingMethod)))->extract(['value']),
         );
         self::assertSelectorTextContains('body', self::WEBHOOKS_NOT_REGISTERED);
-        self::assertSelectorTextContains('body', 'Once they are registered, every upload run registers them again at the same endpoint whenever this shop\'s webhooks in Shipmondo no longer match the ones the plugin handles, e.g. after an upgrade.');
         // nothing to compare this shop's webhooks with: an unstubbed request for them would fail the test
         self::assertSame([], $this->shipmondo->requests('GET', 'webhooks'));
         // every mapping exists in Shipmondo
@@ -477,7 +476,7 @@ final class ShipmondoControllerTest extends FunctionalTestCase
     }
 
     /**
-     * E.g. after an upgrade of the plugin that handles a new action, before an upload run registers them again
+     * E.g. after an upgrade of the plugin that handles a new action, before the webhooks are registered again
      *
      * @test
      */
@@ -499,7 +498,7 @@ final class ShipmondoControllerTest extends FunctionalTestCase
             sprintf('Missing: %s', $missing['name']),
             sprintf('To remove: %s, sent to https://shop.example.com/webhook/shipmondo, inactive', $inactive['name']),
         ], $crawler->filter('.message.warning li')->each(static fn (Crawler $item): string => trim($item->text())));
-        self::assertSelectorTextContains('.message.warning', 'The next upload run registers them again, or register them now with the button below.');
+        self::assertSelectorTextContains('.message.warning', 'Register them again with the button below, or with setono:sylius-shipmondo:register-webhooks.');
         // comparing changes nothing
         self::assertSame(['GET webhooks'], array_map(
             static fn ($request): string => $request->getMethod() . ' webhooks',

@@ -35,14 +35,10 @@ use Setono\SyliusShipmondoPlugin\Message\CommandHandler\DeleteOrderHandler;
 use Setono\SyliusShipmondoPlugin\Message\CommandHandler\UploadOrderHandler;
 use Setono\SyliusShipmondoPlugin\Message\Middleware\AbsorbDeleteOrderFailureMiddleware;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
-use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooks;
 use Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider;
 use Setono\SyliusShipmondoPlugin\Provider\OrderIdProviderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProviderInterface;
-use Setono\SyliusShipmondoPlugin\Registrar\UnreachableWebhookEndpointException;
-use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
-use Setono\SyliusShipmondoPlugin\Repository\RegisteredWebhooksRepositoryInterface;
 use Setono\SyliusShipmondoPlugin\Uploader\OrderUploader;
 use Setono\SyliusShipmondoPlugin\Uploader\UploadOutcome;
 use Setono\SyliusShipmondoPlugin\Uploader\UploadRunProblem;
@@ -79,8 +75,6 @@ final class OrderUploaderTest extends TestCase
     use ProphecyTrait;
 
     private const PENDING = OrderInterface::SHIPMONDO_STATE_PENDING;
-
-    private const WEBHOOK_ENDPOINT = 'https://shop.example.com/webhook/shipmondo';
 
     private const UPLOADING = OrderInterface::SHIPMONDO_STATE_UPLOADING_TO_SHIPMONDO;
 
@@ -160,33 +154,12 @@ final class OrderUploaderTest extends TestCase
      */
     private bool $deleteOrderFails = false;
 
-    /**
-     * Registers the webhooks again as the upload run's last step. By default it does so without a word
-     *
-     * @var ObjectProphecy<WebhookRegistrarInterface>
-     */
-    private ObjectProphecy $webhookRegistrar;
-
-    /**
-     * The latest registration of the webhooks, whose endpoint the upload run registers them again at
-     */
-    private ?RegisteredWebhooks $latestRegistration;
-
-    /**
-     * The setono_sylius_shipmondo.webhooks.register_automatically option
-     */
-    private bool $registerWebhooksAutomatically = true;
-
     protected function setUp(): void
     {
         $this->shipmondo = new ScriptedHttpClient();
         $this->logger = new RecordingLogger();
         $this->orderIdProvider = new OrderIdProvider();
         $this->eventDispatcher = new EventDispatcher();
-        $this->webhookRegistrar = $this->prophesize(WebhookRegistrarInterface::class);
-        $this->latestRegistration = new RegisteredWebhooks();
-        $this->latestRegistration->setEndpoint(self::WEBHOOK_ENDPOINT);
-        $this->latestRegistration->setRegisteredAt(new \DateTimeImmutable('2026-01-02 03:04:05'));
 
         // the mapper puts the order number on the sales order, so a test can tell which order a request uploads
         $this->salesOrderDataMapper = $this->prophesize(SalesOrderDataMapperInterface::class);
@@ -2007,206 +1980,6 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
-     * The upload run's last step registers the webhooks again where an admin last registered them, so a change to the
-     * actions the webhook handlers handle, or to this shop's webhooks in Shipmondo, is fixed without a manual step
-     *
-     * @test
-     */
-    public function it_registers_the_webhooks_again_after_the_lookups_and_the_uploads(): void
-    {
-        $this->unlinkedOrder(1);
-        $this->order(2);
-        $this->respondWithSalesOrders([1001 => '#001']);
-        $this->shipmondo->respond(201, ['id' => 1002]);
-
-        $shipmondo = $this->shipmondo;
-        $this->webhookRegistrar->register(self::WEBHOOK_ENDPOINT)->will(static function () use ($shipmondo): void {
-            self::assertSame(['GET sales_orders', 'POST sales_orders'], $shipmondo->requestLines());
-        })->shouldBeCalledOnce();
-
-        self::assertSame([], $this->uploader()->upload());
-    }
-
-    /**
-     * @test
-     */
-    public function it_registers_the_webhooks_again_when_no_order_is_unlinked_or_pending(): void
-    {
-        $this->webhookRegistrar->register(self::WEBHOOK_ENDPOINT)->shouldBeCalledOnce();
-
-        self::assertSame([], $this->uploader()->upload());
-    }
-
-    /**
-     * The webhooks would most likely fail the same way, and the remaining orders wait for the next run anyway
-     *
-     * @test
-     */
-    public function it_does_not_register_the_webhooks_again_when_the_upload_run_stopped_early(): void
-    {
-        $this->order(1);
-        $this->order(2);
-        $this->shipmondo->respond(401);
-        $this->webhookRegistrar->register(Argument::any())->shouldNotBeCalled();
-
-        self::assertSame([UploadRunProblem::CredentialsFailure], $this->uploader()->upload());
-    }
-
-    /**
-     * @test
-     */
-    public function it_does_not_register_the_webhooks_again_when_the_lookups_stopped_the_upload_run(): void
-    {
-        $this->unlinkedOrder(1);
-        $this->shipmondo->respond(401);
-        $this->webhookRegistrar->register(Argument::any())->shouldNotBeCalled();
-
-        self::assertSame([UploadRunProblem::CredentialsFailure], $this->uploader()->upload());
-    }
-
-    /**
-     * Stopping the lookups doesn't stop the run: the pending orders are uploaded, and the webhooks registered again
-     *
-     * @test
-     */
-    public function it_registers_the_webhooks_again_when_only_the_lookups_stopped(): void
-    {
-        $this->unlinkedOrder(1);
-        $this->order(2);
-        $this->shipmondo->respond(429)->respond(201, ['id' => 1002]);
-        $this->webhookRegistrar->register(self::WEBHOOK_ENDPOINT)->shouldBeCalledOnce();
-
-        self::assertSame([UploadRunProblem::LookupsRateLimited], $this->uploader()->upload());
-    }
-
-    /**
-     * E.g. in an install that shares another's webhooks key, such as a staging copy of production, where registering
-     * again would replace the other's webhooks
-     *
-     * @test
-     */
-    public function it_does_nothing_about_the_webhooks_when_registering_them_automatically_is_turned_off(): void
-    {
-        $this->order(1);
-        $this->shipmondo->respond(201, ['id' => 1001]);
-        $this->registerWebhooksAutomatically = false;
-        $this->webhookRegistrar->register(Argument::any())->shouldNotBeCalled();
-
-        self::assertSame([], $this->uploader()->upload());
-    }
-
-    /**
-     * Without a recorded endpoint, the webhooks have never been registered, or not since the plugin recorded where
-     *
-     * @test
-     *
-     * @dataProvider registrationsWithoutAnEndpoint
-     */
-    public function it_reports_that_the_webhooks_were_never_registered_after_uploading_the_orders(bool $registeredBefore): void
-    {
-        $order = $this->order(1);
-        $this->shipmondo->respond(201, ['id' => 1001]);
-        $this->latestRegistration = null;
-        if ($registeredBefore) {
-            $this->latestRegistration = new RegisteredWebhooks();
-            $this->latestRegistration->setRegisteredAt(new \DateTimeImmutable('2020-01-01'));
-        }
-        $this->webhookRegistrar->register(Argument::any())->shouldNotBeCalled();
-
-        self::assertSame([UploadRunProblem::WebhooksNotRegisteredYet], $this->uploader()->upload());
-
-        self::assertSame(self::UPLOADED, $order->getShipmondoState());
-        self::assertSame([
-            'level' => LogLevel::ERROR,
-            'message' => 'The upload run did not register the webhooks again, because no registration with an endpoint is recorded: they have never been registered, or not since the plugin recorded where. Register them once from the admin\'s Shipmondo page or with setono:sylius-shipmondo:register-webhooks, after which the upload run keeps them current',
-            'context' => [],
-        ], $this->logRecords()[1]);
-    }
-
-    /**
-     * @return iterable<string, array{bool}>
-     */
-    public static function registrationsWithoutAnEndpoint(): iterable
-    {
-        yield 'never registered' => [false];
-        yield 'registered before the endpoint was recorded' => [true];
-    }
-
-    /**
-     * @test
-     */
-    public function it_reports_that_shipmondo_cannot_reach_the_endpoint_the_webhooks_were_last_registered_at(): void
-    {
-        $this->webhookRegistrar->register(self::WEBHOOK_ENDPOINT)->willThrow(new UnreachableWebhookEndpointException('http://localhost/webhook/shipmondo'));
-
-        self::assertSame([UploadRunProblem::WebhookEndpointUnreachable], $this->uploader()->upload());
-
-        self::assertSame([[
-            'level' => LogLevel::ERROR,
-            'message' => 'The upload run did not register the webhooks again, because Shipmondo can\'t reach {endpoint}, where they were last registered. Register them from the admin\'s Shipmondo page, opened at the shop\'s hostname, or with setono:sylius-shipmondo:register-webhooks',
-            'context' => ['endpoint' => 'http://localhost/webhook/shipmondo'],
-        ]], $this->logRecords());
-    }
-
-    /**
-     * @test
-     */
-    public function it_reports_that_the_webhooks_could_not_be_registered_again_when_shipmondo_fails(): void
-    {
-        $order = $this->order(1);
-        $this->shipmondo->respond(201, ['id' => 1001]);
-        $failure = new InternalServerErrorException(ShipmondoApi::json(['error' => 'Something went wrong'], 503));
-        $this->webhookRegistrar->register(self::WEBHOOK_ENDPOINT)->willThrow($failure);
-
-        self::assertSame([UploadRunProblem::WebhookRegistrationFailed], $this->uploader()->upload());
-
-        self::assertSame(self::UPLOADED, $order->getShipmondoState());
-        self::assertSame([
-            'level' => LogLevel::ERROR,
-            'message' => 'The upload run could not register the webhooks again, because a call to Shipmondo failed. The next upload run tries again',
-            'context' => [
-                'exception' => InternalServerErrorException::class,
-                'shipmondoFailure' => 'temporary_failure',
-                'shipmondoStatusCode' => 503,
-                'shipmondoError' => 'Something went wrong',
-            ],
-        ], $this->logRecords()[1]);
-    }
-
-    /**
-     * @test
-     */
-    public function it_reports_the_webhooks_after_the_other_problems_of_the_run(): void
-    {
-        $this->unlinkedOrder(1);
-        $this->shipmondo->respond(429);
-        $this->latestRegistration = null;
-
-        self::assertSame([UploadRunProblem::LookupsRateLimited, UploadRunProblem::WebhooksNotRegisteredYet], $this->uploader()->upload());
-    }
-
-    /**
-     * A bug stays loud. The orders were uploaded before it
-     *
-     * @test
-     */
-    public function it_lets_a_failure_to_register_the_webhooks_again_that_is_not_shipmondos_through(): void
-    {
-        $order = $this->order(1);
-        $this->shipmondo->respond(201, ['id' => 1001]);
-        $this->webhookRegistrar->register(self::WEBHOOK_ENDPOINT)->willThrow(new \LogicException('A bug'));
-
-        try {
-            $this->uploader()->upload();
-            self::fail('The failure was not let through');
-        } catch (\LogicException $e) {
-            self::assertSame('A bug', $e->getMessage());
-        }
-
-        self::assertSame(self::UPLOADED, $order->getShipmondoState());
-    }
-
-    /**
      * An order in the given Shipmondo state, put in it by the given Shipmondo failure, if any. An uploaded order is
      * linked to the sales order 999
      */
@@ -2320,9 +2093,6 @@ final class OrderUploaderTest extends TestCase
             ])),
         ]);
 
-        $registeredWebhooksRepository = $this->prophesize(RegisteredWebhooksRepositoryInterface::class);
-        $registeredWebhooksRepository->findLatest()->willReturn($this->latestRegistration);
-
         $orderCanceller = new OrderCanceller($commandBus, $orderWorkflow, $this->logger);
         $uploader = new OrderUploader(
             $provider->reveal(),
@@ -2335,9 +2105,6 @@ final class OrderUploaderTest extends TestCase
             $orderCanceller,
             $this->logger,
             $managerRegistry->reveal(),
-            $this->webhookRegistrar->reveal(),
-            $registeredWebhooksRepository->reveal(),
-            $this->registerWebhooksAutomatically,
         );
         $handler = new UploadOrderHandler($orderRepository->reveal(), $uploader);
         $deleteOrderHandler = new DeleteOrderHandler($orderRepository->reveal(), $shipmondoClient, $orderWorkflow, $orderCanceller);

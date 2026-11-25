@@ -17,9 +17,7 @@ interface OrderUploaderInterface
      * minutes, by the exact order id its upload sent, and settles the order by what it finds: one sales order links the
      * order to it, none puts it back to pending, and several leave it unlinked. The lookups run here, never through the
      * command bus. Then it puts each pending order that qualifies for upload in uploading, and uploads it through the
-     * UploadOrder command. Last, unless the run stopped early or setono_sylius_shipmondo.webhooks.register_automatically
-     * is off, it registers the webhooks again where an admin last registered them, which fixes this shop's webhooks in
-     * Shipmondo when they no longer match the ones the webhook handlers handle, and only fetches them otherwise.
+     * UploadOrder command.
      *
      * Stop rules end the run early when the remaining orders would most likely fail the same way, and they wait for the
      * next run. They apply to the lookups and to the uploads the run sees, which are those handled synchronously (the
@@ -36,9 +34,7 @@ interface OrderUploaderInterface
      * - Three unread successes in a row don't stop the run, since Shipmondo created the sales orders, and lookups link
      *   them later, but the run reports them. Only an uploaded order starts the count over.
      *
-     * Each stop, and each problem the run reports, is logged as an error. So is a last step that couldn't register the
-     * webhooks again, which the run reports too: no registration with an endpoint is recorded, Shipmondo can't reach the
-     * recorded endpoint, or a call to Shipmondo failed. Any other failure of that step is thrown, after the uploads.
+     * Each stop, and each problem the run reports, is logged as an error.
      *
      * @return list<UploadRunProblem> the problems the run reports, in the order they arose, or an empty list when it
      *                                got through every order without one

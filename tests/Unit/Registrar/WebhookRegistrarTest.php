@@ -288,20 +288,6 @@ final class WebhookRegistrarTest extends TestCase
     }
 
     /**
-     * @test
-     */
-    public function it_registers_the_webhooks_at_a_given_endpoint_instead_of_the_routers(): void
-    {
-        $endpoint = 'https://www.shop.example.com/webhook/shipmondo';
-        $shipmondo = (new ScriptedHttpClient())->respond(200, self::wanted($endpoint));
-
-        $this->registrar($shipmondo, endpoint: 'https://admin.example.com/webhook/shipmondo')->register($endpoint);
-
-        self::assertSame(['GET webhooks'], $shipmondo->requestLines());
-        self::assertSame($endpoint, $this->recorded[0]->getEndpoint());
-    }
-
-    /**
      * There is one registration, the latest: each registration records its endpoint and time on it
      *
      * @test
@@ -387,14 +373,12 @@ final class WebhookRegistrarTest extends TestCase
     {
         $shipmondo = new ScriptedHttpClient();
 
-        foreach ([[$this->registrar($shipmondo, endpoint: $endpoint), null], [$this->registrar($shipmondo), $endpoint]] as [$registrar, $given]) {
-            try {
-                $registrar->register($given);
-                self::fail('The webhooks were registered');
-            } catch (UnreachableWebhookEndpointException $e) {
-                self::assertSame($endpoint, $e->endpoint);
-                self::assertSame(sprintf('The webhooks were not registered: Shipmondo can\'t reach their endpoint, %s.', $endpoint), $e->getMessage());
-            }
+        try {
+            $this->registrar($shipmondo, endpoint: $endpoint)->register();
+            self::fail('The webhooks were registered');
+        } catch (UnreachableWebhookEndpointException $e) {
+            self::assertSame($endpoint, $e->endpoint);
+            self::assertSame(sprintf('The webhooks were not registered: Shipmondo can\'t reach their endpoint, %s.', $endpoint), $e->getMessage());
         }
 
         // not even this shop's webhooks were fetched, and the registration recorded before still says where they are sent

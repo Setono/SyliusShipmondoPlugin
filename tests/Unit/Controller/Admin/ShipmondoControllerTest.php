@@ -111,7 +111,7 @@ final class ShipmondoControllerTest extends TestCase
         $this->givenShipmondoApi();
 
         $this->twig->render(self::TEMPLATE, Argument::that(function (array $context): bool {
-            self::assertSame(['paymentMethods', 'shippingMethods', 'shipmondoPaymentMethods', 'shipmondoShipmentTemplates', 'paymentGatewaysFetched', 'shipmentTemplatesFetched', 'stalePaymentGateways', 'staleShipmentTemplates', 'registeredWebhooks', 'webhookComparison', 'registerWebhooksAutomatically'], array_keys($context));
+            self::assertSame(['paymentMethods', 'shippingMethods', 'shipmondoPaymentMethods', 'shipmondoShipmentTemplates', 'paymentGatewaysFetched', 'shipmentTemplatesFetched', 'stalePaymentGateways', 'staleShipmentTemplates', 'registeredWebhooks', 'webhookComparison'], array_keys($context));
             self::assertSame($this->paymentMethods, $context['paymentMethods']);
             self::assertSame($this->shippingMethods, $context['shippingMethods']);
             self::assertSame([11, 12], self::ids($context['shipmondoPaymentMethods']));
@@ -123,7 +123,6 @@ final class ShipmondoControllerTest extends TestCase
             self::assertSame($this->registeredWebhooks, $context['registeredWebhooks']);
             // no endpoint is recorded to compare with
             self::assertNull($context['webhookComparison']);
-            self::assertTrue($context['registerWebhooksAutomatically']);
 
             return true;
         }))->willReturn('<h1>Shipmondo</h1>')->shouldBeCalledOnce();
@@ -134,21 +133,6 @@ final class ShipmondoControllerTest extends TestCase
         self::assertSame(Response::HTTP_OK, $response->getStatusCode());
         self::assertSame('<h1>Shipmondo</h1>', $response->getContent());
         self::assertSame([], $this->session->getFlashBag()->peekAll());
-    }
-
-    /**
-     * @test
-     */
-    public function it_tells_the_template_whether_the_upload_run_registers_the_webhooks_again(): void
-    {
-        $this->givenShipmondoApi();
-        $this->twig->render(self::TEMPLATE, Argument::that(static function (array $context): bool {
-            self::assertFalse($context['registerWebhooksAutomatically']);
-
-            return true;
-        }))->willReturn('<h1>Shipmondo</h1>')->shouldBeCalledOnce();
-
-        $this->controller(registerWebhooksAutomatically: false)->index(new Request());
     }
 
     /**
@@ -831,7 +815,7 @@ final class ShipmondoControllerTest extends TestCase
         return Request::create('/admin/shipmondo', 'POST', $parameters);
     }
 
-    private function controller(bool $registerWebhooksAutomatically = true): ShipmondoController
+    private function controller(): ShipmondoController
     {
         $request = new Request();
         $request->setSession($this->session);
@@ -851,7 +835,6 @@ final class ShipmondoControllerTest extends TestCase
             new SetupProvider(ShipmondoApi::client($this->httpClient->reveal())),
             Translations::translator(),
             $this->logger,
-            $registerWebhooksAutomatically,
         );
         $controller->setContainer($container);
 

@@ -22,14 +22,6 @@ final class SalesOrderLookupTest extends FunctionalTestCase
 {
     private const COMMAND = 'setono:sylius-shipmondo:upload-orders';
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-
-        // so the upload run's last step only fetches them
-        $this->theWebhooksAreRegistered();
-    }
-
     /**
      * Shipmondo lists a sales order it just created only after a short delay. The wait counts from when the order
      * became unlinked, so a later change to the order, e.g. a payment, doesn't put its lookup off
@@ -137,7 +129,7 @@ final class SalesOrderLookupTest extends FunctionalTestCase
         $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
 
         self::assertSame(
-            ['GET sales_orders', 'GET payment_gateways', 'POST sales_orders', 'POST sales_orders', 'GET webhooks'],
+            ['GET sales_orders', 'GET payment_gateways', 'POST sales_orders', 'POST sales_orders'],
             $this->shipmondo->requestLines(),
         );
         $uploaded = array_map(
@@ -319,7 +311,6 @@ final class SalesOrderLookupTest extends FunctionalTestCase
             ['The upload run stopped after three temporary failures in a row: Shipmondo answered with a server error, or not in time. Check whether Shipmondo is down, and the log. The remaining orders wait for the next run.'],
             CommandErrors::of($tester),
         );
-        // the run stopped, so it doesn't register the webhooks again either
         self::assertSame(['GET sales_orders', 'GET sales_orders', 'GET sales_orders'], $this->shipmondo->requestLines());
         self::assertSame(OrderInterface::SHIPMONDO_STATE_PENDING, $this->orderRow(self::id($pending))['shipmondo_state']);
     }

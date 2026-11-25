@@ -34,7 +34,6 @@ final class ShipmondoController extends AbstractController
         private readonly SetupProviderInterface $setupProvider,
         private readonly TranslatorInterface $translator,
         private readonly LoggerInterface $logger,
-        private readonly bool $registerWebhooksAutomatically,
     ) {
     }
 
@@ -224,7 +223,6 @@ final class ShipmondoController extends AbstractController
             'registeredWebhooks' => $registeredWebhooks,
             // null when no endpoint is recorded, or this shop's webhooks couldn't be fetched
             'webhookComparison' => $webhookComparison,
-            'registerWebhooksAutomatically' => $this->registerWebhooksAutomatically,
         ]);
     }
 

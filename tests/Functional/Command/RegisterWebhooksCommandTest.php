@@ -94,6 +94,27 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
     }
 
     /**
+     * Shipmondo lists every webhook on the account, also other integrations', which may have an action or a resource the
+     * Shipmondo SDK doesn't know, e.g. one Shipmondo added later. The SDK reads it as null, so registering still works,
+     * and leaves that webhook alone
+     *
+     * @test
+     */
+    public function it_leaves_alone_another_integrations_webhook_whose_action_the_sdk_does_not_know(): void
+    {
+        $endpoint = $this->webhookEndpoint();
+        $this->shipmondo->respond('GET', 'webhooks', 200, [
+            ...$this->wantedWebhooks($endpoint),
+            ['id' => 8001, 'endpoint' => 'https://another-integration.example.com/hook', 'active' => true, 'name' => 'Another integration', 'action' => 'an_action_added_later', 'resource_name' => 'A resource added later'],
+        ], ['X-Total-Pages' => '1']);
+
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+
+        self::assertSame(['GET webhooks'], $this->shipmondo->requestLines());
+        self::assertSame([$endpoint], array_column($this->webhookRegistrations(), 'endpoint'));
+    }
+
+    /**
      * @test
      */
     public function it_registers_the_webhooks_under_the_channels_hostname(): void

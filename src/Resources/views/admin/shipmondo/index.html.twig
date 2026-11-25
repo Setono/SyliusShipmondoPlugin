@@ -98,11 +98,10 @@
                                     <li>{{ (webhook.active ? 'setono_sylius_shipmondo.ui.unwanted_webhook' : 'setono_sylius_shipmondo.ui.unwanted_inactive_webhook')|trans({'%name%': webhook.name, '%endpoint%': webhook.endpoint}) }}</li>
                                 {% endfor %}
                             </ul>
-                            <p>{{ (registerWebhooksAutomatically ? 'setono_sylius_shipmondo.ui.webhooks_do_not_match_next_step_automatically' : 'setono_sylius_shipmondo.ui.webhooks_do_not_match_next_step')|trans }}</p>
+                            <p>{{ 'setono_sylius_shipmondo.ui.webhooks_do_not_match_next_step'|trans }}</p>
                         </div>
                     {% endif %}
                 {% endif %}
-                <p>{{ (registerWebhooksAutomatically ? 'setono_sylius_shipmondo.ui.webhooks_registered_automatically' : 'setono_sylius_shipmondo.ui.webhooks_not_registered_automatically')|trans }}</p>
                 <a href="{{ path('setono_sylius_shipmondo_admin_shipmondo_register_webhooks') }}" class="ui primary button">
                     {{ 'setono_sylius_shipmondo.ui.register_webhooks'|trans }}
                 </a>
