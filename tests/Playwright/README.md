@@ -45,9 +45,8 @@ Two things `BrowserTestCase` does that a test may run into:
 
 ## Running
 
-`playwright-php/playwright-symfony` is not in `composer.json` (CI installs it in the `browser-tests` job): it requires
-PHP >= 8.2, which the plugin supported only from the Shipmondo SDK's 2.0.0-rc.3 on, and moving it to `require-dev` is
-still to do. Locally, with Node 20:
+`playwright-php/playwright-symfony` is not in `composer.json` yet (CI installs it in the `browser-tests` job). Locally,
+with Node 20:
 
 ```bash
 php8.2 composer require --dev --no-update "playwright-php/playwright-symfony:^0.11"

@@ -13,14 +13,14 @@ use Sylius\Component\Core\OrderCheckoutStates;
 use Sylius\Component\Core\OrderPaymentStates;
 use Sylius\Component\Order\Repository\OrderRepositoryInterface;
 
-final class PreQualifiedUploadableOrdersProvider implements PreQualifiedUploadableOrdersProviderInterface
+final readonly class PreQualifiedUploadableOrdersProvider implements PreQualifiedUploadableOrdersProviderInterface
 {
     /**
      * @param OrderRepositoryInterface&EntityRepository<OrderInterface> $orderRepository
      */
     public function __construct(
-        private readonly OrderRepositoryInterface&EntityRepository $orderRepository,
-        private readonly EventDispatcherInterface $eventDispatcher,
+        private OrderRepositoryInterface&EntityRepository $orderRepository,
+        private EventDispatcherInterface $eventDispatcher,
     ) {
     }
 

@@ -20,11 +20,11 @@ use Sylius\Component\Shipping\ShipmentTransitions;
  * status change reporting full shipment is reacted to; both are gated on shipped_percent reaching 100
  * (the `status_update` that accompanies mere fulfilment still reports shipped_percent 0).
  */
-final class SalesOrderShippedHandler implements OrderWebhookHandlerInterface
+final readonly class SalesOrderShippedHandler implements OrderWebhookHandlerInterface
 {
     public function __construct(
-        private readonly StateMachineInterface $stateMachine,
-        private readonly StateResolverInterface $orderStateResolver,
+        private StateMachineInterface $stateMachine,
+        private StateResolverInterface $orderStateResolver,
     ) {
     }
 

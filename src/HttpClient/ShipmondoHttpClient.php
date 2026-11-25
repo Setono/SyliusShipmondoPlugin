@@ -16,11 +16,11 @@ use Psr\Http\Message\ResponseInterface;
  * Both are the PSR-18 versions of framework scoped HTTP clients the plugin prepends, so a shop changes their limits in
  * its framework config.
  */
-final class ShipmondoHttpClient implements ClientInterface
+final readonly class ShipmondoHttpClient implements ClientInterface
 {
     public function __construct(
-        private readonly ClientInterface $httpClient,
-        private readonly ClientInterface $pickupPointsHttpClient,
+        private ClientInterface $httpClient,
+        private ClientInterface $pickupPointsHttpClient,
     ) {
     }
 

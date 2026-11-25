@@ -17,11 +17,11 @@ use Webmozart\Assert\Assert;
  * it failed, so Messenger doesn't retry it: the next upload run is the retry. Returns the outcome, which the upload run
  * reads when the command is handled synchronously.
  */
-final class UploadOrderHandler
+final readonly class UploadOrderHandler
 {
     public function __construct(
-        private readonly OrderRepositoryInterface $orderRepository,
-        private readonly OrderUploaderInterface $orderUploader,
+        private OrderRepositoryInterface $orderRepository,
+        private OrderUploaderInterface $orderUploader,
     ) {
     }
 

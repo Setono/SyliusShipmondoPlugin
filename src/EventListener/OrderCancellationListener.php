@@ -24,11 +24,11 @@ use Symfony\Component\Workflow\Event\CompletedEvent;
  * `workflow.sylius_order.completed.cancel` event. Only one fires for a given app, depending on which
  * state-machine adapter backs `sylius_order`.
  */
-final class OrderCancellationListener
+final readonly class OrderCancellationListener
 {
     public function __construct(
-        private readonly OrderCancellerInterface $orderCanceller,
-        private readonly RequestStack $requestStack,
+        private OrderCancellerInterface $orderCanceller,
+        private RequestStack $requestStack,
     ) {
     }
 

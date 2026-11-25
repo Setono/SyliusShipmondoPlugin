@@ -10,9 +10,9 @@ use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
  * Sends the order number as the order id, after the order id prefix (setono_sylius_shipmondo.order_id_prefix, none by
  * default)
  */
-final class OrderIdProvider implements OrderIdProviderInterface
+final readonly class OrderIdProvider implements OrderIdProviderInterface
 {
-    public function __construct(private readonly string $prefix = '')
+    public function __construct(private string $prefix = '')
     {
     }
 

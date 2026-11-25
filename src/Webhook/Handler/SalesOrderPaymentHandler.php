@@ -26,9 +26,9 @@ use Sylius\Component\Payment\PaymentTransitions;
  * means here. Every transition is `can()`-guarded, so an already-paid order is a safe no-op. The state
  * machine callbacks resolve the order's payment state (and order state) on transition.
  */
-final class SalesOrderPaymentHandler implements OrderWebhookHandlerInterface
+final readonly class SalesOrderPaymentHandler implements OrderWebhookHandlerInterface
 {
-    public function __construct(private readonly StateMachineInterface $stateMachine)
+    public function __construct(private StateMachineInterface $stateMachine)
     {
     }
 

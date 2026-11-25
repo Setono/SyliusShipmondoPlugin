@@ -12,13 +12,13 @@ use function Setono\SyliusShipmondoPlugin\formatAmount;
  * by this one rule, so a free item, a shipping method that costs nothing or a free order has a VAT percent of 0 rather
  * than a division by zero.
  */
-final class AmountWithVat
+final readonly class AmountWithVat
 {
     /**
      * @param int $excludingVat in minor units, as Sylius keeps amounts
      * @param int $vat in minor units
      */
-    private function __construct(private readonly int $excludingVat, private readonly int $vat)
+    private function __construct(private int $excludingVat, private int $vat)
     {
     }
 
