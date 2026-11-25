@@ -21,6 +21,11 @@ interface OrderLinkerInterface
      * call that failed temporarily didn't create one, so the order goes back to pending, to be uploaded again. Several:
      * the order stays unlinked, since some may be another shop's on the same Shipmondo account, and an error names them.
      *
+     * Once the order is linked, it catches up on what Shipmondo did to the sales order while no order was linked to it,
+     * which the webhooks it missed would have told it: the webhook handlers of orders/status_update run with the sales
+     * order, and a warning says when its payment may have been captured, voided or refunded meanwhile. When a handler
+     * fails, what the handlers changed is discarded and the failure is logged, and the order stays linked.
+     *
      * The order's row is locked and the order is read again before it is settled. An order that changed since it was
      * loaded, e.g. because another upload run looked it up, or that a guard on the order workflow holds back, is left as
      * it is, even when it is still unlinked. An order that is cancelled in Sylius becomes cancelled once Shipmondo has

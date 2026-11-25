@@ -1165,9 +1165,19 @@ recorded in [ADR 0003](docs/adr/0003-a-sales-order-lookup-settles-every-unlinked
   same way can have sales orders with the same order ids: an order then stays `unlinked` with several matches, or, when
   its own sales order is gone, is linked to the other shop's. Give each such shop an order id prefix of its own to
   avoid that (section 27).
-- **Webhooks about a sales order that arrive while its order is `unlinked` are lost**, since no order is linked to it
-  yet ([#76](https://github.com/Setono/SyliusShipmondoPlugin/issues/76)). That should be rare: a sales order is seldom
-  shipped, or its payment captured, within minutes of its upload.
+- **A lookup that links an order catches it up on its sales order**
+  ([#76](https://github.com/Setono/SyliusShipmondoPlugin/issues/76)). Shipmondo's webhooks about a sales order that
+  arrive while its order is `unlinked` are lost, since no order is linked to it yet. So once a lookup has linked the
+  order, it runs every webhook handler subscribed to `orders/status_update` (`OrderWebhookHandlerInterface`, yours
+  too), in their priority order, with a `Webhook\RemoteEvent` named `shipmondo.sales_order_lookup`
+  (`Linker\OrderLinker::CATCH_UP_WEBHOOK_NAME`) whose payload is the sales order it found: a fully shipped sales order
+  ships the order, as the webhook would have. The handlers run on the order locked and read again, in a transaction of
+  their own once the link is committed. When one throws, what they changed is discarded (the order, its shipments and
+  its payments are read again), the failure is logged as an error, and the order stays linked. A sales order holds only
+  its payment's current state, so a capture, a void or a refund isn't caught up on: when the sales order's
+  `payment_status` is `paid`, `partially_paid`, `marked_as_paid`, `voided`, `refunded` or `partially_refunded`, a
+  warning tells an admin to check the order's payment in Sylius. **If you have a handler for `status_update`**, it may
+  now get a sales order from a lookup too, not only from a webhook; the remote event's name tells them apart.
 
 **Run a database migration.** The order now records when its Shipmondo state last changed, which for an `unlinked`
 order is when it became `unlinked`, in a new nullable column, `shipmondoStateChangedAt`, mapped in `OrderTrait`. It is

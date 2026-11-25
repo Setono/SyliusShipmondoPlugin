@@ -43,6 +43,7 @@ use Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProviderInterface;
 use Setono\SyliusShipmondoPlugin\Uploader\OrderUploader;
 use Setono\SyliusShipmondoPlugin\Uploader\UploadOutcome;
 use Setono\SyliusShipmondoPlugin\Uploader\UploadRunProblem;
+use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Component\Order\Repository\OrderRepositoryInterface;
 use Symfony\Component\EventDispatcher\EventDispatcher;
@@ -1753,7 +1754,7 @@ final class OrderUploaderTest extends TestCase
         $uploader = new OrderUploader(
             $provider->reveal(),
             $unlinkedOrdersProvider->reveal(),
-            new OrderLinker($this->orderIdProvider, $shipmondoClient, $orderWorkflow, $orderCanceller, $this->logger, $managerRegistry->reveal()),
+            new OrderLinker($this->orderIdProvider, $shipmondoClient, $orderWorkflow, $orderCanceller, new OrderWebhookHandlers([]), $this->logger, $managerRegistry->reveal()),
             $commandBus,
             $orderWorkflow,
             $shipmondoClient,

@@ -12,6 +12,8 @@ use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
 use Psr\Log\LogLevel;
+use Setono\Shipmondo\Enum\WebhookAction;
+use Setono\Shipmondo\Enum\WebhookResourceName;
 use Setono\Shipmondo\Exception\ConnectionException;
 use Setono\Shipmondo\Exception\ForbiddenException;
 use Setono\Shipmondo\Exception\InternalServerErrorException;
@@ -28,6 +30,9 @@ use Setono\SyliusShipmondoPlugin\Message\Command\DeleteOrder;
 use Setono\SyliusShipmondoPlugin\Message\CommandHandler\DeleteOrderHandler;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider;
+use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlerInterface;
+use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers;
+use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Component\Order\Repository\OrderRepositoryInterface;
 use Symfony\Component\EventDispatcher\EventDispatcher;
@@ -66,6 +71,8 @@ final class OrderLinkerTest extends TestCase
 
     private const FAILED_MESSAGE = 'The sales order lookup of the unlinked order {order} failed, so the order stays unlinked for the next upload run';
 
+    private const CATCH_UP_FAILED_MESSAGE = 'A webhook handler failed to catch the order {order} up on its sales order {salesOrder}, which a sales order lookup linked it to, so what the handlers changed is discarded. The order stays linked, and Shipmondo\'s webhooks about the sales order reach it from now on. Check the order against its sales order in Shipmondo';
+
     private const CANCELLED_MESSAGE = 'The unlinked order {order} was cancelled, so it becomes cancelled once Shipmondo has no sales order for it';
 
     private ScriptedHttpClient $shipmondo;
@@ -96,6 +103,20 @@ final class OrderLinkerTest extends TestCase
      * Whether the command bus fails to send DeleteOrder, as when its asynchronous transport is down
      */
     private bool $deleteOrderFails = false;
+
+    /**
+     * The webhook handlers of each action, by the action's value
+     *
+     * @var array<string, list<OrderWebhookHandlerInterface>>
+     */
+    private array $webhookHandlers = [];
+
+    /**
+     * What the handlers below saw, in the order they ran: the handler, the order number, and the webhook
+     *
+     * @var list<array{string, string|null, RemoteEvent}>
+     */
+    private array $handled = [];
 
     protected function setUp(): void
     {
@@ -497,6 +518,250 @@ final class OrderLinkerTest extends TestCase
     }
 
     /**
+     * Shipmondo's webhooks about the sales order were lost while the order was unlinked, since no order was linked to
+     * it, so once the order is, it catches up on the sales order as the orders/status_update webhook would have
+     *
+     * @test
+     */
+    public function it_runs_the_status_update_webhook_handlers_with_the_sales_order_it_links_the_order_to(): void
+    {
+        $order = $this->unlinkedOrder();
+        $this->handleWebhooks(WebhookAction::StatusUpdate, 'first', 'second');
+        $salesOrder = ['id' => 1001, 'order_id' => '#001', 'source_name' => 'Sylius', 'shipped_percent' => 100];
+        $this->shipmondo->respond(200, [$salesOrder]);
+
+        self::assertNull($this->linker()->link($order));
+
+        self::assertSame([self::UPLOADED, 1001], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame([['first', '#001'], ['second', '#001']], array_map(static fn (array $handled): array => [$handled[0], $handled[1]], $this->handled));
+        foreach ($this->handled as [, , $webhook]) {
+            self::assertSame(
+                ['shipmondo.sales_order_lookup', WebhookResourceName::Orders, WebhookAction::StatusUpdate, $salesOrder],
+                [$webhook->getName(), $webhook->getResource(), $webhook->getAction(), $webhook->getPayload()],
+            );
+        }
+    }
+
+    /**
+     * The handlers change the order as the database has it, locked, as every other move does, and their changes are
+     * flushed when the transaction commits. The link is committed first, so nothing they do can undo it
+     *
+     * @test
+     */
+    public function it_runs_the_status_update_webhook_handlers_on_the_order_locked_and_read_again_once_the_link_is_committed(): void
+    {
+        $order = $this->unlinkedOrder();
+        $events = [];
+        $this->entityManager->wrapInTransaction(Argument::type('callable'))->will(static function (array $args) use (&$events): mixed {
+            Assert::isCallable($args[0]);
+            $events[] = 'begin';
+            $return = $args[0]();
+            $events[] = 'flush and commit';
+
+            return $return;
+        });
+        $this->entityManager->refresh($order, LockMode::PESSIMISTIC_WRITE)->will(static function () use (&$events): void {
+            $events[] = 'lock and read';
+        });
+        $this->webhookHandlers[WebhookAction::StatusUpdate->value][] = $this->webhookHandler('handler', static function () use (&$events): void {
+            $events[] = 'handle';
+        });
+        $this->respondWithSalesOrders([1001 => '#001']);
+
+        self::assertNull($this->linker()->link($order));
+
+        self::assertSame(['begin', 'lock and read', 'flush and commit', 'begin', 'lock and read', 'handle', 'flush and commit'], $events);
+    }
+
+    /**
+     * @test
+     */
+    public function it_does_not_run_the_webhook_handlers_of_other_actions(): void
+    {
+        $order = $this->unlinkedOrder();
+        $this->handleWebhooks(WebhookAction::CreateShipment, 'create shipment');
+        $this->handleWebhooks(WebhookAction::PaymentCaptured, 'payment captured');
+        $this->respondWithSalesOrders([1001 => '#001']);
+
+        self::assertNull($this->linker()->link($order));
+
+        self::assertSame(self::UPLOADED, $order->getShipmondoState());
+        self::assertSame([], $this->handled);
+    }
+
+    /**
+     * Only a lookup that links the order to its sales order knows which sales order to catch up on
+     *
+     * @test
+     *
+     * @dataProvider lookupsThatDoNotLink
+     *
+     * @param \Closure(self, Order): void $lookUp
+     */
+    public function it_runs_no_webhook_handler_when_it_does_not_link_the_order(\Closure $lookUp): void
+    {
+        $order = $this->unlinkedOrder();
+        $this->handleWebhooks(WebhookAction::StatusUpdate, 'handler');
+        $lookUp($this, $order);
+
+        $this->linker()->link($order);
+
+        self::assertNotSame(self::UPLOADED, $order->getShipmondoState());
+        self::assertSame([], $this->handled);
+    }
+
+    /**
+     * @return iterable<string, array{\Closure(self, Order): void}>
+     */
+    public static function lookupsThatDoNotLink(): iterable
+    {
+        yield 'no sales order found' => [static function (self $test): void {
+            $test->respondWithSalesOrders([]);
+        }];
+        yield 'several sales orders found' => [static function (self $test): void {
+            $test->respondWithSalesOrders([1001 => '#001', 1002 => '#001']);
+        }];
+        yield 'the search failed' => [static function (self $test): void {
+            $test->shipmondo->respond(500);
+        }];
+        yield 'the order changed while Shipmondo was searched' => [static function (self $test, Order $order): void {
+            $test->respondWithSalesOrders([1001 => '#001']);
+            $test->entityManager->refresh($order, LockMode::PESSIMISTIC_WRITE)->will(static function () use ($order): void {
+                $order->setVersion(2);
+            });
+        }];
+        yield 'a guard holds the link back' => [static function (self $test): void {
+            $test->respondWithSalesOrders([1001 => '#001']);
+            $test->eventDispatcher->addListener(
+                'workflow.setono_sylius_shipmondo__order.guard.' . OrderWorkflow::TRANSITION_LINK,
+                static function (GuardEvent $event): void {
+                    $event->setBlocked(true);
+                },
+            );
+        }];
+    }
+
+    /**
+     * The order catches up on its sales order while it is linked to it, and only then is the sales order deleted, as the
+     * cancellation in Sylius wants
+     *
+     * @test
+     */
+    public function it_catches_an_order_that_is_cancelled_in_sylius_up_before_its_sales_order_is_deleted(): void
+    {
+        $order = $this->unlinkedOrder(OrderInterface::STATE_CANCELLED);
+        $statesWhenHandled = [];
+        $this->webhookHandlers[WebhookAction::StatusUpdate->value][] = $this->webhookHandler('handler', static function (OrderInterface $order) use (&$statesWhenHandled): void {
+            $statesWhenHandled[] = [$order->getShipmondoState(), $order->getShipmondoId()];
+        });
+        $this->respondWithSalesOrders([1001 => '#001']);
+        $this->shipmondo->respond(204);
+
+        self::assertNull($this->linker()->link($order));
+
+        self::assertSame([[self::UPLOADED, 1001]], $statesWhenHandled);
+        self::assertSame([self::CANCELLED, null], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame(['GET sales_orders', 'DELETE sales_orders/1001'], $this->shipmondo->requestLines());
+    }
+
+    /**
+     * What the handlers changed is discarded, as when a webhook fails, so the order isn't left half caught up. It stays
+     * linked, and the upload run goes on
+     *
+     * @test
+     */
+    public function it_discards_the_catch_up_and_logs_why_when_a_status_update_webhook_handler_fails(): void
+    {
+        $order = $this->unlinkedOrder();
+        // as the database has the order: without notes
+        $this->entityManager->refresh($order, Argument::cetera())->will(static function () use ($order): void {
+            $order->setNotes(null);
+        });
+        $this->webhookHandlers[WebhookAction::StatusUpdate->value][] = $this->webhookHandler('first', static function (OrderInterface $order): void {
+            $order->setNotes('Caught up');
+        });
+        $exception = new \RuntimeException('The handler failed');
+        $this->webhookHandlers[WebhookAction::StatusUpdate->value][] = $this->webhookHandler('second', static function () use ($exception): void {
+            throw $exception;
+        });
+        $this->respondWithSalesOrders([1001 => '#001']);
+
+        self::assertNull($this->linker()->link($order));
+
+        self::assertSame([self::UPLOADED, 1001, null], [$order->getShipmondoState(), $order->getShipmondoId(), $order->getNotes()]);
+        self::assertCount(2, $this->logger->records);
+        self::assertSame([
+            'level' => LogLevel::ERROR,
+            'message' => self::CATCH_UP_FAILED_MESSAGE,
+            'context' => ['order' => '#001', 'salesOrder' => 1001, 'exception' => $exception],
+        ], $this->logger->records[1]);
+    }
+
+    /**
+     * A sales order holds only its payment's current state, not what happened to it, so a capture, a void or a refund
+     * while the order was unlinked can't be told from it, and isn't caught up on: an admin checks the order's payment
+     *
+     * @test
+     *
+     * @dataProvider paymentStatusesThatMayHaveChanged
+     */
+    public function it_warns_that_the_payment_may_have_changed_when_the_sales_order_it_links_the_order_to_was_paid_voided_or_refunded(string $paymentStatus): void
+    {
+        $order = $this->unlinkedOrder();
+        $this->shipmondo->respond(200, [['id' => 1001, 'order_id' => '#001', 'source_name' => 'Sylius', 'payment_status' => $paymentStatus]]);
+
+        self::assertNull($this->linker()->link($order));
+
+        self::assertSame([self::UPLOADED, 1001], [$order->getShipmondoState(), $order->getShipmondoId()]);
+        self::assertSame([[
+            'level' => LogLevel::WARNING,
+            'message' => 'The sales order {salesOrder}, which a sales order lookup linked the order {order} to, has the payment status {paymentStatus}, so Shipmondo may have captured, voided or refunded its payment while the order was unlinked, and Sylius doesn\'t know. Check the order\'s payment in Sylius',
+            'context' => ['order' => '#001', 'salesOrder' => 1001, 'paymentStatus' => $paymentStatus],
+        ]], array_slice($this->logger->records, 1));
+    }
+
+    /**
+     * @return iterable<string, array{string}>
+     */
+    public static function paymentStatusesThatMayHaveChanged(): iterable
+    {
+        foreach (['paid', 'partially_paid', 'marked_as_paid', 'voided', 'refunded', 'partially_refunded'] as $paymentStatus) {
+            yield $paymentStatus => [$paymentStatus];
+        }
+    }
+
+    /**
+     * @test
+     *
+     * @dataProvider paymentStatusesThatDidNotChange
+     *
+     * @param array<string, mixed> $paymentStatus
+     */
+    public function it_does_not_warn_about_the_payment_when_the_sales_order_it_links_the_order_to_was_not_paid_voided_or_refunded(array $paymentStatus): void
+    {
+        $order = $this->unlinkedOrder();
+        $this->shipmondo->respond(200, [['id' => 1001, 'order_id' => '#001', 'source_name' => 'Sylius'] + $paymentStatus]);
+
+        self::assertNull($this->linker()->link($order));
+
+        self::assertSame(self::UPLOADED, $order->getShipmondoState());
+        self::assertCount(1, $this->logger->records);
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function paymentStatusesThatDidNotChange(): iterable
+    {
+        foreach (['authorized', 'authorize_pending', 'authorize_error', 'authorize_expired'] as $paymentStatus) {
+            yield $paymentStatus => [['payment_status' => $paymentStatus]];
+        }
+
+        yield 'none' => [[]];
+        yield 'null' => [['payment_status' => null]];
+    }
+
+    /**
      * Only an unlinked order may have a sales order nobody knows of. Settling another by what Shipmondo has could
      * e.g. put a failed order back to pending
      *
@@ -588,7 +853,52 @@ final class OrderLinkerTest extends TestCase
         }
         $deleteOrderHandler = new DeleteOrderHandler($orderRepository->reveal(), $shipmondoClient, $orderWorkflow, $orderCanceller);
 
-        return new OrderLinker($this->orderIdProvider, $shipmondoClient, $orderWorkflow, $orderCanceller, $this->logger, $managerRegistry->reveal());
+        return new OrderLinker($this->orderIdProvider, $shipmondoClient, $orderWorkflow, $orderCanceller, new OrderWebhookHandlers($this->webhookHandlers), $this->logger, $managerRegistry->reveal());
+    }
+
+    /**
+     * Handles the webhooks with this action with handlers that record what they see, in this order
+     */
+    private function handleWebhooks(WebhookAction $action, string ...$names): void
+    {
+        foreach ($names as $name) {
+            $this->webhookHandlers[$action->value][] = $this->webhookHandler($name);
+        }
+    }
+
+    /**
+     * A webhook handler that records what it sees, and then calls $then, if given
+     *
+     * @param (\Closure(OrderInterface): void)|null $then
+     */
+    private function webhookHandler(string $name, ?\Closure $then = null): OrderWebhookHandlerInterface
+    {
+        $handle = function (OrderInterface $order, RemoteEvent $webhook) use ($name, $then): void {
+            $this->handled[] = [$name, $order->getNumber(), $webhook];
+
+            if (null !== $then) {
+                $then($order);
+            }
+        };
+
+        return new class($handle) implements OrderWebhookHandlerInterface {
+            /**
+             * @param \Closure(OrderInterface, RemoteEvent): void $handle
+             */
+            public function __construct(private readonly \Closure $handle)
+            {
+            }
+
+            public static function getSubscribedActions(): array
+            {
+                return [];
+            }
+
+            public function handle(OrderInterface $order, RemoteEvent $webhook): void
+            {
+                ($this->handle)($order, $webhook);
+            }
+        };
     }
 
     /**
