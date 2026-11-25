@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Setono\SyliusShipmondoPlugin\Functional\Command;
 
-use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
 use Symfony\Component\Routing\RequestContext;
@@ -19,19 +18,20 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
     /**
      * @test
      */
-    public function it_replaces_this_shops_webhooks_in_shipmondo_and_records_the_registration(): void
+    public function it_makes_this_shops_webhooks_in_shipmondo_match_the_wanted_ones_and_records_the_registration(): void
     {
         $endpoint = $this->webhookEndpoint();
 
         $this->shipmondo
             ->respond('GET', 'webhooks', 200, [
+                // this shop's, registered before webhooks carried the shop's id
                 self::webhook(1, 'Setono Sylius Shipmondo Plugin - [orders:create]', $endpoint),
                 self::webhook(2, 'Another integration - [orders:create]', $endpoint),
                 // another shop's on the same Shipmondo account, registered under the same name prefix
                 self::webhook(3, 'Setono Sylius Shipmondo Plugin - [orders:create]', 'https://another-shop.example.com/webhook/shipmondo'),
             ], ['X-Total-Pages' => '1'])
-            ->respond('DELETE', 'webhooks/1', 204, null)
             ->respond('POST', 'webhooks', 201, self::webhook(4, 'Setono Sylius Shipmondo Plugin - [orders:create]', $endpoint))
+            ->respond('DELETE', 'webhooks/1', 204, null)
         ;
 
         $tester = $this->executeCommand(self::COMMAND);
@@ -54,7 +54,7 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
             $registered[] = sprintf('%s:%s', $body['resource_name'], $body['action']);
         }
 
-        // exactly the webhooks the plugin's webhook handlers handle
+        // exactly the webhooks the plugin's webhook handlers handle, before the unwanted one is deleted
         self::assertSame([
             'Orders:status_update',
             'Orders:create_shipment',
@@ -62,25 +62,56 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
             'Orders:payment_voided',
             'Orders:delete',
         ], $registered);
+        self::assertSame(['GET webhooks', 'POST webhooks', 'POST webhooks', 'POST webhooks', 'POST webhooks', 'POST webhooks', 'DELETE webhooks/1'], $this->shipmondo->requestLines());
 
-        self::assertSame([$this->registrar()->getVersion()], $this->registeredVersions());
+        self::assertSame([$endpoint], array_column($this->webhookRegistrations(), 'endpoint'));
     }
 
     /**
+     * The second time, Shipmondo has the wanted webhooks, so nothing is created or deleted
+     *
      * @test
      */
-    public function it_updates_the_existing_registration_when_run_again(): void
+    public function it_only_fetches_the_webhooks_and_records_the_registration_again_when_run_again(): void
     {
+        $endpoint = $this->webhookEndpoint();
+        $this->recordWebhookRegistration('https://old-address.example.com/webhook/shipmondo');
+
         $this->shipmondo
             ->respond('GET', 'webhooks', 200, [], ['X-Total-Pages' => '1'])
+            ->respond('GET', 'webhooks', 200, $this->wantedWebhooks($endpoint), ['X-Total-Pages' => '1'])
             ->respond('POST', 'webhooks', 201, self::webhook(3, 'Setono Sylius Shipmondo Plugin - [orders:create]'))
         ;
 
         $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
         $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
 
-        self::assertCount(10, $this->shipmondo->requests('POST', 'webhooks'));
-        self::assertSame([$this->registrar()->getVersion()], $this->registeredVersions());
+        self::assertSame(['GET webhooks', ...array_fill(0, 5, 'POST webhooks'), 'GET webhooks'], $this->shipmondo->requestLines());
+        // the latest registration records where the webhooks are sent now
+        $registrations = $this->webhookRegistrations();
+        self::assertSame([$endpoint], array_column($registrations, 'endpoint'));
+        self::assertGreaterThan('2026-01-02 03:04:05', $registrations[0]['registeredAt']);
+    }
+
+    /**
+     * Shipmondo lists every webhook on the account, also other integrations', which may have an action or a resource the
+     * Shipmondo SDK doesn't know, e.g. one Shipmondo added later. The SDK reads it as null, so registering still works,
+     * and leaves that webhook alone
+     *
+     * @test
+     */
+    public function it_leaves_alone_another_integrations_webhook_whose_action_the_sdk_does_not_know(): void
+    {
+        $endpoint = $this->webhookEndpoint();
+        $this->shipmondo->respond('GET', 'webhooks', 200, [
+            ...$this->wantedWebhooks($endpoint),
+            ['id' => 8001, 'endpoint' => 'https://another-integration.example.com/hook', 'active' => true, 'name' => 'Another integration', 'action' => 'an_action_added_later', 'resource_name' => 'A resource added later'],
+        ], ['X-Total-Pages' => '1']);
+
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+
+        self::assertSame(['GET webhooks'], $this->shipmondo->requestLines());
+        self::assertSame([$endpoint], array_column($this->webhookRegistrations(), 'endpoint'));
     }
 
     /**
@@ -122,7 +153,7 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
         $display = (string) preg_replace('/\s+/', ' ', $tester->getDisplay());
         self::assertStringContainsString('Found no hostname Shipmondo can reach to send the webhooks to', $display);
         self::assertSame([], $this->shipmondo->requests());
-        self::assertSame([], $this->registeredVersions());
+        self::assertSame([], $this->webhookRegistrations());
     }
 
     /**
@@ -138,7 +169,7 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
         $display = (string) preg_replace('/\s+/', ' ', $tester->getDisplay());
         self::assertStringContainsString('The webhooks could not be registered', $display);
         self::assertStringContainsString('Shipmondo did not accept the API credentials', $display);
-        self::assertSame([], $this->registeredVersions());
+        self::assertSame([], $this->webhookRegistrations());
     }
 
     /**
@@ -154,25 +185,6 @@ final class RegisterWebhooksCommandTest extends FunctionalTestCase
             'action' => 'create',
             'resource_name' => 'Orders',
         ];
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function registeredVersions(): array
-    {
-        /** @var list<string> $versions */
-        $versions = $this->database()->fetchFirstColumn('SELECT version FROM setono_sylius_shipmondo__registered_webhooks WHERE registeredAt IS NOT NULL');
-
-        return $versions;
-    }
-
-    private function registrar(): WebhookRegistrarInterface
-    {
-        $registrar = static::getContainer()->get(WebhookRegistrarInterface::class);
-        Assert::isInstanceOf($registrar, WebhookRegistrarInterface::class);
-
-        return $registrar;
     }
 
     /**

@@ -13,6 +13,8 @@ use Psr\Http\Message\RequestInterface;
 use Setono\Shipmondo\Enum\WebhookAction;
 use Setono\Shipmondo\Enum\WebhookResourceName;
 use Setono\Shipmondo\Exception\ShipmondoException;
+use Setono\Shipmondo\Exception\ValidationException;
+use Setono\Shipmondo\Response\Webhook\Webhook as WebhookResponse;
 use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooks;
 use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooksInterface;
 use Setono\SyliusShipmondoPlugin\Registrar\UnreachableWebhookEndpointException;
@@ -23,6 +25,7 @@ use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers;
 use Sylius\Component\Resource\Factory\Factory;
 use Sylius\Component\Resource\Factory\FactoryInterface;
 use Symfony\Component\Routing\Generator\UrlGeneratorInterface;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\RecordingLogger;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ScriptedHttpClient;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ShipmondoApi;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\Webhook\OrderWebhookHandlerSpy;
@@ -33,96 +36,316 @@ final class WebhookRegistrarTest extends TestCase
 
     private const KEY = 'a-webhooks-key-of-at-least-32-bytes!';
 
-    private const ANOTHER_SHOPS_KEY = 'another-shops-webhooks-key-of-32-bytes!';
+    private const ENDPOINT = 'https://shop.example.com/webhook/shipmondo';
 
     /** @var ObjectProphecy<RegisteredWebhooksRepositoryInterface> */
     private ObjectProphecy $registeredWebhooksRepository;
 
     private FactoryInterface $registeredWebhooksFactory;
 
+    private RecordingLogger $logger;
+
+    /** @var list<RegisteredWebhooksInterface> the registrations recorded, each as it was when it was recorded */
+    private array $recorded = [];
+
     protected function setUp(): void
     {
         $this->registeredWebhooksRepository = $this->prophesize(RegisteredWebhooksRepositoryInterface::class);
-        $this->registeredWebhooksRepository->findOneByVersion(Argument::any())->willReturn(null);
-        $this->registeredWebhooksRepository->add(Argument::any())->will(static function (): void {});
-        $this->registeredWebhooksFactory = new Factory(RegisteredWebhooks::class);
-    }
-
-    /**
-     * The admin's Shipmondo page finds the registration by the registrar's version, to say when the webhooks were
-     * registered
-     *
-     * @test
-     */
-    public function it_records_the_registration_once_shipmondo_has_registered_the_webhooks(): void
-    {
-        $shipmondo = self::shipmondoRegisters('https://shop.example.com/webhook/shipmondo');
-        $registrar = $this->registrar($shipmondo, $this->urlGenerator('https://shop.example.com/webhook/shipmondo')->reveal());
-
-        /** @var list<RegisteredWebhooksInterface> $recorded */
-        $recorded = [];
-        $this->registeredWebhooksRepository->add(Argument::type(RegisteredWebhooksInterface::class))->will(static function (array $args) use ($shipmondo, &$recorded): void {
-            // Shipmondo has answered every call
-            self::assertCount(4, $shipmondo->requestLines());
+        $this->registeredWebhooksRepository->findLatest()->willReturn(null);
+        $recorded = &$this->recorded;
+        // Prophecy binds a callback to the prophecy, so it reaches the list by reference
+        $this->registeredWebhooksRepository->add(Argument::type(RegisteredWebhooksInterface::class))->will(static function (array $args) use (&$recorded): void {
             self::assertInstanceOf(RegisteredWebhooksInterface::class, $args[0]);
-            $recorded[] = $args[0];
+            $recorded[] = clone $args[0];
         });
-
-        $before = new \DateTimeImmutable();
-        $registrar->register();
-
-        self::assertCount(1, $recorded);
-        self::assertSame($registrar->getVersion(), $recorded[0]->getVersion());
-        self::assertNotNull($recorded[0]->getRegisteredAt());
-        self::assertGreaterThanOrEqual($before, $recorded[0]->getRegisteredAt());
-        self::assertLessThanOrEqual(new \DateTimeImmutable(), $recorded[0]->getRegisteredAt());
+        $this->registeredWebhooksFactory = new Factory(RegisteredWebhooks::class);
+        $this->logger = new RecordingLogger();
     }
 
     /**
      * @test
      */
-    public function it_updates_the_registration_of_webhooks_registered_before(): void
+    public function it_only_fetches_the_webhooks_when_shipmondo_has_exactly_the_wanted_ones_and_records_the_registration(): void
     {
-        $registrar = $this->registrar(self::shipmondoRegisters('https://shop.example.com/webhook/shipmondo'), $this->urlGenerator('https://shop.example.com/webhook/shipmondo')->reveal());
-
-        $registeredBefore = new RegisteredWebhooks();
-        $registeredBefore->setVersion($registrar->getVersion());
-        $registeredBefore->setRegisteredAt(new \DateTimeImmutable('2020-01-01'));
-        $this->registeredWebhooksRepository->findOneByVersion($registrar->getVersion())->willReturn($registeredBefore);
-        $this->registeredWebhooksRepository->add(Argument::any())->shouldBeCalledOnce();
-        $this->registeredWebhooksRepository->add($registeredBefore)->shouldBeCalledOnce();
+        $shipmondo = (new ScriptedHttpClient())->respond(200, self::wanted(self::ENDPOINT));
 
         $before = new \DateTimeImmutable();
-        $registrar->register();
+        $this->registrar($shipmondo)->register();
 
-        self::assertSame($registrar->getVersion(), $registeredBefore->getVersion());
-        self::assertGreaterThanOrEqual($before, $registeredBefore->getRegisteredAt());
+        self::assertSame(['GET webhooks'], $shipmondo->requestLines());
+        self::assertCount(1, $this->recorded);
+        self::assertSame(self::ENDPOINT, $this->recorded[0]->getEndpoint());
+        self::assertGreaterThanOrEqual($before, $this->recorded[0]->getRegisteredAt());
+        self::assertLessThanOrEqual(new \DateTimeImmutable(), $this->recorded[0]->getRegisteredAt());
+        // nothing changed, so nothing is worth logging
+        self::assertSame([], $this->logger->records);
     }
 
     /**
-     * Registering deletes the shop's webhooks before it creates them, so a failure part of the way leaves only some of
-     * them registered
+     * E.g. after an upgrade of the plugin that handles a new action and no longer handles another
      *
      * @test
      */
-    public function it_records_nothing_when_shipmondo_fails_to_register_a_webhook(): void
+    public function it_creates_only_the_webhook_for_a_newly_handled_action_and_deletes_only_the_one_for_an_action_no_longer_handled(): void
     {
-        $endpoint = 'https://shop.example.com/webhook/shipmondo';
         $shipmondo = (new ScriptedHttpClient())
-            ->respond(200, [])
-            ->respond(201, self::webhook(101, 'Shop [ab9f9937] - [orders:status_update]', $endpoint))
-            ->respond(422, ['error' => 'Endpoint is invalid'])
+            ->respond(200, [
+                self::webhook(1, 'Shop [ab9f9937] - [orders:status_update]', self::ENDPOINT, 'status_update'),
+                self::webhook(2, 'Shop [ab9f9937] - [orders:create_shipment]', self::ENDPOINT, 'create_shipment'),
+                // no handler handles it any longer
+                self::webhook(4, 'Shop [ab9f9937] - [orders:payment_captured]', self::ENDPOINT, 'payment_captured'),
+            ])
+            ->respond(201, self::webhook(5, 'Shop [ab9f9937] - [orders:delete]', self::ENDPOINT, 'delete'))
+            ->respond(204)
         ;
 
-        $this->registeredWebhooksRepository->add(Argument::any())->shouldNotBeCalled();
+        $this->registrar($shipmondo)->register();
+
+        self::assertSame(['GET webhooks', 'POST webhooks', 'DELETE webhooks/4'], $shipmondo->requestLines());
+        self::assertSame([[
+            'name' => 'Shop [ab9f9937] - [orders:delete]',
+            'endpoint' => self::ENDPOINT,
+            'key' => self::KEY,
+            'action' => 'delete',
+            'resource_name' => 'Orders',
+        ]], self::created($shipmondo));
+        self::assertCount(1, $this->recorded);
+        self::assertSame([[
+            'level' => 'info',
+            'message' => 'This shop\'s webhooks in Shipmondo did not match the wanted ones at {endpoint}, so the missing ones were created and the unwanted ones deleted',
+            'context' => [
+                'endpoint' => self::ENDPOINT,
+                'created' => ['Shop [ab9f9937] - [orders:delete]'],
+                'deleted' => ['Shop [ab9f9937] - [orders:payment_captured] (4)'],
+            ],
+        ]], $this->logger->records);
+    }
+
+    /**
+     * Shipmondo deactivates a webhook, e.g. when its endpoint keeps failing, and sends nothing for it. And a webhook sent
+     * to another endpoint, e.g. the shop's address before it changed, doesn't reach the shop
+     *
+     * @test
+     */
+    public function it_replaces_an_inactive_webhook_and_one_sent_to_another_endpoint(): void
+    {
+        $shipmondo = (new ScriptedHttpClient())
+            ->respond(200, [
+                self::webhook(1, 'Shop [ab9f9937] - [orders:status_update]', self::ENDPOINT, 'status_update', active: false),
+                self::webhook(2, 'Shop [ab9f9937] - [orders:create_shipment]', 'https://old-address.example.com/webhook/shipmondo', 'create_shipment'),
+                self::webhook(3, 'Shop [ab9f9937] - [orders:delete]', self::ENDPOINT, 'delete'),
+            ])
+            ->respond(201, self::webhook(4, 'Shop [ab9f9937] - [orders:status_update]', self::ENDPOINT, 'status_update'))
+            ->respond(201, self::webhook(5, 'Shop [ab9f9937] - [orders:create_shipment]', self::ENDPOINT, 'create_shipment'))
+            ->respond(204)
+            ->respond(204)
+        ;
+
+        $this->registrar($shipmondo)->register();
+
+        // the new ones are created first, so a webhook Shipmondo refuses to create leaves the old one in place
+        self::assertSame(['GET webhooks', 'POST webhooks', 'POST webhooks', 'DELETE webhooks/1', 'DELETE webhooks/2'], $shipmondo->requestLines());
+        self::assertSame(
+            [['Shop [ab9f9937] - [orders:status_update]', self::ENDPOINT], ['Shop [ab9f9937] - [orders:create_shipment]', self::ENDPOINT]],
+            array_map(static fn (array $body): array => [$body['name'], $body['endpoint']], self::created($shipmondo)),
+        );
+    }
+
+    /**
+     * A webhook that differs from the wanted one in anything Shipmondo lists, e.g. one an admin edited in Shipmondo, is
+     * replaced
+     *
+     * @test
+     *
+     * @dataProvider webhooksThatDifferFromTheWantedOne
+     *
+     * @param array<string, mixed> $webhook
+     */
+    public function it_replaces_a_webhook_that_differs_from_the_wanted_one(array $webhook): void
+    {
+        $shipmondo = (new ScriptedHttpClient())
+            ->respond(200, [$webhook])
+            ->respond(201, self::webhook(4, 'Shop [ab9f9937] - [orders:delete]', self::ENDPOINT, 'delete'))
+            ->respond(204)
+        ;
+
+        $this->registrar($shipmondo, self::handlersOf('delete'))->register();
+
+        self::assertSame(['GET webhooks', 'POST webhooks', 'DELETE webhooks/1'], $shipmondo->requestLines());
+    }
+
+    /**
+     * @return iterable<string, array{array<string, mixed>}>
+     */
+    public static function webhooksThatDifferFromTheWantedOne(): iterable
+    {
+        yield 'inactive' => [self::webhook(1, 'Shop [ab9f9937] - [orders:delete]', self::ENDPOINT, 'delete', active: false)];
+        yield 'another name' => [self::webhook(1, 'Shop [ab9f9937] - [orders:delete] (edited)', self::ENDPOINT, 'delete')];
+        yield 'another endpoint' => [self::webhook(1, 'Shop [ab9f9937] - [orders:delete]', 'https://shop.example.com/another-webhook', 'delete')];
+        yield 'another action' => [self::webhook(1, 'Shop [ab9f9937] - [orders:delete]', self::ENDPOINT, 'create')];
+        // the SDK reads a listed webhook's resource and action each on its own, so only the resource differs
+        yield 'another resource' => [self::webhook(1, 'Shop [ab9f9937] - [orders:delete]', self::ENDPOINT, 'delete', resource: 'Shipment Monitor')];
+    }
+
+    /**
+     * Two upload runs at once may both create a missing webhook, which would send the shop every such webhook twice
+     *
+     * @test
+     */
+    public function it_deletes_a_duplicate_of_a_wanted_webhook(): void
+    {
+        $shipmondo = (new ScriptedHttpClient())
+            ->respond(200, [...self::wanted(self::ENDPOINT), self::webhook(4, 'Shop [ab9f9937] - [orders:delete]', self::ENDPOINT, 'delete')])
+            ->respond(204)
+        ;
+
+        $this->registrar($shipmondo)->register();
+
+        self::assertSame(['GET webhooks', 'DELETE webhooks/4'], $shipmondo->requestLines());
+        // nothing was missing, but something was deleted
+        self::assertSame([[], ['Shop [ab9f9937] - [orders:delete] (4)']], [$this->logger->records[0]['context']['created'], $this->logger->records[0]['context']['deleted']]);
+    }
+
+    /**
+     * @test
+     */
+    public function it_leaves_another_shops_and_another_integrations_webhooks_alone(): void
+    {
+        $anotherShopsEndpoint = 'https://another-shop.example.com/webhook/shipmondo';
+
+        $shipmondo = (new ScriptedHttpClient())
+            ->respond(200, [
+                // another integration's, listed before this shop's
+                self::webhook(10, 'Another integration - [orders:create]', 'https://another-integration.example.com/hook', 'create'),
+                ...self::wanted(self::ENDPOINT),
+                // this shop's, registered before webhooks carried the shop's id
+                self::webhook(11, 'Shop - [orders:delete]', self::ENDPOINT, 'delete'),
+                // this shop's, registered with an earlier webhooks key
+                self::webhook(12, 'Shop [0badc0de] - [orders:delete]', self::ENDPOINT, 'delete'),
+                // another shop's (c10d3f55 is its id), with and without its id
+                self::webhook(13, 'Shop [c10d3f55] - [orders:delete]', $anotherShopsEndpoint, 'delete'),
+                self::webhook(14, 'Shop - [orders:delete]', $anotherShopsEndpoint, 'delete'),
+                // another integration's, at this shop's endpoint
+                self::webhook(15, 'Another integration - [orders:delete]', self::ENDPOINT, 'delete'),
+            ])
+            ->respond(204)
+            ->respond(204)
+        ;
+
+        $this->registrar($shipmondo)->register();
+
+        self::assertSame(['GET webhooks', 'DELETE webhooks/11', 'DELETE webhooks/12'], $shipmondo->requestLines());
+    }
+
+    /**
+     * The SDK reads an action or a resource it doesn't know as null, e.g. one Shipmondo added later, so the list can
+     * still be compared
+     *
+     * @test
+     */
+    public function it_leaves_alone_another_integrations_webhook_whose_action_or_resource_the_sdk_does_not_know(): void
+    {
+        $shipmondo = (new ScriptedHttpClient())->respond(200, [
+            self::webhook(10, 'Another integration', 'https://another-integration.example.com/hook', 'an_action_added_later', resource: 'A resource added later'),
+            ...self::wanted(self::ENDPOINT),
+        ]);
+
+        $this->registrar($shipmondo)->register();
+
+        self::assertSame(['GET webhooks'], $shipmondo->requestLines());
+    }
+
+    /**
+     * E.g. one edited in Shipmondo to an action the SDK doesn't know: it can't be a wanted one
+     *
+     * @test
+     */
+    public function it_deletes_a_webhook_of_this_shops_whose_action_the_sdk_does_not_know(): void
+    {
+        $shipmondo = (new ScriptedHttpClient())
+            ->respond(200, [...self::wanted(self::ENDPOINT), self::webhook(4, 'Shop [ab9f9937] - [orders:an_action_added_later]', self::ENDPOINT, 'an_action_added_later')])
+            ->respond(204)
+        ;
+
+        $this->registrar($shipmondo)->register();
+
+        self::assertSame(['GET webhooks', 'DELETE webhooks/4'], $shipmondo->requestLines());
+    }
+
+    /**
+     * @test
+     */
+    public function it_reads_every_page_of_webhooks(): void
+    {
+        $shipmondo = (new ScriptedHttpClient())
+            ->respond(200, [self::wanted(self::ENDPOINT)[0]], headers: ['X-Total-Pages' => '2'])
+            ->respond(200, array_slice(self::wanted(self::ENDPOINT), 1), headers: ['X-Total-Pages' => '2'])
+        ;
+
+        $this->registrar($shipmondo)->register();
+
+        self::assertSame(['GET webhooks', 'GET webhooks'], $shipmondo->requestLines());
+    }
+
+    /**
+     * There is one registration, the latest: each registration records its endpoint and time on it
+     *
+     * @test
+     */
+    public function it_records_the_registration_on_the_latest_one(): void
+    {
+        $latest = new RegisteredWebhooks();
+        $latest->setEndpoint('https://old-address.example.com/webhook/shipmondo');
+        $latest->setRegisteredAt(new \DateTimeImmutable('2020-01-01'));
+        $this->registeredWebhooksRepository->findLatest()->willReturn($latest);
+
+        $this->registrar((new ScriptedHttpClient())->respond(200, self::wanted(self::ENDPOINT)))->register();
+
+        $this->registeredWebhooksRepository->add($latest)->shouldHaveBeenCalledOnce();
+        self::assertSame(self::ENDPOINT, $latest->getEndpoint());
+        self::assertGreaterThan(new \DateTimeImmutable('2020-01-01'), $latest->getRegisteredAt());
+    }
+
+    /**
+     * The new webhooks are created first, so a failure part of the way leaves the ones they replace in place
+     *
+     * @test
+     */
+    public function it_records_nothing_when_shipmondo_fails_to_create_a_webhook(): void
+    {
+        $shipmondo = (new ScriptedHttpClient())
+            ->respond(200, [self::webhook(1, 'Shop [ab9f9937] - [orders:delete]', self::ENDPOINT, 'delete', active: false)])
+            ->respond(422, ['error' => 'Endpoint did not respond with 200'])
+        ;
 
         try {
-            $this->registrar($shipmondo, $this->urlGenerator($endpoint)->reveal())->register();
+            $this->registrar($shipmondo, self::handlersOf('delete'))->register();
+            self::fail('The registration did not fail');
+        } catch (ValidationException) {
+        }
+
+        self::assertSame(['GET webhooks', 'POST webhooks'], $shipmondo->requestLines());
+        self::assertSame([], $this->recorded);
+    }
+
+    /**
+     * @test
+     */
+    public function it_records_nothing_when_shipmondo_fails_to_delete_a_webhook(): void
+    {
+        $shipmondo = (new ScriptedHttpClient())
+            ->respond(200, [...self::wanted(self::ENDPOINT), self::webhook(4, 'Shop [ab9f9937] - [orders:delete]', self::ENDPOINT, 'delete')])
+            ->respond(503)
+        ;
+
+        try {
+            $this->registrar($shipmondo)->register();
             self::fail('The registration did not fail');
         } catch (ShipmondoException) {
         }
 
-        self::assertSame(['GET webhooks', 'POST webhooks', 'POST webhooks'], $shipmondo->requestLines());
+        self::assertSame([], $this->recorded);
+        self::assertSame([], $this->logger->records);
     }
 
     /**
@@ -131,164 +354,16 @@ final class WebhookRegistrarTest extends TestCase
     public function it_throws_when_the_factory_does_not_create_registered_webhooks(): void
     {
         $this->registeredWebhooksFactory = new Factory(\stdClass::class);
-        $this->registeredWebhooksRepository->add(Argument::any())->shouldNotBeCalled();
 
         $this->expectException(\InvalidArgumentException::class);
 
-        $this->registrar(self::shipmondoRegisters('https://shop.example.com/webhook/shipmondo'), $this->urlGenerator('https://shop.example.com/webhook/shipmondo')->reveal())->register();
+        $this->registrar((new ScriptedHttpClient())->respond(200, self::wanted(self::ENDPOINT)))->register();
     }
 
     /**
-     * @test
-     */
-    public function it_registers_each_action_a_webhook_handler_handles(): void
-    {
-        $urlGenerator = $this->urlGenerator('https://example.com/webhook');
-
-        $registrar = $this->registrar(new ScriptedHttpClient(), $urlGenerator->reveal(), webhooksKey: 'key', namePrefix: 'prefix');
-
-        // 3fd02dbf is the shop's id, derived from its webhooks key ('key')
-        self::assertEquals([
-            new Webhook('prefix [3fd02dbf] - [orders:status_update]', 'https://example.com/webhook', 'key', WebhookAction::StatusUpdate, WebhookResourceName::Orders),
-            new Webhook('prefix [3fd02dbf] - [orders:create_shipment]', 'https://example.com/webhook', 'key', WebhookAction::CreateShipment, WebhookResourceName::Orders),
-            new Webhook('prefix [3fd02dbf] - [orders:delete]', 'https://example.com/webhook', 'key', WebhookAction::Delete, WebhookResourceName::Orders),
-        ], iterator_to_array($registrar->getWebhooks(), false));
-        self::assertSame('11a5d6cb7e8aedb8b535b0c0c61fc6c3', $registrar->getVersion());
-    }
-
-    /**
-     * @test
-     */
-    public function it_names_the_webhooks_after_the_shop_whose_webhooks_key_they_carry(): void
-    {
-        $urlGenerator = $this->urlGenerator('https://example.com/webhook');
-
-        $names = fn (string $webhooksKey): array => array_map(
-            static fn (Webhook $webhook): string => $webhook->name,
-            iterator_to_array($this->registrar(new ScriptedHttpClient(), $urlGenerator->reveal(), webhooksKey: $webhooksKey)->getWebhooks(), false),
-        );
-
-        self::assertSame([
-            'Shop [ab9f9937] - [orders:status_update]',
-            'Shop [ab9f9937] - [orders:create_shipment]',
-            'Shop [ab9f9937] - [orders:delete]',
-        ], $names(self::KEY));
-        self::assertSame([
-            'Shop [c10d3f55] - [orders:status_update]',
-            'Shop [c10d3f55] - [orders:create_shipment]',
-            'Shop [c10d3f55] - [orders:delete]',
-        ], $names(self::ANOTHER_SHOPS_KEY));
-    }
-
-    /**
-     * @test
-     */
-    public function it_registers_no_webhooks_without_webhook_handlers(): void
-    {
-        $registrar = $this->registrar(new ScriptedHttpClient(), $this->prophesize(UrlGeneratorInterface::class)->reveal(), new OrderWebhookHandlers([]));
-
-        self::assertSame([], iterator_to_array($registrar->getWebhooks()));
-    }
-
-    /**
-     * @test
-     */
-    public function it_replaces_the_previously_registered_webhooks_with_the_current_ones(): void
-    {
-        $httpClient = $this->prophesize(HttpClientInterface::class);
-
-        $httpClient->sendRequest(ShipmondoApi::request('GET', 'webhooks'))->willReturn(ShipmondoApi::json([
-            self::webhook(10, 'Shop - [orders:create]'),
-            // registered by someone else, so it must be left alone
-            self::webhook(20, 'Another integration - [orders:create]'),
-            self::webhook(30, 'Shop - [shipments:cancel]'),
-        ]))->shouldBeCalledOnce();
-
-        $httpClient->sendRequest(ShipmondoApi::request('DELETE', 'webhooks/10'))->willReturn(ShipmondoApi::empty())->shouldBeCalledOnce();
-        $httpClient->sendRequest(ShipmondoApi::request('DELETE', 'webhooks/30'))->willReturn(ShipmondoApi::empty())->shouldBeCalledOnce();
-        $httpClient->sendRequest(ShipmondoApi::request('DELETE', 'webhooks/20'))->shouldNotBeCalled();
-
-        /** @var list<array<string, mixed>> $created */
-        $created = [];
-        $httpClient->sendRequest(ShipmondoApi::request('POST', 'webhooks'))->will(static function (array $args) use (&$created) {
-            $request = $args[0];
-            self::assertInstanceOf(RequestInterface::class, $request);
-
-            /** @var array<string, mixed> $body */
-            $body = json_decode((string) $request->getBody(), true, 512, \JSON_THROW_ON_ERROR);
-            $created[] = $body;
-
-            return ShipmondoApi::json(self::webhook(100 + count($created), 'Shop - [created]'));
-        });
-
-        $urlGenerator = $this->urlGenerator('https://example.com/webhook/shipmondo');
-
-        $registrar = $this->registrar($httpClient->reveal(), $urlGenerator->reveal());
-        $registrar->register();
-
-        $expected = [];
-        foreach ($registrar->getWebhooks() as $webhook) {
-            $expected[] = [
-                'name' => $webhook->name,
-                'endpoint' => 'https://example.com/webhook/shipmondo',
-                'key' => self::KEY,
-                'action' => $webhook->action->value,
-                'resource_name' => $webhook->resource->value,
-            ];
-        }
-
-        self::assertCount(3, $expected);
-        self::assertSame($expected, $created);
-    }
-
-    /**
-     * @test
-     */
-    public function it_replaces_only_this_shops_webhooks_when_another_shop_shares_the_shipmondo_account(): void
-    {
-        $endpoint = 'https://shop.example.com/webhook/shipmondo';
-        $anotherShopsEndpoint = 'https://another-shop.example.com/webhook/shipmondo';
-
-        $shipmondo = (new ScriptedHttpClient())
-            ->respond(200, [
-                // this shop's (ab9f9937 is its id), registered before the shop moved to its current address
-                self::webhook(1, 'Shop [ab9f9937] - [orders:delete]', 'https://old-address.example.com/webhook/shipmondo'),
-                // this shop's, registered before webhooks carried the shop's id
-                self::webhook(2, 'Shop - [orders:delete]', $endpoint),
-                // this shop's, registered with an earlier webhooks key
-                self::webhook(3, 'Shop [0badc0de] - [orders:delete]', $endpoint),
-                // another shop's, with and without its id
-                self::webhook(4, 'Shop [c10d3f55] - [orders:delete]', $anotherShopsEndpoint),
-                self::webhook(5, 'Shop - [orders:delete]', $anotherShopsEndpoint),
-                // another integration's
-                self::webhook(6, 'Another integration - [orders:delete]', $endpoint),
-            ])
-            ->respond(204)
-            ->respond(204)
-            ->respond(204)
-            ->respond(201, self::webhook(101, 'Shop [ab9f9937] - [orders:status_update]', $endpoint))
-            ->respond(201, self::webhook(102, 'Shop [ab9f9937] - [orders:create_shipment]', $endpoint))
-            ->respond(201, self::webhook(103, 'Shop [ab9f9937] - [orders:delete]', $endpoint))
-        ;
-
-        $urlGenerator = $this->urlGenerator($endpoint);
-
-        $this->registrar($shipmondo, $urlGenerator->reveal())->register();
-
-        self::assertSame([
-            'GET webhooks',
-            'DELETE webhooks/1',
-            'DELETE webhooks/2',
-            'DELETE webhooks/3',
-            'POST webhooks',
-            'POST webhooks',
-            'POST webhooks',
-        ], $shipmondo->requestLines());
-    }
-
-    /**
-     * Registering replaces this shop's webhooks, so registering them where Shipmondo can't send them would also remove
-     * the ones that work, e.g. when a developer opens the admin at localhost with the production credentials
+     * Registering makes this shop's webhooks match the wanted ones, so registering them where Shipmondo can't send them
+     * would also replace the ones that work, e.g. when a developer opens the admin at localhost with the production
+     * credentials
      *
      * @test
      *
@@ -298,21 +373,17 @@ final class WebhookRegistrarTest extends TestCase
     {
         $shipmondo = new ScriptedHttpClient();
 
-        $urlGenerator = $this->urlGenerator($endpoint);
-
-        $registrar = $this->registrar($shipmondo, $urlGenerator->reveal());
-        $this->registeredWebhooksRepository->add(Argument::any())->shouldNotBeCalled();
-
         try {
-            $registrar->register();
+            $this->registrar($shipmondo, endpoint: $endpoint)->register();
             self::fail('The webhooks were registered');
         } catch (UnreachableWebhookEndpointException $e) {
             self::assertSame($endpoint, $e->endpoint);
             self::assertSame(sprintf('The webhooks were not registered: Shipmondo can\'t reach their endpoint, %s.', $endpoint), $e->getMessage());
         }
 
-        // not even this shop's webhooks were removed, and the registration recorded before still says when they were
+        // not even this shop's webhooks were fetched, and the registration recorded before still says where they are sent
         self::assertSame([], $shipmondo->requestLines());
+        self::assertSame([], $this->recorded);
     }
 
     /**
@@ -335,62 +406,121 @@ final class WebhookRegistrarTest extends TestCase
     public function it_registers_the_webhooks_at_an_endpoint_on_another_port(): void
     {
         $endpoint = 'http://shop.example.com:8080/webhook/shipmondo';
-        $shipmondo = (new ScriptedHttpClient())
-            ->respond(200, [])
-            ->respond(201, self::webhook(101, 'Shop [ab9f9937] - [orders:status_update]', $endpoint))
-            ->respond(201, self::webhook(102, 'Shop [ab9f9937] - [orders:create_shipment]', $endpoint))
-            ->respond(201, self::webhook(103, 'Shop [ab9f9937] - [orders:delete]', $endpoint))
-        ;
+        $shipmondo = (new ScriptedHttpClient())->respond(200, self::wanted($endpoint));
 
-        $urlGenerator = $this->urlGenerator($endpoint);
+        $this->registrar($shipmondo, endpoint: $endpoint)->register();
 
-        $this->registrar($shipmondo, $urlGenerator->reveal())->register();
-
-        self::assertSame(['GET webhooks', 'POST webhooks', 'POST webhooks', 'POST webhooks'], $shipmondo->requestLines());
+        self::assertSame($endpoint, $this->recorded[0]->getEndpoint());
     }
 
+    /**
+     * @test
+     */
+    public function it_compares_this_shops_webhooks_in_shipmondo_with_the_wanted_ones_without_changing_anything(): void
+    {
+        $shipmondo = (new ScriptedHttpClient())->respond(200, [
+            self::webhook(1, 'Shop [ab9f9937] - [orders:status_update]', self::ENDPOINT, 'status_update'),
+            self::webhook(4, 'Shop [ab9f9937] - [orders:payment_captured]', self::ENDPOINT, 'payment_captured'),
+            self::webhook(5, 'Another integration - [orders:delete]', self::ENDPOINT, 'delete'),
+        ]);
+
+        $comparison = $this->registrar($shipmondo)->compare(self::ENDPOINT);
+
+        self::assertFalse($comparison->matches());
+        self::assertEquals([
+            new Webhook('Shop [ab9f9937] - [orders:create_shipment]', self::ENDPOINT, self::KEY, WebhookAction::CreateShipment, WebhookResourceName::Orders),
+            new Webhook('Shop [ab9f9937] - [orders:delete]', self::ENDPOINT, self::KEY, WebhookAction::Delete, WebhookResourceName::Orders),
+        ], $comparison->missing);
+        self::assertSame([4], array_map(static fn (WebhookResponse $webhook): int => $webhook->id, $comparison->unwanted));
+        self::assertSame(['GET webhooks'], $shipmondo->requestLines());
+        self::assertSame([], $this->recorded);
+    }
+
+    /**
+     * @test
+     */
+    public function it_names_the_webhooks_after_the_shop_whose_webhooks_key_they_carry(): void
+    {
+        $missing = fn (string $webhooksKey, string $namePrefix): array => array_map(
+            static fn (Webhook $webhook): string => $webhook->name,
+            $this->registrar((new ScriptedHttpClient())->respond(200, []), webhooksKey: $webhooksKey, namePrefix: $namePrefix)->compare(self::ENDPOINT)->missing,
+        );
+
+        self::assertSame([
+            'Shop [ab9f9937] - [orders:status_update]',
+            'Shop [ab9f9937] - [orders:create_shipment]',
+            'Shop [ab9f9937] - [orders:delete]',
+        ], $missing(self::KEY, 'Shop'));
+        self::assertSame([
+            'prefix [c10d3f55] - [orders:status_update]',
+            'prefix [c10d3f55] - [orders:create_shipment]',
+            'prefix [c10d3f55] - [orders:delete]',
+        ], $missing('another-shops-webhooks-key-of-32-bytes!', 'prefix'));
+    }
+
+    /**
+     * @test
+     */
+    public function it_wants_no_webhooks_without_webhook_handlers(): void
+    {
+        $shipmondo = (new ScriptedHttpClient())->respond(200, []);
+
+        self::assertTrue($this->registrar($shipmondo, new OrderWebhookHandlers([]))->compare(self::ENDPOINT)->matches());
+    }
+
+    /**
+     * @param string $endpoint the endpoint the router generates
+     */
     private function registrar(
         HttpClientInterface $shipmondo,
-        UrlGeneratorInterface $urlGenerator,
         ?OrderWebhookHandlers $handlers = null,
+        string $endpoint = self::ENDPOINT,
         string $webhooksKey = self::KEY,
         string $namePrefix = 'Shop',
     ): WebhookRegistrar {
         return new WebhookRegistrar(
             ShipmondoApi::client($shipmondo),
-            $urlGenerator,
+            $this->urlGenerator($endpoint),
             $handlers ?? self::handlers(),
             $this->registeredWebhooksRepository->reveal(),
             $this->registeredWebhooksFactory,
             $webhooksKey,
             $namePrefix,
+            $this->logger,
         );
     }
 
     /**
-     * Shipmondo answers a registration at the endpoint: it has none of the shop's webhooks, and creates the three
+     * The bodies of the webhooks Shipmondo was asked to create, in order
+     *
+     * @return list<array<array-key, mixed>>
      */
-    private static function shipmondoRegisters(string $endpoint): ScriptedHttpClient
+    private static function created(ScriptedHttpClient $shipmondo): array
     {
-        return (new ScriptedHttpClient())
-            ->respond(200, [])
-            ->respond(201, self::webhook(101, 'Shop [ab9f9937] - [orders:status_update]', $endpoint))
-            ->respond(201, self::webhook(102, 'Shop [ab9f9937] - [orders:create_shipment]', $endpoint))
-            ->respond(201, self::webhook(103, 'Shop [ab9f9937] - [orders:delete]', $endpoint))
-        ;
+        $created = array_filter($shipmondo->requests(), static fn (RequestInterface $request): bool => 'POST' === $request->getMethod());
+
+        return array_values(array_map(static function (RequestInterface $request): array {
+            $body = json_decode((string) $request->getBody(), true, 512, \JSON_THROW_ON_ERROR);
+            self::assertIsArray($body);
+
+            return $body;
+        }, $created));
     }
 
     /**
-     * @return ObjectProphecy<UrlGeneratorInterface>
+     * The router, which generates the endpoint of the webhooks, e.g. at the host the admin is opened at
      */
-    private function urlGenerator(string $endpoint): ObjectProphecy
+    private function urlGenerator(string $endpoint): UrlGeneratorInterface
     {
         $urlGenerator = $this->prophesize(UrlGeneratorInterface::class);
         $urlGenerator->generate('_webhook_controller', ['type' => 'shipmondo'], UrlGeneratorInterface::ABSOLUTE_URL)->willReturn($endpoint);
 
-        return $urlGenerator;
+        return $urlGenerator->reveal();
     }
 
+    /**
+     * The plugin's webhook handlers handle these three actions on the orders resource
+     */
     private static function handlers(): OrderWebhookHandlers
     {
         $log = new \ArrayObject();
@@ -403,17 +533,42 @@ final class WebhookRegistrarTest extends TestCase
     }
 
     /**
+     * Webhook handlers that handle the given action on the orders resource
+     */
+    private static function handlersOf(string $action): OrderWebhookHandlers
+    {
+        return new OrderWebhookHandlers([$action => [new OrderWebhookHandlerSpy('handled', new \ArrayObject())]]);
+    }
+
+    /**
+     * The webhooks Shipmondo lists when it has exactly the wanted ones at the endpoint (ab9f9937 is the shop's id,
+     * derived from its webhooks key)
+     *
+     * @return list<array<string, mixed>>
+     */
+    private static function wanted(string $endpoint): array
+    {
+        return [
+            self::webhook(1, 'Shop [ab9f9937] - [orders:status_update]', $endpoint, 'status_update'),
+            self::webhook(2, 'Shop [ab9f9937] - [orders:create_shipment]', $endpoint, 'create_shipment'),
+            self::webhook(3, 'Shop [ab9f9937] - [orders:delete]', $endpoint, 'delete'),
+        ];
+    }
+
+    /**
+     * A webhook as Shipmondo lists it, and answers its creation with
+     *
      * @return array<string, mixed>
      */
-    private static function webhook(int $id, string $name, string $endpoint = 'https://example.com/webhook/shipmondo'): array
+    private static function webhook(int $id, string $name, string $endpoint, string $action, bool $active = true, string $resource = 'Orders'): array
     {
         return [
             'id' => $id,
             'endpoint' => $endpoint,
-            'active' => true,
+            'active' => $active,
             'name' => $name,
-            'action' => 'create',
-            'resource_name' => 'Orders',
+            'action' => $action,
+            'resource_name' => $resource,
         ];
     }
 }

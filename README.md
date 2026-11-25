@@ -227,8 +227,22 @@ php bin/console setono:sylius-shipmondo:register-webhooks
 ```
 
 Both register them right away, whatever your Messenger routing, and say how it went: the button with a flash message,
-the command in its output and exit code. Register them again whenever the plugin's webhook handlers change, e.g. after
-upgrading the plugin.
+the command in its output and exit code.
+
+Registering compares the shop's webhooks in Shipmondo with the ones the plugin handles (one per action its webhook
+handlers handle), and fixes only the difference: it creates the missing ones, including any Shipmondo has deactivated
+or sends to another address, deletes the ones no longer wanted and any duplicates, and leaves the rest. When nothing
+differs, it only fetches them. Then it records where it registered them, and when, which the Shipmondo page shows along
+with whether the shop's webhooks in Shipmondo still match.
+
+**Schedule the command daily**, e.g. with cron, and run it on deploy, next to your database migrations. It only fixes
+what differs, so an upgrade that changes the webhooks the plugin handles, or a webhook deleted or deactivated in
+Shipmondo, is fixed by its next run. When nothing differs, it makes one request. Where the command can't ask which
+hostname to use, pass `--hostname` if your channels have several:
+
+```bash
+php bin/console setono:sylius-shipmondo:register-webhooks --no-interaction --hostname=shop.example.com
+```
 
 Shipmondo sends the webhooks to the shop's webhook endpoint, `/webhook/shipmondo`. The admin's button registers it at
 the host the admin is on. On the command line there is no request to take the host from, so the command registers it
@@ -259,7 +273,9 @@ kept.
 > `192.168.1.20`. With the production credentials and webhooks key, e.g. in a copy of the production `.env`,
 > registering there replaces the production shop's working webhooks with ones Shipmondo can't deliver. Locally, give
 > the shop a `SHIPMONDO_WEBHOOKS_KEY` of its own, or a Shipmondo sandbox account (`SHIPMONDO_SANDBOX=true` with its
-> credentials).
+> credentials). The same goes for a staging copy of production that registers the webhooks, e.g. from its own scheduled
+> command: with the same webhooks key, each install's registration replaces the other's webhooks. Give it a key of its
+> own.
 
 ## Cancelled orders and asynchronous deletion
 

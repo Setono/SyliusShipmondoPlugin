@@ -61,6 +61,9 @@ final class RegisterWebhooksCommand extends Command
 
                 It skips a hostname Shipmondo can't reach, such as localhost, and fails without registering when it finds
                 none.
+
+                It only fixes what differs from the webhooks the plugin handles, and makes no change when nothing does, so
+                schedule it daily, e.g. with cron, and run it on deploy, to keep the webhooks matching after an upgrade.
                 HELP)
         ;
     }

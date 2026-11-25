@@ -9,5 +9,8 @@ use Sylius\Component\Resource\Repository\RepositoryInterface;
 
 interface RegisteredWebhooksRepositoryInterface extends RepositoryInterface
 {
-    public function findOneByVersion(string $version): ?RegisteredWebhooksInterface;
+    /**
+     * The registration of the webhooks that was recorded last, or null when none is
+     */
+    public function findLatest(): ?RegisteredWebhooksInterface;
 }

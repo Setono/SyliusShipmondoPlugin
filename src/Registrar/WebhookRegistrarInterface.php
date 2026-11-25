@@ -9,25 +9,25 @@ use Setono\Shipmondo\Exception\ShipmondoException;
 interface WebhookRegistrarInterface
 {
     /**
-     * Registers the shop's webhooks with Shipmondo, and then records the registration, which the admin's Shipmondo page
-     * finds by the version
+     * Makes this shop's webhooks in Shipmondo match the wanted ones at the shop's webhook endpoint, as the router
+     * generates it, e.g. at the host the admin is opened at: it creates the missing ones, including those Shipmondo has
+     * deactivated or sends to another endpoint, deletes the ones that aren't wanted and the duplicates, and leaves the
+     * rest. When nothing differs, it only fetches the webhooks. Then it records the registration: the endpoint, and the
+     * time. So it is safe to run often, e.g. daily with setono:sylius-shipmondo:register-webhooks
      *
-     * @throws UnreachableWebhookEndpointException when Shipmondo can't reach the webhooks' endpoint, before anything
-     *                                             is registered
-     * @throws ShipmondoException when a call to Shipmondo fails, which can leave only some of the webhooks registered.
+     * @throws UnreachableWebhookEndpointException when Shipmondo can't reach the endpoint, before anything is asked of
+     *                                             Shipmondo
+     * @throws ShipmondoException when a call to Shipmondo fails, which can leave only some of the differences fixed.
      *                            The registration isn't recorded
      */
     public function register(): void;
 
     /**
-     * Will return a list of webhooks that this registrar will register
+     * Compares this shop's webhooks in Shipmondo with the wanted ones at the endpoint, without changing anything
      *
-     * @return iterable<Webhook>
+     * @param string $endpoint the URL Shipmondo sends the webhooks to, e.g. https://shop.example.com/webhook/shipmondo
+     *
+     * @throws ShipmondoException when the webhooks can't be fetched from Shipmondo
      */
-    public function getWebhooks(): iterable;
-
-    /**
-     * Should return a version (string) that uniquely identifies the webhooks being registered
-     */
-    public function getVersion(): string;
+    public function compare(string $endpoint): WebhookComparison;
 }

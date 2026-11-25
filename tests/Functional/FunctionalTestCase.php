@@ -24,6 +24,7 @@ use Symfony\Component\Security\Core\User\UserInterface;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\TestApplication;
+use Tests\Setono\SyliusShipmondoPlugin\Support\Webhooks;
 use Webmozart\Assert\Assert;
 
 /**
@@ -43,6 +44,11 @@ use Webmozart\Assert\Assert;
  */
 abstract class FunctionalTestCase extends WebTestCase
 {
+    /**
+     * Where an admin registered the webhooks, in a test that records a registration
+     */
+    protected const WEBHOOK_ENDPOINT = 'https://shop.example.com/webhook/shipmondo';
+
     protected KernelBrowser $browser;
 
     protected ShipmondoApiStub $shipmondo;
@@ -144,6 +150,38 @@ abstract class FunctionalTestCase extends WebTestCase
         $this->shipmondo->respond('GET', 'payment_gateways', 200, [
             ['id' => ShopFixtures::PAYMENT_METHOD_SHIPMONDO_ID, 'name' => 'Bank transfer', 'provider' => 'manual', 'merchant_number' => ''],
         ], ['X-Total-Pages' => '1']);
+    }
+
+    /**
+     * Records a registration of the webhooks, as registering them does. A registration recorded before the plugin
+     * recorded the endpoint has none
+     */
+    protected function recordWebhookRegistration(?string $endpoint, string $registeredAt = '2026-01-02 03:04:05'): void
+    {
+        $this->connection()->insert('setono_sylius_shipmondo__registered_webhooks', ['endpoint' => $endpoint, 'registeredAt' => $registeredAt]);
+    }
+
+    /**
+     * The webhooks the plugin wants at the endpoint, as Shipmondo lists them ({@see Webhooks::wanted()})
+     *
+     * @return list<array{id: int, endpoint: string, active: bool, name: string, action: string, resource_name: string}>
+     */
+    protected function wantedWebhooks(string $endpoint): array
+    {
+        return Webhooks::wanted(static::getContainer(), $endpoint);
+    }
+
+    /**
+     * The endpoint and time of each recorded registration of the webhooks, read from the database
+     *
+     * @return list<array{endpoint: string|null, registeredAt: string}>
+     */
+    protected function webhookRegistrations(): array
+    {
+        /** @var list<array{endpoint: string|null, registeredAt: string}> $registrations */
+        $registrations = $this->database()->fetchAllAssociative('SELECT endpoint, registeredAt FROM setono_sylius_shipmondo__registered_webhooks ORDER BY id');
+
+        return $registrations;
     }
 
     /**

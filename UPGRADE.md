@@ -21,8 +21,8 @@ For most installations the required changes are:
 - if you override the order grid's Shipmondo state label templates, rename `dispatching.html.twig` and
   `dispatched.html.twig` (section 7)
 - run a database migration, which adds a comment to the shipment's pickup point column (section 8), a column for
-  when the order's Shipmondo state last changed (section 25), and one for the Shipmondo failure that put the order in
-  its Shipmondo state (section 26)
+  when the order's Shipmondo state last changed (section 25), one for the Shipmondo failure that put the order in
+  its Shipmondo state (section 26), and replaces the registered webhooks' version with their endpoint (section 30)
 - note that a shipping method with pickup point delivery now needs a pickup point in checkout, and don't let a
   channel skip the shipping step when its only shipping method has pickup point delivery (section 8)
 - if you monitor `setono:sylius-shipmondo:register-webhooks`, note that it now fails when Shipmondo does (section 9)
@@ -71,6 +71,9 @@ For most installations the required changes are:
   and if you call `OrderUploaderInterface::upload()`, read the list of problems it now returns (section 28)
 - upgrade PHP to 8.2 first: the plugin now requires it, with the Shipmondo SDK's 2.0.0-rc.3; and if you override the
   shop's pickup point list, read `pickupPoint.zipCode` (section 29)
+- schedule `setono:sylius-shipmondo:register-webhooks` daily and run it on deploy: registering now fixes only what
+  differs in Shipmondo, so that keeps the webhooks matching after an upgrade; and give an install that shares another's
+  webhooks key, e.g. a staging copy of production, a key of its own (section 30)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
@@ -1362,6 +1365,78 @@ Only if your own code uses the SDK's classes, e.g. a data mapper of your own, or
 | `Response\Webhook\Webhook::$action` and `$resourceName` | nullable: null for a value the SDK doesn't know |
 | `Client::configureMapperBuilder()` and `Client::registerNormalizerTransformers()` | removed: the `Client` applies its configuration to whichever Valinor builder it is given |
 
+### 30. Registering the webhooks fixes only the difference, so it can run daily
+
+Registering the webhooks deleted all of the shop's webhooks in Shipmondo and created them again, and recorded a
+`RegisteredWebhooks` per version, an md5 of the wanted webhooks. So after an upgrade that changed the actions the webhook
+handlers handle, nothing happened until someone registered them again, a webhook deleted or deactivated in Shipmondo
+went unnoticed, and registering often meant a moment with no webhooks every time
+([#14](https://github.com/Setono/SyliusShipmondoPlugin/issues/14)).
+
+**Registering compares, then fixes the difference.** It fetches the webhooks in Shipmondo, picks the shop's (the rule
+of section 17), and compares them with the wanted ones: one per action the webhook handlers handle, on the orders
+resource, named as before, active and sent to the endpoint.
+
+- It creates the missing ones. One that is inactive, sent to another endpoint, or differs in its name, action or
+  resource counts as missing, and is replaced.
+- It deletes the shop's webhooks that aren't wanted, e.g. one for an action no handler handles any longer, and
+  duplicates, keeping one.
+- It leaves the ones that match, so the shop is never without webhooks, and creates the new ones before it deletes the
+  old: Shipmondo calls a webhook's endpoint when it is created, so one it refuses leaves the old one working.
+- When nothing differs, it only fetches the webhooks.
+- A webhook on the account whose action or resource the Shipmondo SDK doesn't know, e.g. another integration's, is
+  read with that value as null (section 29): another integration's is left alone, and the shop's is replaced.
+- Once Shipmondo has answered every call, it records the registration: the endpoint and the time. A registration that
+  failed part of the way isn't recorded. When it changed something, it logs what at info level.
+
+**Schedule `setono:sylius-shipmondo:register-webhooks` daily, and run it on deploy**, so an upgrade that changes the
+webhooks the plugin handles, or a webhook deleted or deactivated in Shipmondo, is fixed by itself. Pass `--hostname` if
+your channels have several hostnames, since the command can't ask which one there (section 18).
+
+**An install that shares another's webhooks key, e.g. a staging copy of production, needs a
+`SHIPMONDO_WEBHOOKS_KEY` of its own** if it registers the webhooks too: both have the same shop id, so each
+registration replaces the other install's webhooks with ones at its own endpoint.
+
+**The admin's Shipmondo page compares the shop's webhooks when it loads**, at the endpoint of the latest registration,
+as it fetches the payment gateways and shipment templates, and shows where and when they were last registered, and
+whether they match: the missing ones, and the ones to remove. Before they are registered, it asks for nothing. When it
+can't fetch them, the section says so, and the flash says why: once for all three lists when each failed for the same
+reason, else once per list. **If you override its template** (`admin/shipmondo/index.html.twig`), read
+`registeredWebhooks` (the latest registration, or null) and `webhookComparison` (a `Registrar\WebhookComparison`, or
+null before they are registered, or when they couldn't be fetched).
+
+**Run a database migration**: the `setono_sylius_shipmondo__registered_webhooks` table loses its `version` column and
+gets a nullable `endpoint` column. Generate it with `bin/console doctrine:migrations:diff` as usual. On MySQL it is:
+
+```sql
+ALTER TABLE setono_sylius_shipmondo__registered_webhooks ADD endpoint VARCHAR(255) DEFAULT NULL, DROP version;
+```
+
+Its rows keep their `registeredAt`, and have no endpoint until the webhooks are registered again.
+
+Translations, in the `messages` domain under `setono_sylius_shipmondo.ui`: new `missing_webhook`, `unwanted_webhook`,
+`unwanted_inactive_webhook` (all take `%name%`, the last two `%endpoint%` too), `webhooks_do_not_match`,
+`webhooks_do_not_match_next_step`, `webhooks_match` and `webhooks_not_loaded`; changed
+`register_webhooks_information`, and `webhooks_registered_information`, which takes `%endpoint%` too. In the `flashes`
+domain: new `webhooks_not_fetched` and `shipmondo_data_and_webhooks_not_fetched` (both take `%reason%`), and changed
+`webhooks_not_registered`.
+
+Only if you extend or call the code involved:
+
+| Before | Now |
+|---|---|
+| `Registrar\WebhookRegistrarInterface::register(): void` | compares and fixes the difference, instead of replacing every webhook |
+| | new on it: `compare(string $endpoint): Registrar\WebhookComparison`, which changes nothing; `$endpoint` is the URL Shipmondo sends the webhooks to |
+| `WebhookRegistrarInterface::getWebhooks()` and `getVersion()` | removed: `compare()` returns the wanted webhooks Shipmondo is missing |
+| `Registrar\WebhookRegistrar::__construct(...)` | takes a `Psr\Log\LoggerInterface` last (`logger`) |
+| `Model\RegisteredWebhooksInterface::getVersion()` and `setVersion()` | removed: `getEndpoint(): ?string` and `setEndpoint(?string $endpoint): void` |
+| `Repository\RegisteredWebhooksRepositoryInterface::findOneByVersion()` | removed: `findLatest(): ?RegisteredWebhooksInterface`, the latest registration |
+
+**If you implement or decorate `WebhookRegistrarInterface`**, implement `compare()` too, and record the registration's
+endpoint and time in `register()`, or the admin's Shipmondo page says the webhooks aren't registered.
+
+New: the `Registrar\WebhookComparison` class.
+
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
@@ -1375,5 +1450,5 @@ registering them at the channels' hostname on the command line, registering noth
 can't reach, registering them right away instead of through the command bus, taking the authorized amount, the
 payment method and the payment gateway from the payments that paid the order, the time limits on the requests to
 Shipmondo, the `unlinked` Shipmondo state, retrying the upload of a failed order, the sales order lookup, recording
-and showing why an order's upload didn't go through, the order id prefix, the upload run's stop rules, and the PHP 8.2
-requirement with the Shipmondo SDK's 2.0.0-rc.3.
+and showing why an order's upload didn't go through, the order id prefix, the upload run's stop rules, the PHP 8.2
+requirement with the Shipmondo SDK's 2.0.0-rc.3, and registering the webhooks by their difference.

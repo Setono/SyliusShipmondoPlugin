@@ -26,6 +26,7 @@ setono_sylius_shipmondo:
         map_shipping_methods: Map shipping methods
         map_shipping_methods_empty_information: 'There are no shipment templates inside Shipmondo. Go to <a href="https://app.shipmondo.com/" target="_blank">Shipmondo</a> and create your first shipment template.'
         map_shipping_methods_information: Map your shipping methods to the shipment templates in Shipmondo. This way, shipments inside Shipmondo will have a shipment template assigned automatically. If there's no relevant shipment template in Shipmondo, leave it empty.
+        missing_webhook: 'Missing: %name%'
         not_in_shipmondo: 'Not in Shipmondo (id %id%)'
         payment_gateways_not_loaded: The payment gateways could not be loaded from Shipmondo, so the payment methods can't be mapped now.
         payment_method_in_shipmondo: Payment method in Shipmondo
@@ -34,7 +35,7 @@ setono_sylius_shipmondo:
         pickup_point_delivery: Pickup point delivery
         pickup_points_not_loaded: The pickup points could not be loaded. Try again, or choose another shipping method.
         register_webhooks: Register webhooks
-        register_webhooks_information: Either you have not registered webhooks yet or you need to re-register them because of changes in the configuration. Either way, please click the "Register webhooks" button below.
+        register_webhooks_information: The webhooks are not registered yet, or not since the plugin started recording where Shipmondo sends them. Register them with the button below, with the admin opened at the shop's hostname.
         retry_upload: Retry upload
         retry_upload_to_shipmondo: Retry upload to Shipmondo
         sales_order_id: Sales order id
@@ -50,8 +51,14 @@ setono_sylius_shipmondo:
         status_code: Status code
         try_again: Try again
         unlinked: Unlinked
+        unwanted_inactive_webhook: 'To remove: %name%, sent to %endpoint%, inactive'
+        unwanted_webhook: 'To remove: %name%, sent to %endpoint%'
         uploaded_to_shipmondo: Uploaded to Shipmondo
         uploading_to_shipmondo: Uploading to Shipmondo
         webhooks: Webhooks
-        webhooks_registered_information: Webhooks were registered on %date%.
+        webhooks_do_not_match: "This shop's webhooks in Shipmondo don't match the ones the plugin handles:"
+        webhooks_do_not_match_next_step: Register them again with the button below, or with setono:sylius-shipmondo:register-webhooks.
+        webhooks_match: This shop's webhooks in Shipmondo match the ones the plugin handles.
+        webhooks_not_loaded: This shop's webhooks could not be loaded from Shipmondo, so whether they match the ones the plugin handles is unknown now.
+        webhooks_registered_information: The webhooks were last registered at %endpoint% on %date%.
         when: When

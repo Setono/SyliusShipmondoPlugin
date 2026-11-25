@@ -10,6 +10,7 @@ use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
 use Psr\Http\Client\ClientInterface as HttpClientInterface;
 use Psr\Log\LogLevel;
+use Setono\Shipmondo\Exception\InternalServerErrorException;
 use Setono\Shipmondo\Exception\UnauthorizedException;
 use Setono\Shipmondo\Response\PaymentGateway\PaymentGateway;
 use Setono\Shipmondo\Response\ShipmentTemplate\ShipmentTemplate;
@@ -17,6 +18,7 @@ use Setono\SyliusShipmondoPlugin\Controller\Admin\ShipmondoController;
 use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooks;
 use Setono\SyliusShipmondoPlugin\Provider\SetupProvider;
 use Setono\SyliusShipmondoPlugin\Registrar\UnreachableWebhookEndpointException;
+use Setono\SyliusShipmondoPlugin\Registrar\WebhookComparison;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
 use Setono\SyliusShipmondoPlugin\Repository\RegisteredWebhooksRepositoryInterface;
 use Sylius\Component\Core\Model\PaymentMethod as BasePaymentMethod;
@@ -43,6 +45,8 @@ final class ShipmondoControllerTest extends TestCase
     use ProphecyTrait;
 
     private const TEMPLATE = '@SetonoSyliusShipmondoPlugin/admin/shipmondo/index.html.twig';
+
+    private const ENDPOINT = 'https://shop.example.com/webhook/shipmondo';
 
     /** @var ObjectProphecy<RegisteredWebhooksRepositoryInterface> */
     private ObjectProphecy $registeredWebhooksRepository;
@@ -94,9 +98,9 @@ final class ShipmondoControllerTest extends TestCase
         $this->paymentMethodRepository->findAll()->willReturn($this->paymentMethods);
         $this->shippingMethodRepository->findAll()->willReturn($this->shippingMethods);
 
+        // registered before the plugin recorded where, so there is nothing to compare with
         $this->registeredWebhooks = new RegisteredWebhooks();
-        $this->webhookRegistrar->getVersion()->willReturn('v1');
-        $this->registeredWebhooksRepository->findOneByVersion('v1')->willReturn($this->registeredWebhooks);
+        $this->registeredWebhooksRepository->findLatest()->willReturn($this->registeredWebhooks);
     }
 
     /**
@@ -107,7 +111,7 @@ final class ShipmondoControllerTest extends TestCase
         $this->givenShipmondoApi();
 
         $this->twig->render(self::TEMPLATE, Argument::that(function (array $context): bool {
-            self::assertSame(['paymentMethods', 'shippingMethods', 'shipmondoPaymentMethods', 'shipmondoShipmentTemplates', 'paymentGatewaysFetched', 'shipmentTemplatesFetched', 'stalePaymentGateways', 'staleShipmentTemplates', 'registeredWebhooks'], array_keys($context));
+            self::assertSame(['paymentMethods', 'shippingMethods', 'shipmondoPaymentMethods', 'shipmondoShipmentTemplates', 'paymentGatewaysFetched', 'shipmentTemplatesFetched', 'stalePaymentGateways', 'staleShipmentTemplates', 'registeredWebhooks', 'webhookComparison'], array_keys($context));
             self::assertSame($this->paymentMethods, $context['paymentMethods']);
             self::assertSame($this->shippingMethods, $context['shippingMethods']);
             self::assertSame([11, 12], self::ids($context['shipmondoPaymentMethods']));
@@ -117,15 +121,160 @@ final class ShipmondoControllerTest extends TestCase
             self::assertSame([], self::staleMappings($context['stalePaymentGateways']));
             self::assertSame([], self::staleMappings($context['staleShipmentTemplates']));
             self::assertSame($this->registeredWebhooks, $context['registeredWebhooks']);
+            // no endpoint is recorded to compare with
+            self::assertNull($context['webhookComparison']);
 
             return true;
         }))->willReturn('<h1>Shipmondo</h1>')->shouldBeCalledOnce();
+        $this->webhookRegistrar->compare(Argument::any())->shouldNotBeCalled();
 
         $response = $this->controller()->index(new Request());
 
         self::assertSame(Response::HTTP_OK, $response->getStatusCode());
         self::assertSame('<h1>Shipmondo</h1>', $response->getContent());
         self::assertSame([], $this->session->getFlashBag()->peekAll());
+    }
+
+    /**
+     * @test
+     */
+    public function it_tells_the_template_when_no_registration_is_recorded(): void
+    {
+        $this->givenShipmondoApi();
+        $this->registeredWebhooksRepository->findLatest()->willReturn(null);
+        $this->twig->render(self::TEMPLATE, Argument::that(static function (array $context): bool {
+            self::assertNull($context['registeredWebhooks']);
+            self::assertNull($context['webhookComparison']);
+
+            return true;
+        }))->willReturn('<h1>Shipmondo</h1>')->shouldBeCalledOnce();
+        $this->webhookRegistrar->compare(Argument::any())->shouldNotBeCalled();
+
+        $this->controller()->index(new Request());
+    }
+
+    /**
+     * The page shows whether this shop's webhooks in Shipmondo match the ones the upload run keeps where an admin last
+     * registered them
+     *
+     * @test
+     */
+    public function it_compares_this_shops_webhooks_in_shipmondo_at_the_endpoint_of_the_latest_registration(): void
+    {
+        $this->givenShipmondoApi();
+        $this->registeredWebhooks->setEndpoint(self::ENDPOINT);
+        $comparison = new WebhookComparison([], []);
+        $this->webhookRegistrar->compare(self::ENDPOINT)->willReturn($comparison)->shouldBeCalledOnce();
+
+        $this->twig->render(self::TEMPLATE, Argument::that(function (array $context) use ($comparison): bool {
+            self::assertSame($this->registeredWebhooks, $context['registeredWebhooks']);
+            self::assertSame($comparison, $context['webhookComparison']);
+
+            return true;
+        }))->willReturn('<h1>Shipmondo</h1>')->shouldBeCalledOnce();
+
+        $this->controller()->index(new Request());
+
+        self::assertSame([], $this->session->getFlashBag()->peekAll());
+        self::assertSame([], $this->logger->records);
+    }
+
+    /**
+     * @test
+     */
+    public function it_says_why_this_shops_webhooks_could_not_be_fetched(): void
+    {
+        $this->givenShipmondoApi();
+        $this->registeredWebhooks->setEndpoint(self::ENDPOINT);
+        $exception = new InternalServerErrorException(ShipmondoApi::json(['error' => 'Something went wrong'], 503));
+        $this->webhookRegistrar->compare(self::ENDPOINT)->willThrow($exception);
+
+        $this->twig->render(self::TEMPLATE, Argument::that(static function (array $context): bool {
+            self::assertNull($context['webhookComparison']);
+            // the other lists are still shown
+            self::assertSame([11, 12], self::ids($context['shipmondoPaymentMethods']));
+            self::assertSame([21], self::ids($context['shipmondoShipmentTemplates']));
+
+            return true;
+        }))->willReturn('<h1>Shipmondo</h1>')->shouldBeCalledOnce();
+
+        $this->controller()->index(new Request());
+
+        self::assertSame([[
+            'message' => 'setono_sylius_shipmondo.webhooks_not_fetched',
+            'parameters' => ['%reason%' => 'Shipmondo could not be reached, or had a server error. Try again later.'],
+        ]], $this->session->getFlashBag()->peek('error'));
+        self::assertSame([[
+            'level' => LogLevel::WARNING,
+            'message' => 'Could not fetch this shop\'s webhooks from Shipmondo for the Shipmondo page',
+            'context' => [
+                'exception' => $exception,
+                'shipmondoFailure' => 'temporary_failure',
+                'shipmondoStatusCode' => 503,
+                'shipmondoError' => 'Something went wrong',
+            ],
+        ]], $this->logger->records);
+    }
+
+    /**
+     * @test
+     */
+    public function it_explains_once_when_every_list_failed_for_the_same_reason(): void
+    {
+        $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'payment_gateways'))->willReturn(ShipmondoApi::empty(401));
+        $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'shipment_templates'))->willReturn(ShipmondoApi::empty(401));
+        $this->registeredWebhooks->setEndpoint(self::ENDPOINT);
+        $this->webhookRegistrar->compare(self::ENDPOINT)->willThrow(new UnauthorizedException(ShipmondoApi::empty(401)));
+        $this->givenRendered();
+
+        $this->controller()->index(new Request());
+
+        self::assertSame([[
+            'message' => 'setono_sylius_shipmondo.shipmondo_data_and_webhooks_not_fetched',
+            'parameters' => ['%reason%' => 'Shipmondo did not accept the API credentials. Check SHIPMONDO_USERNAME and SHIPMONDO_KEY, and that SHIPMONDO_SANDBOX matches the Shipmondo account they belong to.'],
+        ]], $this->session->getFlashBag()->peek('error'));
+    }
+
+    /**
+     * @test
+     */
+    public function it_explains_each_list_when_not_every_list_failed_for_the_same_reason(): void
+    {
+        $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'payment_gateways'))->willReturn(ShipmondoApi::empty(401));
+        $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'shipment_templates'))->willReturn(ShipmondoApi::empty(401));
+        $this->registeredWebhooks->setEndpoint(self::ENDPOINT);
+        $this->webhookRegistrar->compare(self::ENDPOINT)->willThrow(new InternalServerErrorException(ShipmondoApi::empty(503)));
+        $this->givenRendered();
+
+        $this->controller()->index(new Request());
+
+        $credentials = 'Shipmondo did not accept the API credentials. Check SHIPMONDO_USERNAME and SHIPMONDO_KEY, and that SHIPMONDO_SANDBOX matches the Shipmondo account they belong to.';
+        self::assertSame([
+            ['message' => 'setono_sylius_shipmondo.payment_gateways_not_fetched', 'parameters' => ['%reason%' => $credentials]],
+            ['message' => 'setono_sylius_shipmondo.shipment_templates_not_fetched', 'parameters' => ['%reason%' => $credentials]],
+            ['message' => 'setono_sylius_shipmondo.webhooks_not_fetched', 'parameters' => ['%reason%' => 'Shipmondo could not be reached, or had a server error. Try again later.']],
+        ], $this->session->getFlashBag()->peek('error'));
+    }
+
+    /**
+     * Two lists failed for the same reason, but the third was fetched, so the failure isn't the page's as a whole
+     *
+     * @test
+     */
+    public function it_explains_each_list_that_failed_when_another_was_fetched(): void
+    {
+        $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'payment_gateways'))->willReturn(ShipmondoApi::empty(429));
+        $this->httpClient->sendRequest(ShipmondoApi::request('GET', 'shipment_templates'))->willReturn(ShipmondoApi::empty(429));
+        $this->registeredWebhooks->setEndpoint(self::ENDPOINT);
+        $this->webhookRegistrar->compare(self::ENDPOINT)->willReturn(new WebhookComparison([], []));
+        $this->givenRendered();
+
+        $this->controller()->index(new Request());
+
+        self::assertSame(
+            ['setono_sylius_shipmondo.payment_gateways_not_fetched', 'setono_sylius_shipmondo.shipment_templates_not_fetched'],
+            array_column($this->session->getFlashBag()->peek('error'), 'message'),
+        );
     }
 
     /**

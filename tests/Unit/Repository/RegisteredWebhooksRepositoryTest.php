@@ -11,21 +11,23 @@ use Setono\SyliusShipmondoPlugin\Repository\RegisteredWebhooksRepository;
 final class RegisteredWebhooksRepositoryTest extends TestCase
 {
     /**
+     * The latest registration is the one registered last, and of two registered at the same time, the one recorded last
+     *
      * @test
      */
-    public function it_finds_the_registered_webhooks_by_version(): void
+    public function it_finds_the_latest_registration(): void
     {
         $registeredWebhooks = new RegisteredWebhooks();
 
-        self::assertSame($registeredWebhooks, $this->repository($registeredWebhooks)->findOneByVersion('v1'));
+        self::assertSame($registeredWebhooks, $this->repository($registeredWebhooks)->findLatest());
     }
 
     /**
      * @test
      */
-    public function it_returns_null_when_the_version_is_not_registered(): void
+    public function it_returns_null_when_no_registration_is_recorded(): void
     {
-        self::assertNull($this->repository(null)->findOneByVersion('v1'));
+        self::assertNull($this->repository(null)->findLatest());
     }
 
     /**
@@ -35,7 +37,7 @@ final class RegisteredWebhooksRepositoryTest extends TestCase
     {
         $this->expectException(\InvalidArgumentException::class);
 
-        $this->repository(new \stdClass())->findOneByVersion('v1');
+        $this->repository(new \stdClass())->findLatest();
     }
 
     private function repository(?object $result): RegisteredWebhooksRepository
@@ -48,7 +50,7 @@ final class RegisteredWebhooksRepositoryTest extends TestCase
 
         $repository->expects(self::once())
             ->method('findOneBy')
-            ->with(['version' => 'v1'])
+            ->with([], ['registeredAt' => 'DESC', 'id' => 'DESC'])
             ->willReturn($result)
         ;
 

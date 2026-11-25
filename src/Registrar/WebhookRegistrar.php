@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Setono\SyliusShipmondoPlugin\Registrar;
 
+use Psr\Log\LoggerInterface;
 use Setono\Shipmondo\Client\ClientInterface;
 use Setono\Shipmondo\Enum\WebhookResourceName;
 use Setono\Shipmondo\Request\Webhook\WebhookRequest;
@@ -17,8 +18,9 @@ use function Symfony\Component\String\u;
 use Webmozart\Assert\Assert;
 
 /**
- * Registers the webhooks the webhook handlers handle: one per action on the orders resource that a handler subscribes
- * to. It records each registration, which the admin's Shipmondo page reads to say when the webhooks were registered
+ * Keeps this shop's webhooks in Shipmondo matching the wanted ones: one per action on the orders resource that a
+ * webhook handler subscribes to, active and sent to the endpoint. It records each registration, whose endpoint the
+ * upload run registers the webhooks again at, and which the admin's Shipmondo page shows
  */
 final readonly class WebhookRegistrar implements WebhookRegistrarInterface
 {
@@ -30,18 +32,13 @@ final readonly class WebhookRegistrar implements WebhookRegistrarInterface
         private FactoryInterface $registeredWebhooksFactory,
         private string $webhooksKey,
         private string $namePrefix,
+        private LoggerInterface $logger,
     ) {
     }
 
     /**
-     * Replaces this shop's webhooks only: other shops on the same Shipmondo account register theirs under the same name
-     * prefix. A webhook is this shop's when it carries the shop's id, e.g. one registered before the shop changed its
-     * address, or when it is sent to the shop's endpoint, e.g. one registered before webhooks carried the shop's id.
-     *
-     * Registers nothing, and so keeps the webhooks registered before, when Shipmondo can't reach the endpoint, e.g.
-     * when the admin is opened at localhost
-     *
-     * Records the registration once Shipmondo has registered every webhook
+     * Creates the missing webhooks before it deletes the unwanted ones: Shipmondo calls a webhook's endpoint when it is
+     * created, so a webhook it refuses to create leaves the webhooks it replaces working
      */
     public function register(): void
     {
@@ -50,14 +47,9 @@ final readonly class WebhookRegistrar implements WebhookRegistrarInterface
             throw new UnreachableWebhookEndpointException($endpoint);
         }
 
-        $namePrefixWithShopId = $this->namePrefixWithShopId();
+        $comparison = $this->compare($endpoint);
 
-        $this->client->webhooks()->deleteAll(
-            fn (WebhookResponse $webhook) => str_starts_with($webhook->name, $namePrefixWithShopId) ||
-                (str_starts_with($webhook->name, $this->namePrefix) && $webhook->endpoint === $endpoint),
-        );
-
-        foreach ($this->getWebhooks() as $webhook) {
+        foreach ($comparison->missing as $webhook) {
             $this->client->webhooks()->create(new WebhookRequest(
                 $webhook->name,
                 $webhook->endpoint,
@@ -67,53 +59,89 @@ final readonly class WebhookRegistrar implements WebhookRegistrarInterface
             ));
         }
 
-        $this->recordRegistration();
-    }
+        foreach ($comparison->unwanted as $webhook) {
+            $this->client->webhooks()->delete($webhook->id);
+        }
 
-    public function getVersion(): string
-    {
-        $webhooks = iterator_to_array($this->getWebhooks());
-        usort($webhooks, static fn (Webhook $a, Webhook $b) => $a->name <=> $b->name);
+        $this->recordRegistration($endpoint);
 
-        $webhooks = array_map(static fn (Webhook $webhook) => $webhook->name . $webhook->endpoint . $webhook->key . $webhook->action->value . $webhook->resource->value, $webhooks);
-
-        return md5(implode('', $webhooks));
+        if (!$comparison->matches()) {
+            $this->logger->info('This shop\'s webhooks in Shipmondo did not match the wanted ones at {endpoint}, so the missing ones were created and the unwanted ones deleted', [
+                'endpoint' => $endpoint,
+                'created' => array_map(static fn (Webhook $webhook): string => $webhook->name, $comparison->missing),
+                'deleted' => array_map(static fn (WebhookResponse $webhook): string => sprintf('%s (%d)', $webhook->name, $webhook->id), $comparison->unwanted),
+            ]);
+        }
     }
 
     /**
-     * @return \Generator<array-key, Webhook>
+     * A webhook is this shop's when it carries the shop's id, e.g. one registered before the shop changed its address,
+     * or when it has the name prefix and is sent to the endpoint, e.g. one registered before webhooks carried the shop's
+     * id. Other shops on the same Shipmondo account register theirs under the same name prefix, and keep them
      */
-    public function getWebhooks(): \Generator
+    public function compare(string $endpoint): WebhookComparison
+    {
+        $namePrefixWithShopId = $this->namePrefixWithShopId();
+
+        $missing = $this->wantedWebhooks($endpoint);
+        $unwanted = [];
+
+        foreach ($this->client->webhooks()->paginate() as $webhook) {
+            if (!str_starts_with($webhook->name, $namePrefixWithShopId) &&
+                !(str_starts_with($webhook->name, $this->namePrefix) && $webhook->endpoint === $endpoint)
+            ) {
+                continue;
+            }
+
+            foreach ($missing as $key => $wanted) {
+                if ($wanted->isListedAs($webhook)) {
+                    unset($missing[$key]);
+
+                    continue 2;
+                }
+            }
+
+            // it isn't wanted, or another webhook already is the wanted one
+            $unwanted[] = $webhook;
+        }
+
+        return new WebhookComparison(array_values($missing), $unwanted);
+    }
+
+    /**
+     * @return list<Webhook>
+     */
+    private function wantedWebhooks(string $endpoint): array
     {
         $resource = WebhookResourceName::Orders;
 
+        $webhooks = [];
         foreach ($this->handlers->subscribedActions() as $action) {
-            yield new Webhook(
+            $webhooks[] = new Webhook(
                 sprintf('%s - [%s:%s]', $this->namePrefixWithShopId(), u($resource->value)->snake()->toString(), $action->value),
-                $this->endpoint(),
+                $endpoint,
                 $this->webhooksKey,
                 $action,
                 $resource,
             );
         }
+
+        return $webhooks;
     }
 
     /**
-     * Records that the current webhooks are registered, and when. It runs once Shipmondo has answered every call, so a
-     * registration that failed part of the way isn't recorded
+     * Records the endpoint the webhooks are registered at, and when, on the latest registration. It runs once Shipmondo
+     * has answered every call, so a registration that failed part of the way isn't recorded
      */
-    private function recordRegistration(): void
+    private function recordRegistration(string $endpoint): void
     {
-        $version = $this->getVersion();
-
-        $registeredWebhooks = $this->registeredWebhooksRepository->findOneByVersion($version);
+        $registeredWebhooks = $this->registeredWebhooksRepository->findLatest();
         if (null === $registeredWebhooks) {
             $registeredWebhooks = $this->registeredWebhooksFactory->createNew();
             Assert::isInstanceOf($registeredWebhooks, RegisteredWebhooksInterface::class);
-
-            $registeredWebhooks->setVersion($version);
         }
 
+        $registeredWebhooks->setEndpoint($endpoint);
         $registeredWebhooks->setRegisteredAt(new \DateTimeImmutable());
 
         $this->registeredWebhooksRepository->add($registeredWebhooks);

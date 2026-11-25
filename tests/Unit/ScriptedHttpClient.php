@@ -31,10 +31,14 @@ final class ScriptedHttpClient implements HttpClientInterface
 
     /**
      * @param array<array-key, mixed>|null $json
+     * @param array<string, string> $headers e.g. Shipmondo's pagination headers, such as X-Total-Pages
      */
-    public function respond(int $statusCode, ?array $json = null, ?string $body = null): self
+    public function respond(int $statusCode, ?array $json = null, ?string $body = null, array $headers = []): self
     {
         $response = $this->psr17->createResponse($statusCode);
+        foreach ($headers as $name => $value) {
+            $response = $response->withHeader($name, $value);
+        }
 
         $body ??= null === $json ? null : json_encode($json, \JSON_THROW_ON_ERROR);
         if (null !== $body) {
