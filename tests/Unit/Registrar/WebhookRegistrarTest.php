@@ -239,6 +239,41 @@ final class WebhookRegistrarTest extends TestCase
     }
 
     /**
+     * The SDK reads an action or a resource it doesn't know as null, e.g. one Shipmondo added later, so the list can
+     * still be compared
+     *
+     * @test
+     */
+    public function it_leaves_alone_another_integrations_webhook_whose_action_or_resource_the_sdk_does_not_know(): void
+    {
+        $shipmondo = (new ScriptedHttpClient())->respond(200, [
+            self::webhook(10, 'Another integration', 'https://another-integration.example.com/hook', 'an_action_added_later', resource: 'A resource added later'),
+            ...self::wanted(self::ENDPOINT),
+        ]);
+
+        $this->registrar($shipmondo)->register();
+
+        self::assertSame(['GET webhooks'], $shipmondo->requestLines());
+    }
+
+    /**
+     * E.g. one edited in Shipmondo to an action the SDK doesn't know: it can't be a wanted one
+     *
+     * @test
+     */
+    public function it_deletes_a_webhook_of_this_shops_whose_action_the_sdk_does_not_know(): void
+    {
+        $shipmondo = (new ScriptedHttpClient())
+            ->respond(200, [...self::wanted(self::ENDPOINT), self::webhook(4, 'Shop [ab9f9937] - [orders:an_action_added_later]', self::ENDPOINT, 'an_action_added_later')])
+            ->respond(204)
+        ;
+
+        $this->registrar($shipmondo)->register();
+
+        self::assertSame(['GET webhooks', 'DELETE webhooks/4'], $shipmondo->requestLines());
+    }
+
+    /**
      * @test
      */
     public function it_reads_every_page_of_webhooks(): void

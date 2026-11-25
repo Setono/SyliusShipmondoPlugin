@@ -80,6 +80,31 @@ final class UploadOrdersCommandTest extends FunctionalTestCase
     }
 
     /**
+     * The Shipmondo SDK reads only `zipCode` since 2.0.0-rc.3, while every pickup point stored on a shipment before has
+     * `zipcode`. An order whose customer chose its pickup point before the upgrade is still uploaded to it
+     *
+     * @test
+     */
+    public function it_uploads_an_order_to_the_pickup_point_stored_before_the_zip_code_was_spelled_zip_code(): void
+    {
+        $order = $this->fixtures->createOrder($this->fixtures->createCustomer(), pickupPoint: PickupPoints::create());
+        $this->connection()->executeStatement(
+            'UPDATE sylius_shipment SET shipmondoPickupPoint = ? WHERE order_id = ?',
+            [PickupPoints::JSON_WITH_ZIPCODE, self::id($order)],
+        );
+        $this->entityManager()->clear();
+
+        $this->respondWithThePaymentGateway();
+        $this->shipmondo->respond('POST', 'sales_orders', 201, ['id' => 1001]);
+
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+
+        $body = ShipmondoApiStub::jsonBody($this->shipmondo->requests('POST', 'sales_orders')[0]);
+        self::assertIsArray($body['service_point']);
+        self::assertSame(['96285', '8000'], [$body['service_point']['id'], $body['service_point']['zipcode']]);
+    }
+
+    /**
      * @test
      */
     public function it_maps_the_order_to_a_shipmondo_sales_order(): void

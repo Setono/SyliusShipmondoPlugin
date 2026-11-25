@@ -19,6 +19,27 @@ final class PickupPointParserTest extends TestCase
     }
 
     /**
+     * Shipments store the pickup point their customer chose, and the SDK reads only `zipCode` since 2.0.0-rc.3. A
+     * pickup point stored before must still be read, or its order would be uploaded without it
+     *
+     * @test
+     */
+    public function it_reads_a_pickup_point_stored_before_the_zip_code_was_spelled_zip_code(): void
+    {
+        self::assertEquals(PickupPoints::create(), PickupPointParser::parse(PickupPoints::JSON_WITH_ZIPCODE));
+    }
+
+    /**
+     * @test
+     */
+    public function it_reads_the_zip_code_spelled_zip_code_when_both_spellings_are_there(): void
+    {
+        $json = str_replace('"zipCode":"8000"', '"zipcode":"9999","zipCode":"8000"', PickupPoints::JSON);
+
+        self::assertEquals(PickupPoints::create(), PickupPointParser::parse($json));
+    }
+
+    /**
      * A tampered checkout request or a broken pickup point picker
      *
      * @test

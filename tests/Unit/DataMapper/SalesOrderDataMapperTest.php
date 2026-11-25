@@ -63,7 +63,7 @@ final class SalesOrderDataMapperTest extends TestCase
         self::assertNotNull($salesOrder->shipTo);
         self::assertSame('John Doe', $salesOrder->shipTo->name);
         self::assertSame('Shipping St 1', $salesOrder->shipTo->address1);
-        self::assertSame('1000', $salesOrder->shipTo->zipcode);
+        self::assertSame('1000', $salesOrder->shipTo->zipCode);
         self::assertSame('Copenhagen', $salesOrder->shipTo->city);
         self::assertSame('DK', $salesOrder->shipTo->countryCode);
         self::assertSame('john@example.com', $salesOrder->shipTo->email);
@@ -72,7 +72,7 @@ final class SalesOrderDataMapperTest extends TestCase
         self::assertNotNull($salesOrder->billTo);
         self::assertSame('Jane Roe', $salesOrder->billTo->name);
         self::assertSame('Billing Rd 2', $salesOrder->billTo->address1);
-        self::assertSame('2000', $salesOrder->billTo->zipcode);
+        self::assertSame('2000', $salesOrder->billTo->zipCode);
         self::assertSame('Aarhus', $salesOrder->billTo->city);
         self::assertSame('DK', $salesOrder->billTo->countryCode);
         self::assertSame('john@example.com', $salesOrder->billTo->email);

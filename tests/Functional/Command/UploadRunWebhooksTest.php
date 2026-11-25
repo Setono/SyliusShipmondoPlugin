@@ -131,30 +131,27 @@ final class UploadRunWebhooksTest extends FunctionalTestCase
     }
 
     /**
-     * The Shipmondo SDK maps every webhook's action and resource to its enums, and can't read the list when one webhook
-     * on the account, e.g. another integration's, has one it doesn't know. Until it can, the run reports it, and the
-     * uploads still happen
+     * Shipmondo lists every webhook on the account, also other integrations', which may have an action or a resource the
+     * Shipmondo SDK doesn't know, e.g. one Shipmondo added later. The SDK reads it as null, so the list can still be
+     * compared, and another integration's webhook is left alone
      *
      * @test
      */
-    public function it_reports_a_webhook_list_the_sdk_cannot_read_after_uploading_the_pending_orders(): void
+    public function it_succeeds_when_another_integration_has_a_webhook_whose_action_the_sdk_does_not_know(): void
     {
         $this->recordWebhookRegistration(self::WEBHOOK_ENDPOINT);
         $order = $this->orderReadyForUpload();
         $this->shipmondo->respond('GET', 'webhooks', 200, [
             ...$this->wantedWebhooks(self::WEBHOOK_ENDPOINT),
-            ['id' => 8001, 'endpoint' => 'https://another-integration.example.com/hook', 'active' => true, 'name' => 'Another integration', 'action' => 'an_action_shipmondo_added_later', 'resource_name' => 'Orders'],
+            ['id' => 8001, 'endpoint' => 'https://another-integration.example.com/hook', 'active' => true, 'name' => 'Another integration', 'action' => 'an_action_added_later', 'resource_name' => 'A resource added later'],
         ], ['X-Total-Pages' => '1']);
 
         $tester = $this->executeCommand(self::COMMAND);
 
-        self::assertSame(Command::FAILURE, $tester->getStatusCode());
-        self::assertStringContainsString('because a call to Shipmondo failed', CommandErrors::of($tester)[0]);
+        $tester->assertCommandIsSuccessful();
+        self::assertSame('', $tester->getDisplay());
         self::assertSame(OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, $this->orderRow(self::id($order))['shipmondo_state']);
         self::assertSame(['GET payment_gateways', 'POST sales_orders', 'GET webhooks'], $this->shipmondo->requestLines());
-
-        $errors = array_values(array_filter($this->logs(), static fn (array $log): bool => 'error' === $log['level']));
-        self::assertSame(['unexpected_failure'], array_map(static fn (array $log): mixed => $log['context']['shipmondoFailure'], $errors));
     }
 
     /**

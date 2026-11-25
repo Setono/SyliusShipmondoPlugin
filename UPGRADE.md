@@ -75,11 +75,12 @@ For most installations the required changes are:
   run does it again, so `setono:sylius-shipmondo:upload-orders` fails until they are registered once; and give an
   install that shares another's webhooks key, e.g. a staging copy of production, a key of its own, or turn off the new
   `webhooks.register_automatically` option there (section 29)
+- upgrade PHP to 8.2 first: the plugin now requires it, with the Shipmondo SDK's 2.0.0-rc.3; and if you override the
+  shop's pickup point list, read `pickupPoint.zipCode` (section 30)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
-> The plugin still targets **PHP 8.1+**, **Symfony 6.4** and **Sylius ~1.14** — those requirements
-> are unchanged.
+> The plugin targets **PHP 8.2+** (since section 30; it was 8.1+), **Symfony 6.4** and **Sylius ~1.14**.
 
 ### 1. Update the dependency
 
@@ -1370,8 +1371,8 @@ the run stopped early (section 28). When nothing differs, that is one request.
 - The command also fails, after the uploads, when Shipmondo fails (logged with why; the next run tries again), or can't
   reach the recorded endpoint (logged with the endpoint). Its error names each reason, after those of section 28. If
   your monitoring matches on the command's output, add them.
-- The Shipmondo SDK can't read Shipmondo's list of webhooks when one webhook on the account, e.g. another integration's,
-  has an action or resource the SDK doesn't know. Comparing then fails, so the command fails until the SDK knows it.
+- A webhook on the account whose action or resource the Shipmondo SDK doesn't know, e.g. another integration's, is
+  read with that value as null (section 30): another integration's is left alone, and the shop's is replaced.
 - **An install that shares another's webhooks key, e.g. a staging copy of production, needs a
   `SHIPMONDO_WEBHOOKS_KEY` of its own, or the option below turned off.** Both have the same shop id, so each upload run
   replaces the other install's webhooks with ones at its own endpoint, on every run.
@@ -1430,6 +1431,34 @@ record the registration's endpoint and time in `register()`, or the upload run c
 New: the `setono_sylius_shipmondo.webhooks.register_automatically` parameter, and the `Registrar\WebhookComparison` and
 `Registrar\NoRecordedEndpointException` classes.
 
+### 30. The plugin requires PHP 8.2 and the Shipmondo SDK's 2.0.0-rc.3
+
+The plugin now requires `setono/shipmondo-php-sdk: ^2.0.0-rc.3`, and so **PHP 8.2**, which that release requires. The
+SDK maps Shipmondo's answers with Valinor, whose versions before 2.5 leaked memory in long-running processes such as
+Messenger workers ([CuyZ/Valinor#800](https://github.com/CuyZ/Valinor/issues/800)); the fixed versions require PHP 8.2.
+**Upgrade PHP to 8.2 or newer before you upgrade the plugin.**
+
+With it, a webhook on the Shipmondo account whose action or resource the SDK doesn't know, e.g. another integration's,
+no longer keeps the shop's webhooks from being compared (section 29): the SDK reads the value as null, so another
+integration's such webhook is left alone, and the shop's is replaced.
+
+**Pickup points stored on shipments keep working.** The SDK now spells a pickup point's zip code `zipCode`, also in its
+JSON, and reads only that. Every pickup point stored before, by 1.x or by 2.x until now, has `zipcode`, and the plugin's
+`Parser\PickupPointParser`, which the shipment's column type and the checkout use, still reads it. Read a stored pickup
+point through it, not through the SDK's `PickupPoint::fromArray()`.
+
+**If you override the shop's pickup point list** (`shop/ajax/pickup_points.html.twig`): read `pickupPoint.zipCode`
+instead of `pickupPoint.zipcode`.
+
+Only if your own code uses the SDK's classes, e.g. a data mapper of your own, or a `Client` you build yourself:
+
+| SDK 2.0.0-rc.2 | 2.0.0-rc.3 |
+|---|---|
+| `zipcode` on `Request\SalesOrder\Recipient`, `Sender` and `ServicePoint`, and on `Response\PickupPoint\PickupPoint` (also in its JSON) | `zipCode`; Shipmondo still receives and sends `zipcode` |
+| response values cast to the type of the field | not cast: a value of another type than Shipmondo documents fails to map (a `MappingException`) |
+| `Response\Webhook\Webhook::$action` and `$resourceName` | nullable: null for a value the SDK doesn't know |
+| `Client::configureMapperBuilder()` and `Client::registerNormalizerTransformers()` | removed: the `Client` applies its configuration to whichever Valinor builder it is given |
+
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
@@ -1443,5 +1472,6 @@ registering them at the channels' hostname on the command line, registering noth
 can't reach, registering them right away instead of through the command bus, taking the authorized amount, the
 payment method and the payment gateway from the payments that paid the order, the time limits on the requests to
 Shipmondo, the `unlinked` Shipmondo state, retrying the upload of a failed order, the sales order lookup, recording
-and showing why an order's upload didn't go through, the order id prefix, the upload run's stop rules, and
-registering the webhooks by their difference, from every upload run.
+and showing why an order's upload didn't go through, the order id prefix, the upload run's stop rules,
+registering the webhooks by their difference, from every upload run, and the PHP 8.2 requirement with the Shipmondo
+SDK's 2.0.0-rc.3.

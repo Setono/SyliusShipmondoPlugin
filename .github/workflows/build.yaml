@@ -26,7 +26,7 @@ jobs:
         strategy:
             matrix:
                 php-version:
-                    - "8.1" # Always use the lowest version of PHP since a higher version could create actual syntax errors in lower versions
+                    - "8.2" # Always use the lowest version of PHP since a higher version could create actual syntax errors in lower versions
 
                 dependencies:
                     - "highest"
@@ -73,7 +73,7 @@ jobs:
         strategy:
             matrix:
                 php-version:
-                    - "8.1"
+                    - "8.2"
 
                 dependencies:
                     - "highest"
@@ -114,7 +114,6 @@ jobs:
         strategy:
             matrix:
                 php-version:
-                    - "8.1"
                     - "8.2"
                     - "8.3"
 
@@ -155,7 +154,6 @@ jobs:
         strategy:
             matrix:
                 php-version:
-                    - "8.1"
                     - "8.2"
                     - "8.3"
 
@@ -196,7 +194,6 @@ jobs:
         strategy:
             matrix:
                 php-version:
-                    - "8.1"
                     - "8.2"
                     - "8.3"
 
@@ -245,9 +242,9 @@ jobs:
             -   name: "Run functional tests"
                 run: "vendor/bin/phpunit --testsuite Functional"
 
-    # TODO: playwright-php/playwright-symfony requires PHP >= 8.2 while the plugin still supports 8.1, so it is installed
-    # only in this job. When the PHP requirement is raised to >= 8.2, add it to require-dev and merge this job into the
-    # "Integration tests" job (run the Playwright suite next to the functional suite).
+    # TODO: playwright-php/playwright-symfony is installed only in this job, because it requires PHP >= 8.2 and the plugin
+    # supported 8.1 until the Shipmondo SDK's 2.0.0-rc.3. Now that the plugin requires 8.2 too, add it to require-dev and
+    # merge this job into the "Integration tests" job (run the Playwright suite next to the functional suite).
     browser-tests:
         name: "Browser tests (Playwright | PHP${{ matrix.php-version }} | Deps: ${{ matrix.dependencies }} | SF${{ matrix.symfony }})"
 

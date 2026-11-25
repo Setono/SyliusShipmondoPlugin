@@ -45,8 +45,9 @@ Two things `BrowserTestCase` does that a test may run into:
 
 ## Running
 
-`playwright-php/playwright-symfony` requires PHP >= 8.2 and the plugin supports 8.1, so the package is not in
-`composer.json` (CI installs it in the `browser-tests` job). Locally, on PHP 8.2 and with Node 20:
+`playwright-php/playwright-symfony` is not in `composer.json` (CI installs it in the `browser-tests` job): it requires
+PHP >= 8.2, which the plugin supported only from the Shipmondo SDK's 2.0.0-rc.3 on, and moving it to `require-dev` is
+still to do. Locally, with Node 20:
 
 ```bash
 php8.2 composer require --dev --no-update "playwright-php/playwright-symfony:^0.11"
@@ -60,7 +61,7 @@ php8.2 vendor/bin/phpunit --testsuite Playwright
 ```
 
 where `php8.2` is your PHP 8.2 binary, e.g. `/opt/homebrew/opt/php@8.2/bin/php`. Revert `composer.json` afterwards
-(`git checkout composer.json`) and reinstall on PHP 8.1 before running the other tools.
+(`git checkout composer.json`) and run `composer update` before committing.
 
 The database is the functional suite's: `DATABASE_URL` of the `test` environment, e.g. in an untracked
 `tests/Application/.env.test.local`. It must exist (`(cd tests/Application && APP_ENV=test bin/console
