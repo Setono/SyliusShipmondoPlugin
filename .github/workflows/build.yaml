@@ -219,7 +219,6 @@ jobs:
                     extensions: "${{ env.PHP_EXTENSIONS }}"
                     php-version: "${{ matrix.php-version }}"
                     tools: "flex"
-                    ini-values: "memory_limit=-1" # the Playwright suite boots a fresh container per request in the one PHPUnit process
 
             -   name: "Setup Node"
                 uses: "actions/setup-node@v4"
