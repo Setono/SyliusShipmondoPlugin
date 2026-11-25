@@ -15,8 +15,8 @@ interface OrderUploaderInterface
     /**
      * Runs an upload run. First it looks up the sales order of each order that has been unlinked for at least ten
      * minutes, by the exact order id its upload sent, and settles the order by what it finds: one sales order links the
-     * order to it, none puts it back to pending, and several leave it unlinked. The lookups run here, never through the
-     * command bus. Then it puts each pending order that qualifies for upload in uploading, and uploads it through the
+     * order to it, none puts it back to pending, and several leave it unlinked ({@see \Setono\SyliusShipmondoPlugin\Linker\OrderLinkerInterface}).
+     * The lookups run here, never through the command bus. Then it puts each pending order that qualifies for upload in uploading, and uploads it through the
      * UploadOrder command.
      *
      * Stop rules end the run early when the remaining orders would most likely fail the same way, and they wait for the

@@ -10,6 +10,7 @@
         <import resource="services/event_listener.xml"/>
         <import resource="services/event_subscriber.xml"/>
         <import resource="services/form.xml"/>
+        <import resource="services/linker.xml"/>
         <import resource="services/message.xml"/>
         <import resource="services/provider.xml"/>
         <import resource="services/registrar.xml"/>
