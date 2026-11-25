@@ -14,7 +14,7 @@ use Sylius\Component\Order\Repository\OrderRepositoryInterface;
  * when it became unlinked. Other changes of the order, e.g. a cancel in Sylius, don't put its lookup off. An unlinked
  * order without that time became unlinked before the plugin recorded it, so its lookup is due
  */
-final class UnlinkedOrdersProvider implements UnlinkedOrdersProviderInterface
+final readonly class UnlinkedOrdersProvider implements UnlinkedOrdersProviderInterface
 {
     /**
      * How long an order is unlinked before its sales order is looked up
@@ -24,7 +24,7 @@ final class UnlinkedOrdersProvider implements UnlinkedOrdersProviderInterface
     /**
      * @param OrderRepositoryInterface&EntityRepository<OrderInterface> $orderRepository
      */
-    public function __construct(private readonly OrderRepositoryInterface&EntityRepository $orderRepository)
+    public function __construct(private OrderRepositoryInterface&EntityRepository $orderRepository)
     {
     }
 

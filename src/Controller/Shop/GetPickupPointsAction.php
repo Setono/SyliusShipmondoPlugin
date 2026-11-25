@@ -23,14 +23,14 @@ use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
 use Twig\Environment;
 
-final class GetPickupPointsAction
+final readonly class GetPickupPointsAction
 {
     public function __construct(
-        private readonly ShippingMethodRepositoryInterface $shippingMethodRepository,
-        private readonly CartContextInterface $cartContext,
-        private readonly ClientInterface $client,
-        private readonly Environment $twig,
-        private readonly LoggerInterface $logger,
+        private ShippingMethodRepositoryInterface $shippingMethodRepository,
+        private CartContextInterface $cartContext,
+        private ClientInterface $client,
+        private Environment $twig,
+        private LoggerInterface $logger,
     ) {
     }
 

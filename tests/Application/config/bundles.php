@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-$bundles = [
+return [
     Symfony\Bundle\FrameworkBundle\FrameworkBundle::class => ['all' => true],
     Symfony\Bundle\MonologBundle\MonologBundle::class => ['all' => true],
     Symfony\Bundle\SecurityBundle\SecurityBundle::class => ['all' => true],
@@ -61,13 +61,5 @@ $bundles = [
     SyliusLabs\Polyfill\Symfony\Security\Bundle\SyliusLabsPolyfillSymfonySecurityBundle::class => ['all' => true],
     League\FlysystemBundle\FlysystemBundle::class => ['all' => true],
     Symfony\WebpackEncoreBundle\WebpackEncoreBundle::class => ['all' => true],
+    Playwright\Symfony\PlaywrightSymfonyBundle::class => ['test' => true],
 ];
-
-// TODO: playwright-php/playwright-symfony requires PHP >= 8.2 while the plugin still supports 8.1, so it is only
-// installed in the CI job that runs the Playwright suite (see .github/workflows/build.yaml). When the PHP requirement
-// is raised to >= 8.2, add it to require-dev and register the bundle unconditionally.
-if (class_exists(Playwright\Symfony\PlaywrightSymfonyBundle::class)) {
-    $bundles[Playwright\Symfony\PlaywrightSymfonyBundle::class] = ['test' => true];
-}
-
-return $bundles;

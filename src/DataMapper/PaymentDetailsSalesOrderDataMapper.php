@@ -25,11 +25,11 @@ use Webmozart\Assert\Assert;
  * that is sent, or else of the largest authorized or completed payment, the earliest of them on a tie. Shipmondo
  * accepts a payment gateway that no longer exists in it, so the mapper logs an error for one
  */
-final class PaymentDetailsSalesOrderDataMapper implements SalesOrderDataMapperInterface
+final readonly class PaymentDetailsSalesOrderDataMapper implements SalesOrderDataMapperInterface
 {
     public function __construct(
-        private readonly SetupProviderInterface $setupProvider,
-        private readonly LoggerInterface $logger,
+        private SetupProviderInterface $setupProvider,
+        private LoggerInterface $logger,
     ) {
     }
 

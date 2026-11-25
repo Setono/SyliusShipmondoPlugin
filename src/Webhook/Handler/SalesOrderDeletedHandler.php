@@ -24,11 +24,11 @@ use Symfony\Component\Workflow\WorkflowInterface;
  * ({@see \Setono\SyliusShipmondoPlugin\Webhook\OrderResolverInterface}), so neither a deleted duplicate of the order
  * nor the delete echoed back after our own DeleteOrder reaches it.
  */
-final class SalesOrderDeletedHandler implements OrderWebhookHandlerInterface
+final readonly class SalesOrderDeletedHandler implements OrderWebhookHandlerInterface
 {
     public function __construct(
-        private readonly WorkflowInterface $orderWorkflow,
-        private readonly OrderCancellerInterface $orderCanceller,
+        private WorkflowInterface $orderWorkflow,
+        private OrderCancellerInterface $orderCanceller,
     ) {
     }
 

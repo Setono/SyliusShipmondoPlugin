@@ -45,13 +45,10 @@ Two things `BrowserTestCase` does that a test may run into:
 
 ## Running
 
-`playwright-php/playwright-symfony` requires PHP >= 8.2 and the plugin supports 8.1, so the package is not in
-`composer.json` (CI installs it in the `browser-tests` job). Locally, on PHP 8.2 and with Node 20:
+With Node 20:
 
 ```bash
-php8.2 composer require --dev --no-update "playwright-php/playwright-symfony:^0.11"
-php8.2 composer update
-php8.2 vendor/bin/playwright-install chromium
+php8.2 vendor/bin/playwright-install chromium # once
 
 # the pages need the test application's assets; copies, because the asset server does not follow symlinks
 (cd tests/Application && yarn install && yarn build && bin/console assets:install public)
@@ -59,8 +56,8 @@ php8.2 vendor/bin/playwright-install chromium
 php8.2 vendor/bin/phpunit --testsuite Playwright
 ```
 
-where `php8.2` is your PHP 8.2 binary, e.g. `/opt/homebrew/opt/php@8.2/bin/php`. Revert `composer.json` afterwards
-(`git checkout composer.json`) and reinstall on PHP 8.1 before running the other tools.
+where `php8.2` is your PHP 8.2 binary, e.g. `/opt/homebrew/opt/php@8.2/bin/php`. CI runs the suite in the integration
+tests job, after the functional suite.
 
 The database is the functional suite's: `DATABASE_URL` of the `test` environment, e.g. in an untracked
 `tests/Application/.env.test.local`. It must exist (`(cd tests/Application && APP_ENV=test bin/console

@@ -24,19 +24,19 @@ use Symfony\Contracts\Translation\TranslatorInterface;
  * Translated, it explains to an admin why the call failed and what to do about it, e.g. which credentials to check.
  * It is logged with {@see self::logContext()}.
  */
-final class ShipmondoFailure implements TranslatableInterface
+final readonly class ShipmondoFailure implements TranslatableInterface
 {
     /**
      * The status code Shipmondo answered with, or null when Shipmondo didn't answer
      */
-    public readonly ?int $statusCode;
+    public ?int $statusCode;
 
     /**
      * Shipmondo's own message about the failure, if it sent one, e.g. which data it found invalid
      */
-    public readonly ?string $error;
+    public ?string $error;
 
-    private function __construct(public readonly ShipmondoFailureKind $kind, public readonly \Throwable $exception)
+    private function __construct(public ShipmondoFailureKind $kind, public \Throwable $exception)
     {
         $response = match (true) {
             $exception instanceof ResponseAwareException, $exception instanceof ConnectionException => $exception->getResponse(),

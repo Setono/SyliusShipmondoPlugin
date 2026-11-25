@@ -14,7 +14,7 @@ use Symfony\Contracts\Translation\TranslatorInterface;
  *
  * Translated, it explains to an admin what went wrong, as the failure it records does
  */
-final class RecordedShipmondoFailure implements TranslatableInterface
+final readonly class RecordedShipmondoFailure implements TranslatableInterface
 {
     /**
      * A longer message is cut off, ending in an ellipsis. It most likely holds Shipmondo's whole answer, e.g. an HTML
@@ -26,15 +26,15 @@ final class RecordedShipmondoFailure implements TranslatableInterface
      * The failure's message, in UTF-8 and at most {@see self::MAX_MESSAGE_LENGTH} characters long: Shipmondo's own
      * message about the failure, if it sent one, e.g. which data it found invalid, or else the exception's
      */
-    public readonly string $message;
+    public string $message;
 
     /**
      * @param int|null $statusCode the status code Shipmondo answered with, or null when Shipmondo didn't answer
      * @param string $message any bytes that aren't UTF-8 are replaced, so the message can be stored and shown
      */
     public function __construct(
-        public readonly ShipmondoFailureKind $kind,
-        public readonly ?int $statusCode,
+        public ShipmondoFailureKind $kind,
+        public ?int $statusCode,
         string $message,
     ) {
         $this->message = u(self::toValidUtf8($message))->truncate(self::MAX_MESSAGE_LENGTH, '…')->toString();

@@ -20,16 +20,16 @@ use Webmozart\Assert\Assert;
  * Registers the webhooks the webhook handlers handle: one per action on the orders resource that a handler subscribes
  * to. It records each registration, which the admin's Shipmondo page reads to say when the webhooks were registered
  */
-final class WebhookRegistrar implements WebhookRegistrarInterface
+final readonly class WebhookRegistrar implements WebhookRegistrarInterface
 {
     public function __construct(
-        private readonly ClientInterface $client,
-        private readonly UrlGeneratorInterface $urlGenerator,
-        private readonly OrderWebhookHandlers $handlers,
-        private readonly RegisteredWebhooksRepositoryInterface $registeredWebhooksRepository,
-        private readonly FactoryInterface $registeredWebhooksFactory,
-        private readonly string $webhooksKey,
-        private readonly string $namePrefix,
+        private ClientInterface $client,
+        private UrlGeneratorInterface $urlGenerator,
+        private OrderWebhookHandlers $handlers,
+        private RegisteredWebhooksRepositoryInterface $registeredWebhooksRepository,
+        private FactoryInterface $registeredWebhooksFactory,
+        private string $webhooksKey,
+        private string $namePrefix,
     ) {
     }
 

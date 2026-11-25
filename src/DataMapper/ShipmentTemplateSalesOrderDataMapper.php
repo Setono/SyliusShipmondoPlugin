@@ -18,11 +18,11 @@ use Setono\SyliusShipmondoPlugin\Provider\SetupProviderInterface;
  * shipping address's country: the one that ships from the store's country and fits the order's weight best. It warns
  * when the shipping method allows shipment templates that no longer exist in Shipmondo
  */
-final class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapperInterface
+final readonly class ShipmentTemplateSalesOrderDataMapper implements SalesOrderDataMapperInterface
 {
     public function __construct(
-        private readonly SetupProviderInterface $setupProvider,
-        private readonly LoggerInterface $logger,
+        private SetupProviderInterface $setupProvider,
+        private LoggerInterface $logger,
     ) {
     }
 

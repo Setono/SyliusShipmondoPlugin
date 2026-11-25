@@ -51,12 +51,22 @@ final class PickupPointTypeTest extends TestCase
     }
 
     /**
+     * The SDK reads only `zipCode` since 2.0.0-rc.3, and every pickup point stored before has `zipcode`
+     *
+     * @test
+     */
+    public function it_reads_a_pickup_point_stored_before_the_zip_code_was_spelled_zip_code(): void
+    {
+        self::assertEquals(PickupPoints::create(), self::type()->convertToPHPValue(PickupPoints::JSON_WITH_ZIPCODE, self::platform()));
+    }
+
+    /**
      * @test
      */
     public function it_reads_a_pickup_point_stored_with_the_raw_shipmondo_response(): void
     {
-        // what the checkout stored before pickup points were stored by this type
-        $json = substr(PickupPoints::JSON, 0, -1) . ',"raw":{"id":"96285","company_name":"GLS"}}';
+        // what the checkout stored before pickup points were stored by this type, when the zip code was spelled zipcode
+        $json = substr(PickupPoints::JSON_WITH_ZIPCODE, 0, -1) . ',"raw":{"id":"96285","company_name":"GLS"}}';
 
         self::assertEquals(PickupPoints::create(), self::type()->convertToPHPValue($json, self::platform()));
     }

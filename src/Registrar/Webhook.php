@@ -7,14 +7,14 @@ namespace Setono\SyliusShipmondoPlugin\Registrar;
 use Setono\Shipmondo\Enum\WebhookAction;
 use Setono\Shipmondo\Enum\WebhookResourceName;
 
-final class Webhook
+final readonly class Webhook
 {
     public function __construct(
-        public readonly string $name,
-        public readonly string $endpoint,
-        public readonly string $key,
-        public readonly WebhookAction $action,
-        public readonly WebhookResourceName $resource,
+        public string $name,
+        public string $endpoint,
+        public string $key,
+        public WebhookAction $action,
+        public WebhookResourceName $resource,
     ) {
     }
 }

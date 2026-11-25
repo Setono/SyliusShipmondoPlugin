@@ -16,6 +16,7 @@ use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Component\Core\Factory\PaymentMethodFactoryInterface;
 use Sylius\Component\Core\Model\CustomerInterface;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Security\Core\User\UserInterface;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\TestApplication;
@@ -34,10 +35,6 @@ use Webmozart\Assert\Assert;
  *
  * The shop has two shipping methods to the customer's country: "UPS" (selected by default) and "GLS pickup point",
  * which delivers to GLS pickup points.
- *
- * TODO: playwright-php/playwright-symfony requires PHP >= 8.2 while the plugin still supports 8.1, so it is only
- * installed in the CI job that runs this suite. When the PHP requirement is raised to >= 8.2, add it to require-dev
- * and run this suite in the "Integration tests" job next to the functional suite.
  */
 abstract class BrowserTestCase extends PlaywrightTestCase
 {
@@ -84,6 +81,11 @@ abstract class BrowserTestCase extends PlaywrightTestCase
     protected function tearDown(): void
     {
         $unexpectedRequests = $this->shipmondo->unexpectedRequests();
+
+        // PHPUnit keeps every test object until the run ends, and through these each container that handled one of the
+        // test's requests would stay in memory: a request's session reaches back into its container
+        $this->handledRequests = [];
+        unset($this->fixtures, $this->shipmondo, $this->regularShippingMethod);
 
         parent::tearDown();
 
@@ -138,7 +140,10 @@ abstract class BrowserTestCase extends PlaywrightTestCase
 
     protected function logInAsAdministrator(): void
     {
-        $this->loginUser($this->fixtures->admin(), 'admin');
+        $admin = $this->fixtures->admin();
+        Assert::isInstanceOf($admin, UserInterface::class);
+
+        $this->loginUser($admin, 'admin');
     }
 
     /**
@@ -357,6 +362,7 @@ abstract class BrowserTestCase extends PlaywrightTestCase
         $row = $this->connection()->fetchAssociative('SELECT state, shipmondoId FROM sylius_order WHERE id = ?', [$orderId]);
         Assert::isArray($row, sprintf('The order %d does not exist', $orderId));
         Assert::string($row['state']);
+        Assert::nullOrNumeric($row['shipmondoId']);
 
         return ['state' => $row['state'], 'shipmondo_id' => null === $row['shipmondoId'] ? null : (int) $row['shipmondoId']];
     }

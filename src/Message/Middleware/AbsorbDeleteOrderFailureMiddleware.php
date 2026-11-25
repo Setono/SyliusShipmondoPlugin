@@ -27,14 +27,14 @@ use Symfony\Component\Messenger\Stamp\ReceivedStamp;
  * it and reports the sales order as not deleted, as the handler's result. A worker that received the command, with no
  * transaction around the bus's own, lets the failure through, so Messenger retries it or sends it to the failure transport.
  */
-final class AbsorbDeleteOrderFailureMiddleware implements MiddlewareInterface
+final readonly class AbsorbDeleteOrderFailureMiddleware implements MiddlewareInterface
 {
     /**
      * @param Connection $connection the one the bus's doctrine_transaction middleware begins its transaction on
      */
     public function __construct(
-        private readonly Connection $connection,
-        private readonly LoggerInterface $logger,
+        private Connection $connection,
+        private LoggerInterface $logger,
     ) {
     }
 

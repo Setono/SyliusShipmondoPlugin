@@ -64,8 +64,9 @@ final class PickupPointCheckoutTest extends ShopTestCase
         $order = $this->pickupPointOfLatestOrder();
         self::assertSame('new', $order['order_state']);
         self::assertNotNull($order['pickup_point']);
-        foreach (['id', 'name', 'address', 'zipcode', 'city', 'country'] as $key) {
-            self::assertSame($chosen[$key], $order['pickup_point'][$key], sprintf('The pickup point %s', $key));
+        // Shipmondo's keys, and the stored JSON's: the Shipmondo SDK spells the zip code zipCode
+        foreach (['id' => 'id', 'name' => 'name', 'address' => 'address', 'zipcode' => 'zipCode', 'city' => 'city', 'country' => 'country'] as $shipmondoKey => $storedKey) {
+            self::assertSame($chosen[$shipmondoKey], $order['pickup_point'][$storedKey], sprintf('The pickup point %s', $storedKey));
         }
     }
 

@@ -9,9 +9,9 @@ use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\OrderIdProviderInterface;
 
-final class SalesOrderDataMapper implements SalesOrderDataMapperInterface
+final readonly class SalesOrderDataMapper implements SalesOrderDataMapperInterface
 {
-    public function __construct(private readonly OrderIdProviderInterface $orderIdProvider)
+    public function __construct(private OrderIdProviderInterface $orderIdProvider)
     {
     }
 
@@ -25,7 +25,7 @@ final class SalesOrderDataMapper implements SalesOrderDataMapperInterface
         $salesOrder->shipTo = new Recipient(
             name: $order->getShippingAddress()?->getFullName(),
             address1: $order->getShippingAddress()?->getStreet(),
-            zipcode: $order->getShippingAddress()?->getPostcode(),
+            zipCode: $order->getShippingAddress()?->getPostcode(),
             city: $order->getShippingAddress()?->getCity(),
             countryCode: $order->getShippingAddress()?->getCountryCode(),
             email: $order->getCustomer()?->getEmail(),
@@ -35,7 +35,7 @@ final class SalesOrderDataMapper implements SalesOrderDataMapperInterface
         $salesOrder->billTo = new Recipient(
             name: $order->getBillingAddress()?->getFullName(),
             address1: $order->getBillingAddress()?->getStreet(),
-            zipcode: $order->getBillingAddress()?->getPostcode(),
+            zipCode: $order->getBillingAddress()?->getPostcode(),
             city: $order->getBillingAddress()?->getCity(),
             countryCode: $order->getBillingAddress()?->getCountryCode(),
             email: $order->getCustomer()?->getEmail(),

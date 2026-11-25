@@ -53,16 +53,13 @@ PHPUnit bootstraps the test app via `tests/Application/config/bootstrap.php` (se
 #### Playwright tests
 
 `tests/Playwright/` (testsuite `Playwright`, see its `README.md`) drives the admin and shop UI in a real Chromium with `playwright-php/playwright-symfony`, which handles the browser's requests in-process with the test's kernel. It reuses the functional suite's setup (`ShopFixtures`, DAMA, `ShipmondoApiStub`); `BrowserTestCase` reboots the kernel between requests and re-installs the stub.
-- The package requires PHP >= 8.2, so it is **not** in `composer.json`: CI installs it in the `browser-tests` job only, and the bundle (`config/bundles.php`) and its config (`config/packages/test/playwright.php`) are only loaded when it is installed. PHPStan and Rector skip `tests/Playwright/`.
-- Run it locally on PHP 8.2, then revert `composer.json` before committing:
+- The bundle is registered for the `test` environment (`config/bundles.php`, configured in `config/packages/test/playwright.yaml`).
+- Run it locally:
   ```bash
-  /opt/homebrew/opt/php@8.2/bin/php /usr/local/bin/composer require --dev --no-update "playwright-php/playwright-symfony:^0.11"
-  /opt/homebrew/opt/php@8.2/bin/php /usr/local/bin/composer update
-  /opt/homebrew/opt/php@8.2/bin/php vendor/bin/playwright-install chromium
+  /opt/homebrew/opt/php@8.2/bin/php vendor/bin/playwright-install chromium                    # once
   (cd tests/Application && yarn install && yarn build && bin/console assets:install public)   # Node 20; copies, not --symlink
   (cd tests/Application && APP_ENV=test bin/console doctrine:database:create --if-not-exists)  # DAMA needs it to exist
   /opt/homebrew/opt/php@8.2/bin/php vendor/bin/phpunit --testsuite Playwright
-  git checkout composer.json && /opt/homebrew/opt/php@8.1/bin/php /usr/local/bin/composer update   # back to 8.1
   ```
 
 ### Code Quality
@@ -143,9 +140,9 @@ CI (`.github/workflows/build.yaml`) gates merges on the following — run them l
 - `vendor/bin/phpunit` (unit) and `vendor/bin/infection` (mutation tests); these jobs have no database
 - code coverage of the unit and functional suites (the code-coverage job, which starts MySQL), checked by Codecov's patch and project checks
 - `vendor/bin/phpunit --testsuite Functional`, in the integration-tests job, which starts MySQL
-- `vendor/bin/phpunit --testsuite Playwright`, in the browser-tests job (PHP 8.2 only, installs playwright-symfony itself)
+- `vendor/bin/phpunit --testsuite Playwright`, in the integration-tests job after the functional suite (it builds the test app's assets and installs Chromium first)
 
-The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires `symfony/webhook` + `symfony/remote-event`, so Symfony 5.4 is not supported). Coding-standards runs on PHP 8.1 — write syntax compatible with 8.1, not just the locally linked PHP.
+The matrix runs **PHP 8.2 and 8.3** on **Symfony 6.4** (the plugin requires `symfony/webhook` + `symfony/remote-event`, so Symfony 5.4 is not supported). Coding-standards runs on PHP 8.2 — write syntax compatible with 8.2, not just the locally linked PHP. The plugin requires PHP 8.2 because the Shipmondo SDK does.
 
 ## Architecture
 
@@ -221,7 +218,7 @@ The matrix runs **PHP 8.1, 8.2 and 8.3** on **Symfony 6.4** (the plugin requires
 - The chosen pickup point is the SDK's `PickupPoint`. `GetPickupPointsAction` (the shop's `/ajax/get-pickup-points`, HTTP 400 unless the shipping method has pickup point delivery, HTTP 502 when Shipmondo fails; it catches `ShipmondoException` before `\InvalidArgumentException`, which the SDK's `InvalidUrlException` also is) searches Shipmondo, and the template puts each pickup point's JSON in a radio button, which `pickup-point-manager.js` names after the shipping method field
 - `shop/_javascripts.html.twig` loads the picker only when an enabled shipping method has pickup point delivery: `pickup-point-manager.js` reads an empty `allowedShippingMethods` as all shipping methods
 - When the pickup points can't be loaded, `pickup-point-manager.js` stops waiting, inserts its `loadFailedHtml` (rendered from `shop/pickup_points_not_loaded.html.twig` in `shop/_javascripts.html.twig`) and dispatches `pickup_point_manager:load_failed`; its Try again button (an element with `data-pickup-point-manager-load-again` inside the message's `.pickup-points-container`), or choosing the shipping method again, loads them again. The button is the only way when the failed shipping method is the selected one, since a selected radio fires no `change`
-- `Form\Extension\ShipmentTypeExtension` adds an unmapped hidden `shipmondoPickupPoint` field and, on `POST_SUBMIT` once the shipping method is known (and Sylius could read it), parses it with `Parser\PickupPointParser` (JSON, then `PickupPoint::fromArray()`): a shipping method without pickup point delivery gets no pickup point, and one with it needs a readable one (`ERROR_MISSING_PICKUP_POINT`, `ERROR_INVALID_PICKUP_POINT`). Its errors go on the root form, the only errors Sylius's shipping step renders
+- `Form\Extension\ShipmentTypeExtension` adds an unmapped hidden `shipmondoPickupPoint` field and, on `POST_SUBMIT` once the shipping method is known (and Sylius could read it), parses it with `Parser\PickupPointParser` (JSON, then `PickupPoint::fromArray()`; the SDK reads only `zipCode` since 2.0.0-rc.3, so the parser reads a `zipcode` key, which every pickup point stored before has, as `zipCode`): a shipping method without pickup point delivery gets no pickup point, and one with it needs a readable one (`ERROR_MISSING_PICKUP_POINT`, `ERROR_INVALID_PICKUP_POINT`). Its errors go on the root form, the only errors Sylius's shipping step renders
 - `Doctrine\Type\PickupPointType` (registered by the extension's prepend) stores it in the shipment's JSON column and reads it with the same parser; a stored value it can't read reads as `null`. `ServicePointDataMapper` sends it with `ServicePoint::fromPickupPoint()`
 - Turning off pickup point delivery in the admin clears the carrier code: a `SUBMIT` listener on the `carrierCode` field of `ShippingMethodTypeExtension`
 
@@ -265,7 +262,7 @@ The plugin extends these Sylius entities via traits:
 
 - The plugin uses Shipmondo PHP SDK v2 (`setono/shipmondo-php-sdk:^2.0`). See `UPGRADE.md` for the 1.x → 2.x consumer upgrade.
 - **Always keep `UPGRADE.md` up to date.** Whenever a change affects how consumers integrate or upgrade the plugin — a BC break, a renamed/removed/added public class, interface or service signature, a new required environment variable or config option, or a behavioural change — document it in `UPGRADE.md` (under the relevant version section) as part of the *same* change.
-- PHP 8.1+ required (kept 8.1-compatible; the test app is verified on 8.1/8.2/8.3)
+- PHP 8.2+ required (the Shipmondo SDK requires it; the test app is verified on 8.2/8.3)
 - Symfony 6.4 required (the plugin uses `symfony/webhook` + `symfony/remote-event`, so Symfony 5.4 is not supported)
 - Compatible with Sylius ~1.14 (the test app tracks the SyliusPluginSkeleton 1.14.x)
 

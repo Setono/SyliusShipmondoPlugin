@@ -69,11 +69,12 @@ For most installations the required changes are:
 - note that the upload run now also stops after three temporary failures, failed uploads or failed lookups in a row,
   and that `setono:sylius-shipmondo:upload-orders` fails after three unread successes in a row, though the run goes on,
   and if you call `OrderUploaderInterface::upload()`, read the list of problems it now returns (section 28)
+- upgrade PHP to 8.2 first: the plugin now requires it, with the Shipmondo SDK's 2.0.0-rc.3; and if you override the
+  shop's pickup point list, read `pickupPoint.zipCode` (section 29)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
-> The plugin still targets **PHP 8.1+**, **Symfony 6.4** and **Sylius ~1.14** — those requirements
-> are unchanged.
+> The plugin targets **PHP 8.2+** (since section 29; it was 8.1+), **Symfony 6.4** and **Sylius ~1.14**.
 
 ### 1. Update the dependency
 
@@ -1333,6 +1334,34 @@ New: the `Uploader\UploadRunProblem` enum. `CredentialsFailure`, `UploadRateLimi
 `FailedUploadsInARow` stopped the run; `LookupsRateLimited` and `FailedLookupsInARow` stopped the lookups; and
 `UnreadSuccessesInARow` is only reported. The counts live in `Uploader\UploadRun`, which is internal.
 
+### 29. The plugin requires PHP 8.2 and the Shipmondo SDK's 2.0.0-rc.3
+
+The plugin now requires `setono/shipmondo-php-sdk: ^2.0.0-rc.3`, and so **PHP 8.2**, which that release requires. The
+SDK maps Shipmondo's answers with Valinor, whose versions before 2.5 leaked memory in long-running processes such as
+Messenger workers ([CuyZ/Valinor#800](https://github.com/CuyZ/Valinor/issues/800)); the fixed versions require PHP 8.2.
+**Upgrade PHP to 8.2 or newer before you upgrade the plugin.**
+
+With it, registering the webhooks no longer fails when a webhook on the Shipmondo account has an action or resource the
+SDK doesn't know, e.g. another integration's: the SDK reads such a value as null, instead of failing to read the whole
+list of webhooks.
+
+**Pickup points stored on shipments keep working.** The SDK now spells a pickup point's zip code `zipCode`, also in its
+JSON, and reads only that. Every pickup point stored before, by 1.x or by 2.x until now, has `zipcode`, and the plugin's
+`Parser\PickupPointParser`, which the shipment's column type and the checkout use, still reads it. Read a stored pickup
+point through it, not through the SDK's `PickupPoint::fromArray()`.
+
+**If you override the shop's pickup point list** (`shop/ajax/pickup_points.html.twig`): read `pickupPoint.zipCode`
+instead of `pickupPoint.zipcode`.
+
+Only if your own code uses the SDK's classes, e.g. a data mapper of your own, or a `Client` you build yourself:
+
+| SDK 2.0.0-rc.2 | 2.0.0-rc.3 |
+|---|---|
+| `zipcode` on `Request\SalesOrder\Recipient`, `Sender` and `ServicePoint`, and on `Response\PickupPoint\PickupPoint` (also in its JSON) | `zipCode`; Shipmondo still receives and sends `zipcode` |
+| response values cast to the type of the field | not cast: a value of another type than Shipmondo documents fails to map (a `MappingException`) |
+| `Response\Webhook\Webhook::$action` and `$resourceName` | nullable: null for a value the SDK doesn't know |
+| `Client::configureMapperBuilder()` and `Client::registerNormalizerTransformers()` | removed: the `Client` applies its configuration to whichever Valinor builder it is given |
+
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
@@ -1346,4 +1375,5 @@ registering them at the channels' hostname on the command line, registering noth
 can't reach, registering them right away instead of through the command bus, taking the authorized amount, the
 payment method and the payment gateway from the payments that paid the order, the time limits on the requests to
 Shipmondo, the `unlinked` Shipmondo state, retrying the upload of a failed order, the sales order lookup, recording
-and showing why an order's upload didn't go through, the order id prefix, and the upload run's stop rules.
+and showing why an order's upload didn't go through, the order id prefix, the upload run's stop rules, and the PHP 8.2
+requirement with the Shipmondo SDK's 2.0.0-rc.3.
