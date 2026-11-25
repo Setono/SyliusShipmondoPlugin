@@ -53,16 +53,13 @@ PHPUnit bootstraps the test app via `tests/Application/config/bootstrap.php` (se
 #### Playwright tests
 
 `tests/Playwright/` (testsuite `Playwright`, see its `README.md`) drives the admin and shop UI in a real Chromium with `playwright-php/playwright-symfony`, which handles the browser's requests in-process with the test's kernel. It reuses the functional suite's setup (`ShopFixtures`, DAMA, `ShipmondoApiStub`); `BrowserTestCase` reboots the kernel between requests and re-installs the stub.
-- The package is **not** in `composer.json` yet: CI installs it in the `browser-tests` job only, and the bundle (`config/bundles.php`) and its config (`config/packages/test/playwright.php`) are only loaded when it is installed. PHPStan and Rector skip `tests/Playwright/`.
-- Run it locally, then revert `composer.json` before committing:
+- The bundle is registered for the `test` environment (`config/bundles.php`, configured in `config/packages/test/playwright.yaml`).
+- Run it locally:
   ```bash
-  /opt/homebrew/opt/php@8.2/bin/php /usr/local/bin/composer require --dev --no-update "playwright-php/playwright-symfony:^0.11"
-  /opt/homebrew/opt/php@8.2/bin/php /usr/local/bin/composer update
-  /opt/homebrew/opt/php@8.2/bin/php vendor/bin/playwright-install chromium
+  /opt/homebrew/opt/php@8.2/bin/php vendor/bin/playwright-install chromium                    # once
   (cd tests/Application && yarn install && yarn build && bin/console assets:install public)   # Node 20; copies, not --symlink
   (cd tests/Application && APP_ENV=test bin/console doctrine:database:create --if-not-exists)  # DAMA needs it to exist
   /opt/homebrew/opt/php@8.2/bin/php vendor/bin/phpunit --testsuite Playwright
-  git checkout composer.json && /opt/homebrew/opt/php@8.2/bin/php /usr/local/bin/composer update   # without the package again
   ```
 
 ### Code Quality
@@ -143,7 +140,7 @@ CI (`.github/workflows/build.yaml`) gates merges on the following — run them l
 - `vendor/bin/phpunit` (unit) and `vendor/bin/infection` (mutation tests); these jobs have no database
 - code coverage of the unit and functional suites (the code-coverage job, which starts MySQL), checked by Codecov's patch and project checks
 - `vendor/bin/phpunit --testsuite Functional`, in the integration-tests job, which starts MySQL
-- `vendor/bin/phpunit --testsuite Playwright`, in the browser-tests job (PHP 8.2 only, installs playwright-symfony itself)
+- `vendor/bin/phpunit --testsuite Playwright`, in the integration-tests job after the functional suite (it builds the test app's assets and installs Chromium first)
 
 The matrix runs **PHP 8.2 and 8.3** on **Symfony 6.4** (the plugin requires `symfony/webhook` + `symfony/remote-event`, so Symfony 5.4 is not supported). Coding-standards runs on PHP 8.2 — write syntax compatible with 8.2, not just the locally linked PHP. The plugin requires PHP 8.2 because the Shipmondo SDK does.
 

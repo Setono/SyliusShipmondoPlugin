@@ -296,7 +296,11 @@ final class ShipmondoPageTest extends BrowserTestCase
         $texts = $locator->evaluateAll('(elements) => elements.map((element) => element.textContent.trim())');
         self::assertIsArray($texts);
 
-        return array_values(array_map('strval', $texts));
+        return array_values(array_map(static function (mixed $text): string {
+            self::assertIsString($text);
+
+            return $text;
+        }, $texts));
     }
 
     /**
@@ -348,7 +352,13 @@ final class ShipmondoPageTest extends BrowserTestCase
         $mappings = [];
         foreach ($this->connection()->fetchAllAssociative('SELECT code, shipmondoId FROM sylius_payment_method ORDER BY code') as $row) {
             self::assertIsString($row['code']);
-            $mappings[$row['code']] = null === $row['shipmondoId'] ? null : (int) $row['shipmondoId'];
+            $shipmondoId = $row['shipmondoId'];
+            if (null !== $shipmondoId) {
+                self::assertIsNumeric($shipmondoId);
+                $shipmondoId = (int) $shipmondoId;
+            }
+
+            $mappings[$row['code']] = $shipmondoId;
         }
 
         return $mappings;
@@ -368,6 +378,10 @@ final class ShipmondoPageTest extends BrowserTestCase
         $templates = json_decode($json, true, 512, \JSON_THROW_ON_ERROR);
         self::assertIsArray($templates);
 
-        return array_values(array_map('intval', $templates));
+        return array_values(array_map(static function (mixed $id): int {
+            self::assertIsNumeric($id);
+
+            return (int) $id;
+        }, $templates));
     }
 }

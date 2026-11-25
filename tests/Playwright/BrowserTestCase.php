@@ -16,6 +16,7 @@ use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Component\Core\Factory\PaymentMethodFactoryInterface;
 use Sylius\Component\Core\Model\CustomerInterface;
 use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\Security\Core\User\UserInterface;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShopFixtures;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\TestApplication;
@@ -138,7 +139,10 @@ abstract class BrowserTestCase extends PlaywrightTestCase
 
     protected function logInAsAdministrator(): void
     {
-        $this->loginUser($this->fixtures->admin(), 'admin');
+        $admin = $this->fixtures->admin();
+        Assert::isInstanceOf($admin, UserInterface::class);
+
+        $this->loginUser($admin, 'admin');
     }
 
     /**
@@ -357,6 +361,7 @@ abstract class BrowserTestCase extends PlaywrightTestCase
         $row = $this->connection()->fetchAssociative('SELECT state, shipmondoId FROM sylius_order WHERE id = ?', [$orderId]);
         Assert::isArray($row, sprintf('The order %d does not exist', $orderId));
         Assert::string($row['state']);
+        Assert::nullOrNumeric($row['shipmondoId']);
 
         return ['state' => $row['state'], 'shipmondo_id' => null === $row['shipmondoId'] ? null : (int) $row['shipmondoId']];
     }

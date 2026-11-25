@@ -219,6 +219,12 @@ jobs:
                     extensions: "${{ env.PHP_EXTENSIONS }}"
                     php-version: "${{ matrix.php-version }}"
                     tools: "flex"
+                    ini-values: "memory_limit=-1" # the Playwright suite boots a fresh container per request in the one PHPUnit process
+
+            -   name: "Setup Node"
+                uses: "actions/setup-node@v4"
+                with:
+                    node-version: "20" # the test application's assets need <= 20 (@sylius-ui/frontend), Playwright needs >= 20
 
             -   name: "Install composer dependencies"
                 uses: "ramsey/composer-install@v3"
@@ -242,55 +248,6 @@ jobs:
             -   name: "Run functional tests"
                 run: "vendor/bin/phpunit --testsuite Functional"
 
-    # TODO: add playwright-php/playwright-symfony to require-dev and run the Playwright suite in the "Integration tests" job
-    browser-tests:
-        name: "Browser tests (Playwright | PHP${{ matrix.php-version }} | Deps: ${{ matrix.dependencies }} | SF${{ matrix.symfony }})"
-
-        runs-on: "ubuntu-latest"
-
-        strategy:
-            matrix:
-                php-version:
-                    - "8.2"
-
-                dependencies:
-                    - "highest"
-
-                symfony:
-                    - "~6.4.0"
-
-        steps:
-            # the runner image ships MySQL (root/root) disabled; Ubuntu 26.04 has no /etc/init.d script for it
-            -   name: "Start MySQL"
-                run: "sudo systemctl start mysql.service"
-
-            -   name: "Checkout"
-                uses: "actions/checkout@v6"
-
-            -   name: "Setup PHP, with composer and extensions"
-                uses: "shivammathur/setup-php@v2"
-                with:
-                    coverage: "none"
-                    extensions: "${{ env.PHP_EXTENSIONS }}"
-                    php-version: "${{ matrix.php-version }}"
-                    tools: "flex"
-                    ini-values: "memory_limit=-1" # every request boots a fresh container in the one PHPUnit process
-
-            -   name: "Setup Node"
-                uses: "actions/setup-node@v4"
-                with:
-                    node-version: "20" # the test application's assets need <= 20 (@sylius-ui/frontend), Playwright needs >= 20
-
-            -   name: "Require playwright-php/playwright-symfony"
-                run: "composer require --dev --no-update \"playwright-php/playwright-symfony:^0.11\""
-
-            -   name: "Install composer dependencies"
-                uses: "ramsey/composer-install@v3"
-                env:
-                    SYMFONY_REQUIRE: "${{ matrix.symfony }}"
-                with:
-                    dependency-versions: "${{ matrix.dependencies }}"
-
             -   name: "Build the test application's assets"
                 run: |
                     (cd tests/Application && yarn install --non-interactive && yarn build)
@@ -298,10 +255,6 @@ jobs:
 
             -   name: "Install the Playwright server and Chromium"
                 run: "vendor/bin/playwright-install --with-deps chromium"
-
-            # DAMA opens its per-test transaction before the suite creates the schema, so the database must exist
-            -   name: "Create database"
-                run: "(cd tests/Application && bin/console doctrine:database:create)"
 
             -   name: "Run browser tests"
                 run: "vendor/bin/phpunit --testsuite Playwright"

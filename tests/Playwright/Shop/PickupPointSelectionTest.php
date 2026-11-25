@@ -306,7 +306,11 @@ final class PickupPointSelectionTest extends ShopTestCase
         $events = $this->getPage()->evaluate('(name) => window.pickupPointManagerEvents[name]', $name);
         self::assertIsArray($events);
 
-        return array_values(array_map('strval', $events));
+        return array_values(array_map(static function (mixed $event): string {
+            self::assertIsString($event);
+
+            return $event;
+        }, $events));
     }
 
     /**
