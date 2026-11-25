@@ -17,13 +17,13 @@ For most installations the required changes are:
   (section 6)
 - if you monitor the `setono:sylius-shipmondo:upload-orders` cron job, note that it now fails only when the upload
   run stops early or reports another problem that most likely hits every order (sections 6 and 28), or can't register
-  the webhooks again (section 29)
+  the webhooks again (section 30)
 - move the cancelled orders that 1.x left pending or failed to the new `cancelled` Shipmondo state (section 7)
 - if you override the order grid's Shipmondo state label templates, rename `dispatching.html.twig` and
   `dispatched.html.twig` (section 7)
 - run a database migration, which adds a comment to the shipment's pickup point column (section 8), a column for
   when the order's Shipmondo state last changed (section 25), one for the Shipmondo failure that put the order in
-  its Shipmondo state (section 26), and replaces the registered webhooks' version with their endpoint (section 29)
+  its Shipmondo state (section 26), and replaces the registered webhooks' version with their endpoint (section 30)
 - note that a shipping method with pickup point delivery now needs a pickup point in checkout, and don't let a
   channel skip the shipping step when its only shipping method has pickup point delivery (section 8)
 - if you monitor `setono:sylius-shipmondo:register-webhooks`, note that it now fails when Shipmondo does (section 9)
@@ -70,17 +70,17 @@ For most installations the required changes are:
 - note that the upload run now also stops after three temporary failures, failed uploads or failed lookups in a row,
   and that `setono:sylius-shipmondo:upload-orders` fails after three unread successes in a row, though the run goes on,
   and if you call `OrderUploaderInterface::upload()`, read the list of problems it now returns (section 28)
+- upgrade PHP to 8.2 first: the plugin now requires it, with the Shipmondo SDK's 2.0.0-rc.3; and if you override the
+  shop's pickup point list, read `pickupPoint.zipCode` (section 29)
 - register the webhooks once after upgrading, from the admin's Shipmondo page or with
   `setono:sylius-shipmondo:register-webhooks`: registering now fixes only what differs in Shipmondo, and every upload
   run does it again, so `setono:sylius-shipmondo:upload-orders` fails until they are registered once; and give an
   install that shares another's webhooks key, e.g. a staging copy of production, a key of its own, or turn off the new
-  `webhooks.register_automatically` option there (section 29)
-- upgrade PHP to 8.2 first: the plugin now requires it, with the Shipmondo SDK's 2.0.0-rc.3; and if you override the
-  shop's pickup point list, read `pickupPoint.zipCode` (section 30)
+  `webhooks.register_automatically` option there (section 30)
 
 The renamed SDK classes and the other class changes only matter if you extend the plugin.
 
-> The plugin targets **PHP 8.2+** (since section 30; it was 8.1+), **Symfony 6.4** and **Sylius ~1.14**.
+> The plugin targets **PHP 8.2+** (since section 29; it was 8.1+), **Symfony 6.4** and **Sylius ~1.14**.
 
 ### 1. Update the dependency
 
@@ -1340,7 +1340,35 @@ New: the `Uploader\UploadRunProblem` enum. `CredentialsFailure`, `UploadRateLimi
 `FailedUploadsInARow` stopped the run; `LookupsRateLimited` and `FailedLookupsInARow` stopped the lookups; and
 `UnreadSuccessesInARow` is only reported. The counts live in `Uploader\UploadRun`, which is internal.
 
-### 29. Registering the webhooks fixes only the difference, and every upload run does it
+### 29. The plugin requires PHP 8.2 and the Shipmondo SDK's 2.0.0-rc.3
+
+The plugin now requires `setono/shipmondo-php-sdk: ^2.0.0-rc.3`, and so **PHP 8.2**, which that release requires. The
+SDK maps Shipmondo's answers with Valinor, whose versions before 2.5 leaked memory in long-running processes such as
+Messenger workers ([CuyZ/Valinor#800](https://github.com/CuyZ/Valinor/issues/800)); the fixed versions require PHP 8.2.
+**Upgrade PHP to 8.2 or newer before you upgrade the plugin.**
+
+With it, registering the webhooks no longer fails when a webhook on the Shipmondo account has an action or resource the
+SDK doesn't know, e.g. another integration's: the SDK reads such a value as null, instead of failing to read the whole
+list of webhooks.
+
+**Pickup points stored on shipments keep working.** The SDK now spells a pickup point's zip code `zipCode`, also in its
+JSON, and reads only that. Every pickup point stored before, by 1.x or by 2.x until now, has `zipcode`, and the plugin's
+`Parser\PickupPointParser`, which the shipment's column type and the checkout use, still reads it. Read a stored pickup
+point through it, not through the SDK's `PickupPoint::fromArray()`.
+
+**If you override the shop's pickup point list** (`shop/ajax/pickup_points.html.twig`): read `pickupPoint.zipCode`
+instead of `pickupPoint.zipcode`.
+
+Only if your own code uses the SDK's classes, e.g. a data mapper of your own, or a `Client` you build yourself:
+
+| SDK 2.0.0-rc.2 | 2.0.0-rc.3 |
+|---|---|
+| `zipcode` on `Request\SalesOrder\Recipient`, `Sender` and `ServicePoint`, and on `Response\PickupPoint\PickupPoint` (also in its JSON) | `zipCode`; Shipmondo still receives and sends `zipcode` |
+| response values cast to the type of the field | not cast: a value of another type than Shipmondo documents fails to map (a `MappingException`) |
+| `Response\Webhook\Webhook::$action` and `$resourceName` | nullable: null for a value the SDK doesn't know |
+| `Client::configureMapperBuilder()` and `Client::registerNormalizerTransformers()` | removed: the `Client` applies its configuration to whichever Valinor builder it is given |
+
+### 30. Registering the webhooks fixes only the difference, and every upload run does it
 
 Registering the webhooks deleted all of the shop's webhooks in Shipmondo and created them again, and recorded a
 `RegisteredWebhooks` per version, an md5 of the wanted webhooks. Only the admin's "Register webhooks" button and
@@ -1372,7 +1400,7 @@ the run stopped early (section 28). When nothing differs, that is one request.
   reach the recorded endpoint (logged with the endpoint). Its error names each reason, after those of section 28. If
   your monitoring matches on the command's output, add them.
 - A webhook on the account whose action or resource the Shipmondo SDK doesn't know, e.g. another integration's, is
-  read with that value as null (section 30): another integration's is left alone, and the shop's is replaced.
+  read with that value as null (section 29): another integration's is left alone, and the shop's is replaced.
 - **An install that shares another's webhooks key, e.g. a staging copy of production, needs a
   `SHIPMONDO_WEBHOOKS_KEY` of its own, or the option below turned off.** Both have the same shop id, so each upload run
   replaces the other install's webhooks with ones at its own endpoint, on every run.
@@ -1431,34 +1459,6 @@ record the registration's endpoint and time in `register()`, or the upload run c
 New: the `setono_sylius_shipmondo.webhooks.register_automatically` parameter, and the `Registrar\WebhookComparison` and
 `Registrar\NoRecordedEndpointException` classes.
 
-### 30. The plugin requires PHP 8.2 and the Shipmondo SDK's 2.0.0-rc.3
-
-The plugin now requires `setono/shipmondo-php-sdk: ^2.0.0-rc.3`, and so **PHP 8.2**, which that release requires. The
-SDK maps Shipmondo's answers with Valinor, whose versions before 2.5 leaked memory in long-running processes such as
-Messenger workers ([CuyZ/Valinor#800](https://github.com/CuyZ/Valinor/issues/800)); the fixed versions require PHP 8.2.
-**Upgrade PHP to 8.2 or newer before you upgrade the plugin.**
-
-With it, a webhook on the Shipmondo account whose action or resource the SDK doesn't know, e.g. another integration's,
-no longer keeps the shop's webhooks from being compared (section 29): the SDK reads the value as null, so another
-integration's such webhook is left alone, and the shop's is replaced.
-
-**Pickup points stored on shipments keep working.** The SDK now spells a pickup point's zip code `zipCode`, also in its
-JSON, and reads only that. Every pickup point stored before, by 1.x or by 2.x until now, has `zipcode`, and the plugin's
-`Parser\PickupPointParser`, which the shipment's column type and the checkout use, still reads it. Read a stored pickup
-point through it, not through the SDK's `PickupPoint::fromArray()`.
-
-**If you override the shop's pickup point list** (`shop/ajax/pickup_points.html.twig`): read `pickupPoint.zipCode`
-instead of `pickupPoint.zipcode`.
-
-Only if your own code uses the SDK's classes, e.g. a data mapper of your own, or a `Client` you build yourself:
-
-| SDK 2.0.0-rc.2 | 2.0.0-rc.3 |
-|---|---|
-| `zipcode` on `Request\SalesOrder\Recipient`, `Sender` and `ServicePoint`, and on `Response\PickupPoint\PickupPoint` (also in its JSON) | `zipCode`; Shipmondo still receives and sends `zipcode` |
-| response values cast to the type of the field | not cast: a value of another type than Shipmondo documents fails to map (a `MappingException`) |
-| `Response\Webhook\Webhook::$action` and `$resourceName` | nullable: null for a value the SDK doesn't know |
-| `Client::configureMapperBuilder()` and `Client::registerNormalizerTransformers()` | removed: the `Client` applies its configuration to whichever Valinor builder it is given |
-
 ### Unchanged
 
 Shipping-method / payment-method mapping otherwise behaves as in 1.x. Everything else that changed is described
@@ -1472,6 +1472,6 @@ registering them at the channels' hostname on the command line, registering noth
 can't reach, registering them right away instead of through the command bus, taking the authorized amount, the
 payment method and the payment gateway from the payments that paid the order, the time limits on the requests to
 Shipmondo, the `unlinked` Shipmondo state, retrying the upload of a failed order, the sales order lookup, recording
-and showing why an order's upload didn't go through, the order id prefix, the upload run's stop rules,
-registering the webhooks by their difference, from every upload run, and the PHP 8.2 requirement with the Shipmondo
-SDK's 2.0.0-rc.3.
+and showing why an order's upload didn't go through, the order id prefix, the upload run's stop rules, the PHP 8.2
+requirement with the Shipmondo SDK's 2.0.0-rc.3, and registering the webhooks by their difference, from every upload
+run.
