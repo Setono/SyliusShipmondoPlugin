@@ -145,7 +145,7 @@ abstract class ShopTestCase extends BrowserTestCase
     /**
      * The pickup point stored on the shipment of the customer's latest order (a cart or a placed order)
      *
-     * @return array{order_state: string, pickup_point: array<string, mixed>|null}
+     * @return array{order_state: string, pickup_point: array<array-key, mixed>|null}
      */
     protected function pickupPointOfLatestOrder(): array
     {

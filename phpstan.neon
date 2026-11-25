@@ -7,8 +7,6 @@ parameters:
 
     excludePaths:
         - tests/Application/*
-        # TODO: analyse it once playwright-php/playwright-symfony is in require-dev
-        - tests/Playwright/*
         # JWT debug helper; uses dynamic/mixed payloads and was excluded from static analysis under Psalm too
         - src/Controller/DebugWebhookController.php
 
