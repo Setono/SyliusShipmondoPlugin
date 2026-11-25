@@ -11,14 +11,14 @@ use Setono\Shipmondo\Response\Webhook\Webhook as WebhookResponse;
 /**
  * A webhook this shop wants Shipmondo to send it
  */
-final class Webhook
+final readonly class Webhook
 {
     public function __construct(
-        public readonly string $name,
-        public readonly string $endpoint,
-        public readonly string $key,
-        public readonly WebhookAction $action,
-        public readonly WebhookResourceName $resource,
+        public string $name,
+        public string $endpoint,
+        public string $key,
+        public WebhookAction $action,
+        public WebhookResourceName $resource,
     ) {
     }
 

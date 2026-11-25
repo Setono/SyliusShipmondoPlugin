@@ -11,21 +11,21 @@ use Sylius\Component\Core\Model\OrderItemInterface;
 /**
  * This event is dispatched when we map order items to order lines
  */
-final class OrderLineMappedEvent
+final readonly class OrderLineMappedEvent
 {
     public function __construct(
         /**
          * This is the order line that will be uploaded to Shipmondo
          */
-        public readonly OrderLine $orderLine,
+        public OrderLine $orderLine,
         /**
          * This is the order item that the order line is based on
          */
-        public readonly OrderItemInterface $orderItem,
+        public OrderItemInterface $orderItem,
         /**
          * This is the order that the order item belongs to
          */
-        public readonly OrderInterface $order,
+        public OrderInterface $order,
     ) {
     }
 }

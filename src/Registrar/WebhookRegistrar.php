@@ -22,17 +22,17 @@ use Webmozart\Assert\Assert;
  * webhook handler subscribes to, active and sent to the endpoint. It records each registration, whose endpoint the
  * upload run registers the webhooks again at, and which the admin's Shipmondo page shows
  */
-final class WebhookRegistrar implements WebhookRegistrarInterface
+final readonly class WebhookRegistrar implements WebhookRegistrarInterface
 {
     public function __construct(
-        private readonly ClientInterface $client,
-        private readonly UrlGeneratorInterface $urlGenerator,
-        private readonly OrderWebhookHandlers $handlers,
-        private readonly RegisteredWebhooksRepositoryInterface $registeredWebhooksRepository,
-        private readonly FactoryInterface $registeredWebhooksFactory,
-        private readonly string $webhooksKey,
-        private readonly string $namePrefix,
-        private readonly LoggerInterface $logger,
+        private ClientInterface $client,
+        private UrlGeneratorInterface $urlGenerator,
+        private OrderWebhookHandlers $handlers,
+        private RegisteredWebhooksRepositoryInterface $registeredWebhooksRepository,
+        private FactoryInterface $registeredWebhooksFactory,
+        private string $webhooksKey,
+        private string $namePrefix,
+        private LoggerInterface $logger,
     ) {
     }
 

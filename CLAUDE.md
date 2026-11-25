@@ -53,7 +53,7 @@ PHPUnit bootstraps the test app via `tests/Application/config/bootstrap.php` (se
 #### Playwright tests
 
 `tests/Playwright/` (testsuite `Playwright`, see its `README.md`) drives the admin and shop UI in a real Chromium with `playwright-php/playwright-symfony`, which handles the browser's requests in-process with the test's kernel. It reuses the functional suite's setup (`ShopFixtures`, DAMA, `ShipmondoApiStub`); `BrowserTestCase` reboots the kernel between requests and re-installs the stub.
-- The package is **not** in `composer.json` (it requires PHP >= 8.2, which the plugin only requires since the SDK's 2.0.0-rc.3; moving it to require-dev is a pending TODO): CI installs it in the `browser-tests` job only, and the bundle (`config/bundles.php`) and its config (`config/packages/test/playwright.php`) are only loaded when it is installed. PHPStan and Rector skip `tests/Playwright/`.
+- The package is **not** in `composer.json` yet: CI installs it in the `browser-tests` job only, and the bundle (`config/bundles.php`) and its config (`config/packages/test/playwright.php`) are only loaded when it is installed. PHPStan and Rector skip `tests/Playwright/`.
 - Run it locally, then revert `composer.json` before committing:
   ```bash
   /opt/homebrew/opt/php@8.2/bin/php /usr/local/bin/composer require --dev --no-update "playwright-php/playwright-symfony:^0.11"
@@ -145,7 +145,7 @@ CI (`.github/workflows/build.yaml`) gates merges on the following — run them l
 - `vendor/bin/phpunit --testsuite Functional`, in the integration-tests job, which starts MySQL
 - `vendor/bin/phpunit --testsuite Playwright`, in the browser-tests job (PHP 8.2 only, installs playwright-symfony itself)
 
-The matrix runs **PHP 8.2 and 8.3** on **Symfony 6.4** (the plugin requires `symfony/webhook` + `symfony/remote-event`, so Symfony 5.4 is not supported). Coding-standards runs on PHP 8.2 — write syntax compatible with 8.2, not just the locally linked PHP. The plugin requires PHP 8.2 because the Shipmondo SDK does (since 2.0.0-rc.3, for Valinor >= 2.6).
+The matrix runs **PHP 8.2 and 8.3** on **Symfony 6.4** (the plugin requires `symfony/webhook` + `symfony/remote-event`, so Symfony 5.4 is not supported). Coding-standards runs on PHP 8.2 — write syntax compatible with 8.2, not just the locally linked PHP. The plugin requires PHP 8.2 because the Shipmondo SDK does.
 
 ## Architecture
 
@@ -268,7 +268,7 @@ The plugin extends these Sylius entities via traits:
 
 - The plugin uses Shipmondo PHP SDK v2 (`setono/shipmondo-php-sdk:^2.0`). See `UPGRADE.md` for the 1.x → 2.x consumer upgrade.
 - **Always keep `UPGRADE.md` up to date.** Whenever a change affects how consumers integrate or upgrade the plugin — a BC break, a renamed/removed/added public class, interface or service signature, a new required environment variable or config option, or a behavioural change — document it in `UPGRADE.md` (under the relevant version section) as part of the *same* change.
-- PHP 8.2+ required (the Shipmondo SDK requires it since 2.0.0-rc.3; the test app is verified on 8.2/8.3)
+- PHP 8.2+ required (the Shipmondo SDK requires it; the test app is verified on 8.2/8.3)
 - Symfony 6.4 required (the plugin uses `symfony/webhook` + `symfony/remote-event`, so Symfony 5.4 is not supported)
 - Compatible with Sylius ~1.14 (the test app tracks the SyliusPluginSkeleton 1.14.x)
 

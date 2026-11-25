@@ -10,11 +10,11 @@ use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 /**
  * This event is dispatched after payment details has been mapped
  */
-final class SalesOrderMappedEvent
+final readonly class SalesOrderMappedEvent
 {
     public function __construct(
-        public readonly SalesOrderRequest $salesOrder,
-        public readonly OrderInterface $order,
+        public SalesOrderRequest $salesOrder,
+        public OrderInterface $order,
     ) {
     }
 }

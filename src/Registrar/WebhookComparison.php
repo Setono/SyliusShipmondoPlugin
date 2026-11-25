@@ -11,7 +11,7 @@ use Setono\Shipmondo\Response\Webhook\Webhook as WebhookResponse;
  * handles on the orders resource, active and sent to the endpoint. Registering creates the missing ones and deletes the
  * unwanted ones, and leaves the rest
  */
-final class WebhookComparison
+final readonly class WebhookComparison
 {
     /**
      * @param list<Webhook> $missing the wanted webhooks Shipmondo doesn't have, active at the endpoint
@@ -19,8 +19,8 @@ final class WebhookComparison
      *                                        webhook handler handles, inactive, sent to another endpoint, or a duplicate
      */
     public function __construct(
-        public readonly array $missing,
-        public readonly array $unwanted,
+        public array $missing,
+        public array $unwanted,
     ) {
     }
 

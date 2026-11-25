@@ -12,12 +12,12 @@ use Setono\Shipmondo\Enum\WebhookAction;
  * ({@see \Setono\SyliusShipmondoPlugin\DependencyInjection\Compiler\RegisterOrderWebhookHandlersPass}), and creates a
  * handler only when a webhook it handles arrives.
  */
-final class OrderWebhookHandlers
+final readonly class OrderWebhookHandlers
 {
     /**
      * @param array<string, iterable<int, OrderWebhookHandlerInterface>> $handlers the handlers of each action, by the action's value
      */
-    public function __construct(private readonly array $handlers)
+    public function __construct(private array $handlers)
     {
     }
 

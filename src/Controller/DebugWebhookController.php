@@ -12,12 +12,12 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 use Twig\Environment;
 
-final class DebugWebhookController
+final readonly class DebugWebhookController
 {
     public function __construct(
-        private readonly Environment $twig,
-        private readonly string $environment,
-        private readonly string $webhooksKey,
+        private Environment $twig,
+        private string $environment,
+        private string $webhooksKey,
     ) {
     }
 

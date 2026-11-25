@@ -12,9 +12,9 @@ use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Sylius\Component\Core\Model\OrderItemUnitInterface;
 use Webmozart\Assert\Assert;
 
-final class OrderLinesSalesOrderDataMapper implements SalesOrderDataMapperInterface
+final readonly class OrderLinesSalesOrderDataMapper implements SalesOrderDataMapperInterface
 {
-    public function __construct(private readonly EventDispatcherInterface $eventDispatcher)
+    public function __construct(private EventDispatcherInterface $eventDispatcher)
     {
     }
 

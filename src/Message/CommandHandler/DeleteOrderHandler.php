@@ -29,13 +29,13 @@ use Webmozart\Assert\Assert;
  *
  * Returns true, which the dispatcher reads as "the sales order is gone".
  */
-final class DeleteOrderHandler
+final readonly class DeleteOrderHandler
 {
     public function __construct(
-        private readonly OrderRepositoryInterface $orderRepository,
-        private readonly ClientInterface $shipmondoClient,
-        private readonly WorkflowInterface $orderWorkflow,
-        private readonly OrderCancellerInterface $orderCanceller,
+        private OrderRepositoryInterface $orderRepository,
+        private ClientInterface $shipmondoClient,
+        private WorkflowInterface $orderWorkflow,
+        private OrderCancellerInterface $orderCanceller,
     ) {
     }
 

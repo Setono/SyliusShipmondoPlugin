@@ -7,9 +7,9 @@ namespace Setono\SyliusShipmondoPlugin\Webhook;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Sylius\Component\Order\Repository\OrderRepositoryInterface;
 
-final class OrderResolver implements OrderResolverInterface
+final readonly class OrderResolver implements OrderResolverInterface
 {
-    public function __construct(private readonly OrderRepositoryInterface $orderRepository)
+    public function __construct(private OrderRepositoryInterface $orderRepository)
     {
     }
 

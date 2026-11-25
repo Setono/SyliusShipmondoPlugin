@@ -13,12 +13,12 @@ use Symfony\Component\Messenger\Stamp\DispatchAfterCurrentBusStamp;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Workflow\WorkflowInterface;
 
-final class OrderCanceller implements OrderCancellerInterface
+final readonly class OrderCanceller implements OrderCancellerInterface
 {
     public function __construct(
-        private readonly MessageBusInterface $commandBus,
-        private readonly WorkflowInterface $orderWorkflow,
-        private readonly LoggerInterface $logger,
+        private MessageBusInterface $commandBus,
+        private WorkflowInterface $orderWorkflow,
+        private LoggerInterface $logger,
     ) {
     }
 

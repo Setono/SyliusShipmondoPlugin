@@ -8,9 +8,9 @@ use Setono\SyliusShipmondoPlugin\Model\ShippingMethodInterface;
 use Sylius\Component\Core\Repository\ShippingMethodRepositoryInterface;
 use Twig\Extension\RuntimeExtensionInterface;
 
-final class Runtime implements RuntimeExtensionInterface
+final readonly class Runtime implements RuntimeExtensionInterface
 {
-    public function __construct(private readonly ShippingMethodRepositoryInterface $shippingMethodRepository)
+    public function __construct(private ShippingMethodRepositoryInterface $shippingMethodRepository)
     {
     }
 
