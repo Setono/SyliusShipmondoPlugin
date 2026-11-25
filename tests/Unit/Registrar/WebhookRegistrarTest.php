@@ -17,7 +17,6 @@ use Setono\Shipmondo\Exception\ValidationException;
 use Setono\Shipmondo\Response\Webhook\Webhook as WebhookResponse;
 use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooks;
 use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooksInterface;
-use Setono\SyliusShipmondoPlugin\Registrar\NoRecordedEndpointException;
 use Setono\SyliusShipmondoPlugin\Registrar\UnreachableWebhookEndpointException;
 use Setono\SyliusShipmondoPlugin\Registrar\Webhook;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrar;
@@ -428,69 +427,6 @@ final class WebhookRegistrarTest extends TestCase
         $this->registrar($shipmondo, endpoint: $endpoint)->register();
 
         self::assertSame($endpoint, $this->recorded[0]->getEndpoint());
-    }
-
-    /**
-     * The upload run registers the webhooks again where an admin last registered them, not where the router would
-     * generate their endpoint on the command line
-     *
-     * @test
-     */
-    public function it_registers_the_webhooks_again_at_the_endpoint_of_the_latest_registration(): void
-    {
-        $latest = new RegisteredWebhooks();
-        $latest->setEndpoint(self::ENDPOINT);
-        $latest->setRegisteredAt(new \DateTimeImmutable('2020-01-01'));
-        $this->registeredWebhooksRepository->findLatest()->willReturn($latest);
-
-        $shipmondo = (new ScriptedHttpClient())
-            ->respond(200, array_slice(self::wanted(self::ENDPOINT), 0, 2))
-            ->respond(201, self::webhook(4, 'Shop [ab9f9937] - [orders:delete]', self::ENDPOINT, 'delete'))
-        ;
-
-        $this->registrar($shipmondo, endpoint: 'http://localhost/webhook/shipmondo')->registerAgain();
-
-        self::assertSame(['GET webhooks', 'POST webhooks'], $shipmondo->requestLines());
-        self::assertSame([self::ENDPOINT], array_column(self::created($shipmondo), 'endpoint'));
-        self::assertSame(self::ENDPOINT, $latest->getEndpoint());
-        self::assertGreaterThan(new \DateTimeImmutable('2020-01-01'), $latest->getRegisteredAt());
-    }
-
-    /**
-     * Without a recorded endpoint, the webhooks have never been registered, or not since the plugin recorded where
-     *
-     * @test
-     *
-     * @dataProvider registrationsWithoutAnEndpoint
-     */
-    public function it_registers_nothing_again_without_a_recorded_endpoint(?RegisteredWebhooks $latest): void
-    {
-        $this->registeredWebhooksRepository->findLatest()->willReturn($latest);
-        $shipmondo = new ScriptedHttpClient();
-
-        try {
-            $this->registrar($shipmondo)->registerAgain();
-            self::fail('The webhooks were registered again');
-        } catch (NoRecordedEndpointException $e) {
-            self::assertSame('The webhooks were not registered again: no registration with an endpoint is recorded. Register them once from the admin\'s Shipmondo page or with setono:sylius-shipmondo:register-webhooks.', $e->getMessage());
-        }
-
-        self::assertSame([], $shipmondo->requestLines());
-        self::assertSame([], $this->recorded);
-    }
-
-    /**
-     * @return iterable<string, array{RegisteredWebhooks|null}>
-     */
-    public static function registrationsWithoutAnEndpoint(): iterable
-    {
-        yield 'never registered' => [null];
-
-        // recorded before the plugin recorded the endpoint
-        $registeredBefore = new RegisteredWebhooks();
-        $registeredBefore->setRegisteredAt(new \DateTimeImmutable('2020-01-01'));
-
-        yield 'registered before the endpoint was recorded' => [$registeredBefore];
     }
 
     /**

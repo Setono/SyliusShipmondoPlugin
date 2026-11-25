@@ -24,9 +24,9 @@ use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\OrderIdProviderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProviderInterface;
-use Setono\SyliusShipmondoPlugin\Registrar\NoRecordedEndpointException;
 use Setono\SyliusShipmondoPlugin\Registrar\UnreachableWebhookEndpointException;
 use Setono\SyliusShipmondoPlugin\Registrar\WebhookRegistrarInterface;
+use Setono\SyliusShipmondoPlugin\Repository\RegisteredWebhooksRepositoryInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Symfony\Component\Messenger\Exception\DelayedMessageHandlingException;
 use Symfony\Component\Messenger\Exception\ExceptionInterface as MessengerException;
@@ -56,6 +56,7 @@ final class OrderUploader implements OrderUploaderInterface
         private readonly LoggerInterface $logger,
         ManagerRegistry $managerRegistry,
         private readonly WebhookRegistrarInterface $webhookRegistrar,
+        private readonly RegisteredWebhooksRepositoryInterface $registeredWebhooksRepository,
         private readonly bool $registerWebhooksAutomatically,
     ) {
         $this->managerRegistry = $managerRegistry;
@@ -173,14 +174,19 @@ final class OrderUploader implements OrderUploaderInterface
      */
     private function registerWebhooksAgain(UploadRun $run): void
     {
-        try {
-            $this->webhookRegistrar->registerAgain();
-        } catch (NoRecordedEndpointException) {
+        $endpoint = $this->registeredWebhooksRepository->findLatest()?->getEndpoint();
+        if (null === $endpoint) {
             $run->report(
                 UploadRunProblem::WebhooksNotRegisteredYet,
                 'The upload run did not register the webhooks again, because no registration with an endpoint is recorded: they have never been registered, or not since the plugin recorded where. Register them once from the admin\'s Shipmondo page or with setono:sylius-shipmondo:register-webhooks, after which the upload run keeps them current',
                 [],
             );
+
+            return;
+        }
+
+        try {
+            $this->webhookRegistrar->register($endpoint);
         } catch (UnreachableWebhookEndpointException $e) {
             $run->report(
                 UploadRunProblem::WebhookEndpointUnreachable,

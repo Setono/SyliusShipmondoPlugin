@@ -82,7 +82,8 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
 
         self::assertFalse($this->container->getParameter('setono_sylius_shipmondo.webhooks.register_automatically'));
         $this->assertContainerBuilderHasServiceDefinitionWithArgument(OrderUploader::class, 10, new Reference(WebhookRegistrarInterface::class));
-        $this->assertContainerBuilderHasServiceDefinitionWithArgument(OrderUploader::class, 11, '%setono_sylius_shipmondo.webhooks.register_automatically%');
+        $this->assertContainerBuilderHasServiceDefinitionWithArgument(OrderUploader::class, 11, new Reference('setono_sylius_shipmondo.repository.registered_webhooks'));
+        $this->assertContainerBuilderHasServiceDefinitionWithArgument(OrderUploader::class, 12, '%setono_sylius_shipmondo.webhooks.register_automatically%');
     }
 
     /**

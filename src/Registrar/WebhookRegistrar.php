@@ -74,11 +74,6 @@ final readonly class WebhookRegistrar implements WebhookRegistrarInterface
         }
     }
 
-    public function registerAgain(): void
-    {
-        $this->register($this->registeredWebhooksRepository->findLatest()?->getEndpoint() ?? throw new NoRecordedEndpointException());
-    }
-
     /**
      * A webhook is this shop's when it carries the shop's id, e.g. one registered before the shop changed its address,
      * or when it has the name prefix and is sent to the endpoint, e.g. one registered before webhooks carried the shop's

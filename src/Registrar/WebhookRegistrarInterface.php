@@ -14,8 +14,9 @@ interface WebhookRegistrarInterface
      * duplicates, and leaves the rest. When nothing differs, it only fetches the webhooks. Then it records the
      * registration: the endpoint, and the time
      *
-     * @param string|null $endpoint where Shipmondo sends the webhooks, or null for the shop's webhook endpoint as the
-     *                              router generates it, e.g. at the host the admin is opened at
+     * @param string|null $endpoint the URL Shipmondo sends the webhooks to, e.g. https://shop.example.com/webhook/shipmondo,
+     *                              such as the latest registration's. Null for the shop's webhook endpoint as the router
+     *                              generates it, e.g. at the host the admin is opened at
      *
      * @throws UnreachableWebhookEndpointException when Shipmondo can't reach the endpoint, before anything is asked of
      *                                             Shipmondo
@@ -25,20 +26,9 @@ interface WebhookRegistrarInterface
     public function register(?string $endpoint = null): void;
 
     /**
-     * Registers the webhooks again, as {@see self::register()} does, at the endpoint of the latest registration, which
-     * an admin's registration sets. The upload run calls it, so a change to the actions the webhook handlers handle, or
-     * to this shop's webhooks in Shipmondo, is fixed without a manual step
-     *
-     * @throws NoRecordedEndpointException when no registration with an endpoint is recorded, before anything is asked
-     *                                     of Shipmondo
-     * @throws UnreachableWebhookEndpointException when Shipmondo can't reach the recorded endpoint, before anything is
-     *                                             asked of Shipmondo
-     * @throws ShipmondoException when a call to Shipmondo fails. The registration isn't recorded
-     */
-    public function registerAgain(): void;
-
-    /**
      * Compares this shop's webhooks in Shipmondo with the wanted ones at the endpoint, without changing anything
+     *
+     * @param string $endpoint the URL Shipmondo sends the webhooks to, e.g. https://shop.example.com/webhook/shipmondo
      *
      * @throws ShipmondoException when the webhooks can't be fetched from Shipmondo
      */

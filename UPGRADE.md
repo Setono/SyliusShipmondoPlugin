@@ -1443,21 +1443,21 @@ Only if you extend or call the code involved:
 
 | Before | Now |
 |---|---|
-| `Registrar\WebhookRegistrarInterface::register(): void` | `register(?string $endpoint = null): void`, which compares and fixes the difference, at the endpoint given, or the router's when it is null |
-| | new on it: `registerAgain(): void`, which throws `Registrar\NoRecordedEndpointException` when no registration with an endpoint is recorded, and `compare(string $endpoint): Registrar\WebhookComparison`, which changes nothing |
+| `Registrar\WebhookRegistrarInterface::register(): void` | `register(?string $endpoint = null): void`, which compares and fixes the difference at the endpoint given (the URL Shipmondo sends the webhooks to), or at the router's when it is null. The upload run passes the latest registration's |
+| | new on it: `compare(string $endpoint): Registrar\WebhookComparison`, which changes nothing |
 | `WebhookRegistrarInterface::getWebhooks()` and `getVersion()` | removed: `compare()` returns the wanted webhooks Shipmondo is missing |
 | `Registrar\WebhookRegistrar::__construct(...)` | takes a `Psr\Log\LoggerInterface` last (`logger`) |
 | `Model\RegisteredWebhooksInterface::getVersion()` and `setVersion()` | removed: `getEndpoint(): ?string` and `setEndpoint(?string $endpoint): void` |
 | `Repository\RegisteredWebhooksRepositoryInterface::findOneByVersion()` | removed: `findLatest(): ?RegisteredWebhooksInterface`, the latest registration |
-| `Uploader\OrderUploader::__construct(...)` | takes the `Registrar\WebhookRegistrarInterface` and `bool $registerWebhooksAutomatically` (`%setono_sylius_shipmondo.webhooks.register_automatically%`) after `$managerRegistry` |
+| `Uploader\OrderUploader::__construct(...)` | takes the `Registrar\WebhookRegistrarInterface`, the `Repository\RegisteredWebhooksRepositoryInterface` (`setono_sylius_shipmondo.repository.registered_webhooks`) and `bool $registerWebhooksAutomatically` (`%setono_sylius_shipmondo.webhooks.register_automatically%`) after `$managerRegistry` |
 | `Controller\Admin\ShipmondoController::__construct(...)` | takes `bool $registerWebhooksAutomatically` last |
 | `Uploader\UploadRunProblem` | new cases `WebhooksNotRegisteredYet`, `WebhookEndpointUnreachable` and `WebhookRegistrationFailed` |
 
-**If you implement or decorate `WebhookRegistrarInterface`**, implement `registerAgain()` and `compare()` too, and
-record the registration's endpoint and time in `register()`, or the upload run can't register the webhooks again.
+**If you implement or decorate `WebhookRegistrarInterface`**, implement `compare()` too, take the endpoint `register()`
+is given, and record the registration's endpoint and time there, or the upload run can't register the webhooks again.
 
-New: the `setono_sylius_shipmondo.webhooks.register_automatically` parameter, and the `Registrar\WebhookComparison` and
-`Registrar\NoRecordedEndpointException` classes.
+New: the `setono_sylius_shipmondo.webhooks.register_automatically` parameter, and the `Registrar\WebhookComparison`
+class.
 
 ### Unchanged
 
