@@ -24,7 +24,8 @@ interface OrderLinkerInterface
      * Once the order is linked, it catches up on what Shipmondo did to the sales order while no order was linked to it,
      * which the webhooks it missed would have told it: the webhook handlers of orders/status_update run with the sales
      * order, and a warning says when its payment may have been captured, voided or refunded meanwhile. When a handler
-     * fails, what the handlers changed is discarded and the failure is logged, and the order stays linked.
+     * fails, what the handlers changed on the order, its shipments and its payments is discarded, the failure is logged,
+     * and the order stays linked.
      *
      * The order's row is locked and the order is read again before it is settled. An order that changed since it was
      * loaded, e.g. because another upload run looked it up, or that a guard on the order workflow holds back, is left as

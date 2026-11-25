@@ -50,6 +50,7 @@ use Tests\Setono\SyliusShipmondoPlugin\Unit\Orders;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\RecordingLogger;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ScriptedHttpClient;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ShipmondoApi;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\Webhook\OrderWebhookHandlerSpy;
 use Webmozart\Assert\Assert;
 
 /**
@@ -71,7 +72,7 @@ final class OrderLinkerTest extends TestCase
 
     private const FAILED_MESSAGE = 'The sales order lookup of the unlinked order {order} failed, so the order stays unlinked for the next upload run';
 
-    private const CATCH_UP_FAILED_MESSAGE = 'A webhook handler failed to catch the order {order} up on its sales order {salesOrder}, which a sales order lookup linked it to, so what the handlers changed is discarded. The order stays linked, and Shipmondo\'s webhooks about the sales order reach it from now on. Check the order against its sales order in Shipmondo';
+    private const CATCH_UP_FAILED_MESSAGE = 'A webhook handler failed to catch the order {order} up on its sales order {salesOrder}, which a sales order lookup linked it to, so what the handlers changed on the order, its shipments and its payments is discarded. The order stays linked, and Shipmondo\'s webhooks about the sales order reach it from now on. Check the order against its sales order in Shipmondo';
 
     private const CANCELLED_MESSAGE = 'The unlinked order {order} was cancelled, so it becomes cancelled once Shipmondo has no sales order for it';
 
@@ -112,11 +113,11 @@ final class OrderLinkerTest extends TestCase
     private array $webhookHandlers = [];
 
     /**
-     * What the handlers below saw, in the order they ran: the handler, the order number, and the webhook
+     * What the handler spies saw, in the order they ran: the spy, the order, and the webhook
      *
-     * @var list<array{string, string|null, RemoteEvent}>
+     * @var \ArrayObject<int, array{string, OrderInterface, RemoteEvent}>
      */
-    private array $handled = [];
+    private \ArrayObject $handled;
 
     protected function setUp(): void
     {
@@ -124,6 +125,7 @@ final class OrderLinkerTest extends TestCase
         $this->logger = new RecordingLogger();
         $this->orderIdProvider = new OrderIdProvider();
         $this->eventDispatcher = new EventDispatcher();
+        $this->handled = new \ArrayObject();
 
         $this->entityManager = $this->prophesize(EntityManagerInterface::class);
         $this->entityManager->wrapInTransaction(Argument::type('callable'))->will(static function (array $args): mixed {
@@ -526,14 +528,14 @@ final class OrderLinkerTest extends TestCase
     public function it_runs_the_status_update_webhook_handlers_with_the_sales_order_it_links_the_order_to(): void
     {
         $order = $this->unlinkedOrder();
-        $this->handleWebhooks(WebhookAction::StatusUpdate, 'first', 'second');
+        $this->addHandlerSpies(WebhookAction::StatusUpdate, 'first', 'second');
         $salesOrder = ['id' => 1001, 'order_id' => '#001', 'source_name' => 'Sylius', 'shipped_percent' => 100];
         $this->shipmondo->respond(200, [$salesOrder]);
 
         self::assertNull($this->linker()->link($order));
 
         self::assertSame([self::UPLOADED, 1001], [$order->getShipmondoState(), $order->getShipmondoId()]);
-        self::assertSame([['first', '#001'], ['second', '#001']], array_map(static fn (array $handled): array => [$handled[0], $handled[1]], $this->handled));
+        self::assertSame([['first', '#001'], ['second', '#001']], array_map(static fn (array $handled): array => [$handled[0], $handled[1]->getNumber()], $this->handled->getArrayCopy()));
         foreach ($this->handled as [, , $webhook]) {
             self::assertSame(
                 ['shipmondo.sales_order_lookup', WebhookResourceName::Orders, WebhookAction::StatusUpdate, $salesOrder],
@@ -579,14 +581,14 @@ final class OrderLinkerTest extends TestCase
     public function it_does_not_run_the_webhook_handlers_of_other_actions(): void
     {
         $order = $this->unlinkedOrder();
-        $this->handleWebhooks(WebhookAction::CreateShipment, 'create shipment');
-        $this->handleWebhooks(WebhookAction::PaymentCaptured, 'payment captured');
+        $this->addHandlerSpies(WebhookAction::CreateShipment, 'create shipment');
+        $this->addHandlerSpies(WebhookAction::PaymentCaptured, 'payment captured');
         $this->respondWithSalesOrders([1001 => '#001']);
 
         self::assertNull($this->linker()->link($order));
 
         self::assertSame(self::UPLOADED, $order->getShipmondoState());
-        self::assertSame([], $this->handled);
+        self::assertSame([], $this->handled->getArrayCopy());
     }
 
     /**
@@ -601,13 +603,13 @@ final class OrderLinkerTest extends TestCase
     public function it_runs_no_webhook_handler_when_it_does_not_link_the_order(\Closure $lookUp): void
     {
         $order = $this->unlinkedOrder();
-        $this->handleWebhooks(WebhookAction::StatusUpdate, 'handler');
+        $this->addHandlerSpies(WebhookAction::StatusUpdate, 'handler');
         $lookUp($this, $order);
 
         $this->linker()->link($order);
 
         self::assertNotSame(self::UPLOADED, $order->getShipmondoState());
-        self::assertSame([], $this->handled);
+        self::assertSame([], $this->handled->getArrayCopy());
     }
 
     /**
@@ -857,9 +859,9 @@ final class OrderLinkerTest extends TestCase
     }
 
     /**
-     * Handles the webhooks with this action with handlers that record what they see, in this order
+     * Adds handler spies with these names for the webhooks with this action, in this order
      */
-    private function handleWebhooks(WebhookAction $action, string ...$names): void
+    private function addHandlerSpies(WebhookAction $action, string ...$names): void
     {
         foreach ($names as $name) {
             $this->webhookHandlers[$action->value][] = $this->webhookHandler($name);
@@ -867,38 +869,13 @@ final class OrderLinkerTest extends TestCase
     }
 
     /**
-     * A webhook handler that records what it sees, and then calls $then, if given
+     * A handler spy that records what it sees in $this->handled, and then calls $then, if given
      *
      * @param (\Closure(OrderInterface): void)|null $then
      */
     private function webhookHandler(string $name, ?\Closure $then = null): OrderWebhookHandlerInterface
     {
-        $handle = function (OrderInterface $order, RemoteEvent $webhook) use ($name, $then): void {
-            $this->handled[] = [$name, $order->getNumber(), $webhook];
-
-            if (null !== $then) {
-                $then($order);
-            }
-        };
-
-        return new class($handle) implements OrderWebhookHandlerInterface {
-            /**
-             * @param \Closure(OrderInterface, RemoteEvent): void $handle
-             */
-            public function __construct(private readonly \Closure $handle)
-            {
-            }
-
-            public static function getSubscribedActions(): array
-            {
-                return [];
-            }
-
-            public function handle(OrderInterface $order, RemoteEvent $webhook): void
-            {
-                ($this->handle)($order, $webhook);
-            }
-        };
+        return new OrderWebhookHandlerSpy($name, $this->handled, $then);
     }
 
     /**

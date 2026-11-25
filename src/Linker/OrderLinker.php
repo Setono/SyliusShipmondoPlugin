@@ -197,7 +197,8 @@ final class OrderLinker implements OrderLinkerInterface
 
     /**
      * Runs the handlers of the orders/status_update webhook with the sales order, on the order as the database has it,
-     * locked. When one fails, what they changed is discarded, and the failure is logged
+     * locked. When one fails, what they changed on the order, its shipments and its payments is discarded, and the failure
+     * is logged
      */
     private function runStatusUpdateHandlers(OrderInterface $order, SalesOrder $salesOrder): void
     {
@@ -229,7 +230,7 @@ final class OrderLinker implements OrderLinkerInterface
         });
 
         if (null !== $failure) {
-            $this->logger->error('A webhook handler failed to catch the order {order} up on its sales order {salesOrder}, which a sales order lookup linked it to, so what the handlers changed is discarded. The order stays linked, and Shipmondo\'s webhooks about the sales order reach it from now on. Check the order against its sales order in Shipmondo', [
+            $this->logger->error('A webhook handler failed to catch the order {order} up on its sales order {salesOrder}, which a sales order lookup linked it to, so what the handlers changed on the order, its shipments and its payments is discarded. The order stays linked, and Shipmondo\'s webhooks about the sales order reach it from now on. Check the order against its sales order in Shipmondo', [
                 'order' => $order->getNumber(),
                 'salesOrder' => $salesOrder->id,
                 'exception' => $failure,

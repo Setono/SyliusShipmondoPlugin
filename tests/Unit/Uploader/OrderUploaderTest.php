@@ -13,6 +13,7 @@ use Prophecy\Argument;
 use Prophecy\PhpUnit\ProphecyTrait;
 use Prophecy\Prophecy\ObjectProphecy;
 use Psr\Log\LogLevel;
+use Setono\Shipmondo\Enum\WebhookAction;
 use Setono\Shipmondo\Exception\ConnectionException;
 use Setono\Shipmondo\Exception\ForbiddenException;
 use Setono\Shipmondo\Exception\InternalServerErrorException;
@@ -43,6 +44,7 @@ use Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProviderInterface;
 use Setono\SyliusShipmondoPlugin\Uploader\OrderUploader;
 use Setono\SyliusShipmondoPlugin\Uploader\UploadOutcome;
 use Setono\SyliusShipmondoPlugin\Uploader\UploadRunProblem;
+use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlerInterface;
 use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Sylius\Component\Order\Repository\OrderRepositoryInterface;
@@ -65,6 +67,7 @@ use Tests\Setono\SyliusShipmondoPlugin\Unit\Orders;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\RecordingLogger;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ScriptedHttpClient;
 use Tests\Setono\SyliusShipmondoPlugin\Unit\ShipmondoApi;
+use Tests\Setono\SyliusShipmondoPlugin\Unit\Webhook\OrderWebhookHandlerSpy;
 use Webmozart\Assert\Assert;
 
 /**
@@ -155,6 +158,13 @@ final class OrderUploaderTest extends TestCase
      * Whether the default command bus fails to handle DeleteOrder, as when its asynchronous transport is down
      */
     private bool $deleteOrderFails = false;
+
+    /**
+     * The webhook handlers of each action, by the action's value, which a lookup that links an order runs
+     *
+     * @var array<string, list<OrderWebhookHandlerInterface>>
+     */
+    private array $webhookHandlers = [];
 
     protected function setUp(): void
     {
@@ -1462,6 +1472,31 @@ final class OrderUploaderTest extends TestCase
     }
 
     /**
+     * A webhook handler that fails to catch an order a lookup linked up on its sales order says nothing about the other
+     * orders
+     *
+     * @test
+     */
+    public function it_looks_up_the_next_unlinked_order_after_a_webhook_handler_fails_to_catch_one_up(): void
+    {
+        $first = $this->unlinkedOrder(1);
+        $second = $this->unlinkedOrder(2);
+        $this->webhookHandlers[WebhookAction::StatusUpdate->value][] = new OrderWebhookHandlerSpy('failing', new \ArrayObject(), static function (): void {
+            throw new \RuntimeException('The handler failed');
+        });
+        $this->respondWithSalesOrders([1001 => '#001']);
+        $this->respondWithSalesOrders([1002 => '#002']);
+
+        self::assertSame([], $this->uploader()->upload());
+
+        self::assertSame(['GET sales_orders', 'GET sales_orders'], $this->shipmondo->requestLines());
+        self::assertSame(
+            [[self::UPLOADED, 1001], [self::UPLOADED, 1002]],
+            [[$first->getShipmondoState(), $first->getShipmondoId()], [$second->getShipmondoState(), $second->getShipmondoId()]],
+        );
+    }
+
+    /**
      * The remaining lookups would most likely fail the same way, e.g. after a change to Shipmondo's answers the SDK can't
      * read. They say nothing about the uploads, so the pending orders are still uploaded
      *
@@ -1754,7 +1789,7 @@ final class OrderUploaderTest extends TestCase
         $uploader = new OrderUploader(
             $provider->reveal(),
             $unlinkedOrdersProvider->reveal(),
-            new OrderLinker($this->orderIdProvider, $shipmondoClient, $orderWorkflow, $orderCanceller, new OrderWebhookHandlers([]), $this->logger, $managerRegistry->reveal()),
+            new OrderLinker($this->orderIdProvider, $shipmondoClient, $orderWorkflow, $orderCanceller, new OrderWebhookHandlers($this->webhookHandlers), $this->logger, $managerRegistry->reveal()),
             $commandBus,
             $orderWorkflow,
             $shipmondoClient,

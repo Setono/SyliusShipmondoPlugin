@@ -1172,8 +1172,9 @@ recorded in [ADR 0003](docs/adr/0003-a-sales-order-lookup-settles-every-unlinked
   too), in their priority order, with a `Webhook\RemoteEvent` named `shipmondo.sales_order_lookup`
   (`Linker\OrderLinker::CATCH_UP_WEBHOOK_NAME`) whose payload is the sales order it found: a fully shipped sales order
   ships the order, as the webhook would have. The handlers run on the order locked and read again, in a transaction of
-  their own once the link is committed. When one throws, what they changed is discarded (the order, its shipments and
-  its payments are read again), the failure is logged as an error, and the order stays linked. A sales order holds only
+  their own once the link is committed. When one throws, what they changed on the order, its shipments and its
+  payments is discarded (they are read again; anything else a handler changed is flushed), the failure is logged as an
+  error, and the order stays linked. A sales order holds only
   its payment's current state, so a capture, a void or a refund isn't caught up on: when the sales order's
   `payment_status` is `paid`, `partially_paid`, `marked_as_paid`, `voided`, `refunded` or `partially_refunded`, a
   warning tells an admin to check the order's payment in Sylius. **If you have a handler for `status_update`**, it may
