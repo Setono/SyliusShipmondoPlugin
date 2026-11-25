@@ -108,6 +108,9 @@ abstract class FunctionalTestCase extends WebTestCase
         // shut the kernel down even when restoring failed, so a failing test cannot break the ones after it
         parent::tearDown();
 
+        // PHPUnit keeps every test object until the run ends, and through these the test's container would stay in memory
+        unset($this->browser, $this->shipmondo, $this->fixtures);
+
         if (null !== $restoreFailure) {
             throw $restoreFailure;
         }
