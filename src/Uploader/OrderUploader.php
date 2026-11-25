@@ -10,22 +10,19 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
 use Setono\Doctrine\ORMTrait;
 use Setono\Shipmondo\Client\ClientInterface;
-use Setono\Shipmondo\Request\CollectionRequestOptions;
 use Setono\Shipmondo\Request\SalesOrder\SalesOrderRequest;
-use Setono\Shipmondo\Request\SalesOrderSearch;
 use Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface;
 use Setono\SyliusShipmondoPlugin\DataMapper\SalesOrderDataMapperInterface;
 use Setono\SyliusShipmondoPlugin\Failure\RecordedShipmondoFailure;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailureKind;
+use Setono\SyliusShipmondoPlugin\Linker\OrderLinkerInterface;
 use Setono\SyliusShipmondoPlugin\Message\Command\UploadOrder;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
-use Setono\SyliusShipmondoPlugin\Provider\OrderIdProviderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\PreQualifiedUploadableOrdersProviderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\UnlinkedOrdersProviderInterface;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Symfony\Component\Messenger\Exception\DelayedMessageHandlingException;
-use Symfony\Component\Messenger\Exception\ExceptionInterface as MessengerException;
 use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Stamp\HandledStamp;
 use Symfony\Component\Workflow\WorkflowInterface;
@@ -34,16 +31,10 @@ final class OrderUploader implements OrderUploaderInterface
 {
     use ORMTrait;
 
-    /**
-     * Shipmondo lists at most this many sales orders per page. A sales order lookup reads one page, which holds every
-     * sales order with one order id
-     */
-    private const SALES_ORDERS_PER_PAGE = 25;
-
     public function __construct(
         private readonly PreQualifiedUploadableOrdersProviderInterface $preQualifiedUploadableOrdersProvider,
         private readonly UnlinkedOrdersProviderInterface $unlinkedOrdersProvider,
-        private readonly OrderIdProviderInterface $orderIdProvider,
+        private readonly OrderLinkerInterface $orderLinker,
         private readonly MessageBusInterface $commandBus,
         private readonly WorkflowInterface $orderWorkflow,
         private readonly ClientInterface $shipmondoClient,
@@ -156,141 +147,17 @@ final class OrderUploader implements OrderUploaderInterface
     }
 
     /**
-     * Looks up the sales order of every unlinked order that is due a sales order lookup, newest first, until a stop rule
-     * stops the lookups: the remaining ones wait for the next upload run
+     * Looks up the sales order of every unlinked order that is due a sales order lookup, newest first, and settles the
+     * order by what it finds, until a stop rule stops the lookups: the remaining ones wait for the next upload run
      */
     private function lookUpSalesOrders(UploadRun $run): void
     {
         foreach ($this->unlinkedOrdersProvider->getOrders() as $order) {
-            $run->recordLookup($order, $this->lookUp($order));
+            $run->recordLookup($order, $this->orderLinker->link($order));
             if ($run->lookupsStopped()) {
                 return;
             }
         }
-    }
-
-    /**
-     * Settles an unlinked order by the sales orders Shipmondo has with the exact order id its upload sent. One: the
-     * order is linked to it, and is uploaded. None: someone deleted it in Shipmondo, or the upload's call that failed
-     * temporarily didn't create one, so the order goes back to pending, to be uploaded again. Several: the order stays
-     * unlinked, since some may be another shop's on the same Shipmondo account.
-     *
-     * The upload run loaded the order a while ago, so its row is locked and it is read again before it is settled. One
-     * that changed since, e.g. because another upload run looked it up, is left as it is, even when it is still unlinked:
-     * another run may have uploaded it again in between, and the next run looks it up again. An order that is cancelled in
-     * Sylius becomes cancelled once Shipmondo has no sales order for it: right away when none was found, and once its
-     * sales order is deleted when one was.
-     *
-     * @return ShipmondoFailure|null why Shipmondo couldn't be searched, which leaves the order unlinked for the next upload run
-     */
-    private function lookUp(OrderInterface $order): ?ShipmondoFailure
-    {
-        $loadedVersion = $order->getVersion();
-
-        try {
-            $salesOrderIds = $this->findSalesOrders($order);
-        } catch (\Throwable $e) {
-            $failure = ShipmondoFailure::of($e);
-
-            $this->logger->log(
-                ShipmondoFailureKind::TemporaryFailure === $failure->kind || ShipmondoFailureKind::RateLimited === $failure->kind ? LogLevel::WARNING : LogLevel::ERROR,
-                'The sales order lookup of the unlinked order {order} failed, so the order stays unlinked for the next upload run',
-                ['order' => $order->getNumber()] + $failure->logContext(),
-            );
-
-            return $failure;
-        }
-
-        if (count($salesOrderIds) > 1) {
-            $this->logger->error('A sales order lookup found several sales orders with the order id of the unlinked order {order}, so the order stays unlinked: they may be duplicates, or another shop\'s on the same Shipmondo account. Check the sales orders {salesOrders} in Shipmondo', [
-                'order' => $order->getNumber(),
-                'salesOrders' => $salesOrderIds,
-            ]);
-
-            return null;
-        }
-
-        $salesOrderId = $salesOrderIds[0] ?? null;
-        $transition = null === $salesOrderId ? OrderWorkflow::TRANSITION_RETRY : OrderWorkflow::TRANSITION_LINK;
-        $manager = $this->getManager($order);
-
-        /** @var bool $settled */
-        $settled = $manager->wrapInTransaction(function () use ($manager, $order, $loadedVersion, $transition, $salesOrderId): bool {
-            $manager->refresh($order, LockMode::PESSIMISTIC_WRITE);
-
-            if ($order->getVersion() !== $loadedVersion || !$this->orderWorkflow->can($order, $transition)) {
-                return false;
-            }
-
-            $this->orderWorkflow->apply($order, $transition, [OrderWorkflow::CONTEXT_SALES_ORDER_ID => $salesOrderId]);
-
-            return true;
-        });
-
-        if (!$settled) {
-            $this->logger->info('The sales order lookup of the order {order} was not settled, because the order changed while Shipmondo was searched, or a guard on the order workflow holds it back, so it is left as it is', [
-                'order' => $order->getNumber(),
-                'state' => $order->getShipmondoState(),
-            ]);
-
-            return null;
-        }
-
-        if (null === $salesOrderId) {
-            $this->logger->info('A sales order lookup found no sales order for the unlinked order {order}, so the order goes back to pending to be uploaded again', [
-                'order' => $order->getNumber(),
-            ]);
-        } else {
-            $this->logger->info('A sales order lookup found the sales order {salesOrder} for the unlinked order {order}, so the order is uploaded and linked to it', [
-                'order' => $order->getNumber(),
-                'salesOrder' => $salesOrderId,
-            ]);
-        }
-
-        if (OrderInterface::STATE_CANCELLED === $order->getState()) {
-            $this->logger->info('The unlinked order {order} was cancelled, so it becomes cancelled once Shipmondo has no sales order for it', [
-                'order' => $order->getNumber(),
-                'salesOrder' => $salesOrderId,
-            ]);
-
-            try {
-                $this->cancel($order);
-            } catch (MessengerException $e) {
-                $this->logger->error('The sales order of the cancelled order {order} could not be deleted, because the command that deletes it failed, so the order stays uploaded and linked to it. Delete the sales order in Shipmondo', [
-                    'order' => $order->getNumber(),
-                    'salesOrder' => $salesOrderId,
-                    'exception' => $e,
-                ]);
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * The ids of the sales orders Shipmondo has with the exact order id the order's upload sent. Shipmondo's order_id
-     * filter matches exactly, but doesn't document it, so each sales order's order id is compared too
-     *
-     * @return list<int>
-     */
-    private function findSalesOrders(OrderInterface $order): array
-    {
-        $orderId = $this->orderIdProvider->getOrderId($order);
-
-        // no archived filter, so an archived sales order is found too
-        $salesOrders = $this->shipmondoClient->salesOrders()->search(
-            new SalesOrderSearch(orderId: $orderId),
-            new CollectionRequestOptions(perPage: self::SALES_ORDERS_PER_PAGE),
-        );
-
-        $ids = [];
-        foreach ($salesOrders as $salesOrder) {
-            if ($orderId === ($salesOrder->raw['order_id'] ?? null)) {
-                $ids[] = $salesOrder->id;
-            }
-        }
-
-        return $ids;
     }
 
     /**

@@ -16,6 +16,8 @@ use Setono\SyliusShipmondoPlugin\Doctrine\Type\PickupPointType;
 use Setono\SyliusShipmondoPlugin\Doctrine\Type\RecordedShipmondoFailureType;
 use Setono\SyliusShipmondoPlugin\EventListener\OrderCancellationListener;
 use Setono\SyliusShipmondoPlugin\HttpClient\ShipmondoHttpClient;
+use Setono\SyliusShipmondoPlugin\Linker\OrderLinker;
+use Setono\SyliusShipmondoPlugin\Linker\OrderLinkerInterface;
 use Setono\SyliusShipmondoPlugin\Message\Middleware\AbsorbDeleteOrderFailureMiddleware;
 use Setono\SyliusShipmondoPlugin\Model\RegisteredWebhooks;
 use Setono\SyliusShipmondoPlugin\Provider\OrderIdProvider;
@@ -150,6 +152,7 @@ final class SetonoSyliusShipmondoExtensionTest extends AbstractExtensionTestCase
             SetupProviderInterface::class => SetupProvider::class,
             WebhookRegistrarInterface::class => WebhookRegistrar::class,
             OrderUploaderInterface::class => OrderUploader::class,
+            OrderLinkerInterface::class => OrderLinker::class,
             OrderResolverInterface::class => OrderResolver::class,
         ];
 
