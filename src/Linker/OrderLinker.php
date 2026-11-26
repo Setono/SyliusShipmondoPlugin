@@ -116,7 +116,7 @@ final class OrderLinker implements OrderLinkerInterface
             return null;
         }
 
-        if (null === $salesOrderId) {
+        if (null === $salesOrder) {
             $this->logger->info('A sales order lookup found no sales order for the unlinked order {order}, so the order goes back to pending to be uploaded again', [
                 'order' => $order->getNumber(),
             ]);
