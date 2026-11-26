@@ -8,6 +8,7 @@ use Psr\Http\Message\RequestInterface;
 use Setono\SyliusShipmondoPlugin\Event\PreQualifiedUploadableOrdersQueryBuilderCreatedEvent;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Sylius\Component\Core\Model\CustomerInterface;
+use Sylius\Component\Core\OrderShippingStates;
 use Symfony\Component\Console\Command\Command;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\FunctionalTestCase;
 use Tests\Setono\SyliusShipmondoPlugin\Functional\Support\ShipmondoApiStub;
@@ -316,6 +317,62 @@ final class SalesOrderLookupTest extends FunctionalTestCase
     }
 
     /**
+     * Shipmondo's webhooks about the sales order were lost while the order was unlinked, since no order was linked to
+     * it, so once a lookup links the order, it catches up on its sales order as the orders/status_update webhook would
+     * have
+     *
+     * @test
+     */
+    public function it_ships_and_fulfils_a_paid_order_whose_sales_order_was_shipped_while_it_was_unlinked(): void
+    {
+        $order = $this->unlinkedOrder($this->fixtures->createCustomer());
+        $this->respondWithTheSalesOrder($order, ['shipped_percent' => 100, 'payment_status' => 'authorized']);
+
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+
+        $row = $this->orderRow(self::id($order));
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, 1001], [$row['shipmondo_state'], $row['shipmondo_id']]);
+        self::assertSame([OrderShippingStates::STATE_SHIPPED, OrderInterface::STATE_FULFILLED], [$row['shipping_state'], $row['state']]);
+        self::assertSame(['shipped'], $this->shipmentStates($order));
+    }
+
+    /**
+     * @test
+     */
+    public function it_leaves_the_shipments_of_an_order_it_links_as_they_are_when_its_sales_order_is_not_fully_shipped(): void
+    {
+        $order = $this->unlinkedOrder($this->fixtures->createCustomer());
+        $this->respondWithTheSalesOrder($order, ['shipped_percent' => 0]);
+
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+
+        $row = $this->orderRow(self::id($order));
+        self::assertSame([OrderInterface::SHIPMONDO_STATE_UPLOADED_TO_SHIPMONDO, 1001], [$row['shipmondo_state'], $row['shipmondo_id']]);
+        self::assertSame(OrderShippingStates::STATE_READY, $row['shipping_state']);
+        self::assertSame(['ready'], $this->shipmentStates($order));
+    }
+
+    /**
+     * A sales order holds only its payment's current state, so the lookup warns that Shipmondo may have captured the
+     * payment while the order was unlinked, instead of catching up on it
+     *
+     * @test
+     */
+    public function it_warns_that_the_payment_of_an_order_it_links_may_have_changed_when_its_sales_order_is_paid(): void
+    {
+        $order = $this->unlinkedOrder($this->fixtures->createCustomer());
+        $this->respondWithTheSalesOrder($order, ['payment_status' => 'paid']);
+
+        $this->executeCommand(self::COMMAND)->assertCommandIsSuccessful();
+
+        self::assertContains([
+            'level' => 'warning',
+            'message' => sprintf('The sales order 1001, which a sales order lookup linked the order %s to, has the payment status paid, so Shipmondo may have captured, voided or refunded its payment while the order was unlinked, and Sylius doesn\'t know. Check the order\'s payment in Sylius', (string) $order->getNumber()),
+            'context' => ['order' => $order->getNumber(), 'salesOrder' => 1001, 'paymentStatus' => 'paid'],
+        ], $this->logs());
+    }
+
+    /**
      * A shop narrows the orders that qualify for upload with the event, not the ones whose sales order may exist
      *
      * @test
@@ -341,6 +398,27 @@ final class SalesOrderLookupTest extends FunctionalTestCase
     private function respondWithSalesOrders(array $orderIds): void
     {
         $this->shipmondo->respond('GET', 'sales_orders', 200, SalesOrders::withOrderIds($orderIds), ['X-Total-Pages' => '1']);
+    }
+
+    /**
+     * Answers the sales order lookup of the order with its one sales order, 1001, with these fields too
+     *
+     * @param array<string, mixed> $fields
+     */
+    private function respondWithTheSalesOrder(OrderInterface $order, array $fields): void
+    {
+        $this->shipmondo->respond('GET', 'sales_orders', 200, [['id' => 1001, 'order_id' => $order->getNumber(), 'source_name' => 'Sylius'] + $fields], ['X-Total-Pages' => '1']);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function shipmentStates(OrderInterface $order): array
+    {
+        /** @var list<string> $states */
+        $states = $this->database()->fetchFirstColumn('SELECT state FROM sylius_shipment WHERE order_id = ?', [self::id($order)]);
+
+        return $states;
     }
 
     /**

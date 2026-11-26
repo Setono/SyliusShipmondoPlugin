@@ -10,13 +10,18 @@ use Psr\Log\LoggerInterface;
 use Psr\Log\LogLevel;
 use Setono\Doctrine\ORMTrait;
 use Setono\Shipmondo\Client\ClientInterface;
+use Setono\Shipmondo\Enum\WebhookAction;
+use Setono\Shipmondo\Enum\WebhookResourceName;
 use Setono\Shipmondo\Request\CollectionRequestOptions;
 use Setono\Shipmondo\Request\SalesOrderSearch;
+use Setono\Shipmondo\Response\SalesOrder\SalesOrder;
 use Setono\SyliusShipmondoPlugin\Canceller\OrderCancellerInterface;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailure;
 use Setono\SyliusShipmondoPlugin\Failure\ShipmondoFailureKind;
 use Setono\SyliusShipmondoPlugin\Model\OrderInterface;
 use Setono\SyliusShipmondoPlugin\Provider\OrderIdProviderInterface;
+use Setono\SyliusShipmondoPlugin\Webhook\Handler\OrderWebhookHandlers;
+use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
 use Setono\SyliusShipmondoPlugin\Workflow\OrderWorkflow;
 use Symfony\Component\Messenger\Exception\ExceptionInterface as MessengerException;
 use Symfony\Component\Workflow\WorkflowInterface;
@@ -26,16 +31,27 @@ final class OrderLinker implements OrderLinkerInterface
     use ORMTrait;
 
     /**
+     * The name of the webhook a lookup that links an order hands the status_update webhook handlers
+     */
+    public const CATCH_UP_WEBHOOK_NAME = 'shipmondo.sales_order_lookup';
+
+    /**
      * Shipmondo lists at most this many sales orders per page. A sales order lookup reads one page, which holds every
      * sales order with one order id
      */
     private const SALES_ORDERS_PER_PAGE = 25;
+
+    /**
+     * The payment statuses of a sales order whose payment Shipmondo may have captured, voided or refunded
+     */
+    private const PAYMENT_STATUSES_THAT_MAY_HAVE_CHANGED = ['paid', 'partially_paid', 'marked_as_paid', 'voided', 'refunded', 'partially_refunded'];
 
     public function __construct(
         private readonly OrderIdProviderInterface $orderIdProvider,
         private readonly ClientInterface $shipmondoClient,
         private readonly WorkflowInterface $orderWorkflow,
         private readonly OrderCancellerInterface $orderCanceller,
+        private readonly OrderWebhookHandlers $orderWebhookHandlers,
         private readonly LoggerInterface $logger,
         ManagerRegistry $managerRegistry,
     ) {
@@ -51,7 +67,7 @@ final class OrderLinker implements OrderLinkerInterface
         $loadedVersion = $order->getVersion();
 
         try {
-            $salesOrderIds = $this->findSalesOrders($order);
+            $salesOrders = $this->findSalesOrders($order);
         } catch (\Throwable $e) {
             $failure = ShipmondoFailure::of($e);
 
@@ -64,16 +80,17 @@ final class OrderLinker implements OrderLinkerInterface
             return $failure;
         }
 
-        if (count($salesOrderIds) > 1) {
+        if (count($salesOrders) > 1) {
             $this->logger->error('A sales order lookup found several sales orders with the order id of the unlinked order {order}, so the order stays unlinked: they may be duplicates, or another shop\'s on the same Shipmondo account. Check the sales orders {salesOrders} in Shipmondo', [
                 'order' => $order->getNumber(),
-                'salesOrders' => $salesOrderIds,
+                'salesOrders' => array_map(static fn (SalesOrder $salesOrder): int => $salesOrder->id, $salesOrders),
             ]);
 
             return null;
         }
 
-        $salesOrderId = $salesOrderIds[0] ?? null;
+        $salesOrder = $salesOrders[0] ?? null;
+        $salesOrderId = $salesOrder?->id;
         $transition = null === $salesOrderId ? OrderWorkflow::TRANSITION_RETRY : OrderWorkflow::TRANSITION_LINK;
         $manager = $this->getManager($order);
 
@@ -99,7 +116,7 @@ final class OrderLinker implements OrderLinkerInterface
             return null;
         }
 
-        if (null === $salesOrderId) {
+        if (null === $salesOrder) {
             $this->logger->info('A sales order lookup found no sales order for the unlinked order {order}, so the order goes back to pending to be uploaded again', [
                 'order' => $order->getNumber(),
             ]);
@@ -108,6 +125,8 @@ final class OrderLinker implements OrderLinkerInterface
                 'order' => $order->getNumber(),
                 'salesOrder' => $salesOrderId,
             ]);
+
+            $this->catchUp($order, $salesOrder);
         }
 
         if (OrderInterface::STATE_CANCELLED === $order->getState()) {
@@ -131,10 +150,10 @@ final class OrderLinker implements OrderLinkerInterface
     }
 
     /**
-     * The ids of the sales orders Shipmondo has with the exact order id the order's upload sent. Shipmondo's order_id
-     * filter matches exactly, but doesn't document it, so each sales order's order id is compared too
+     * The sales orders Shipmondo has with the exact order id the order's upload sent. Shipmondo's order_id filter
+     * matches exactly, but doesn't document it, so each sales order's order id is compared too
      *
-     * @return list<int>
+     * @return list<SalesOrder>
      */
     private function findSalesOrders(OrderInterface $order): array
     {
@@ -146,14 +165,77 @@ final class OrderLinker implements OrderLinkerInterface
             new CollectionRequestOptions(perPage: self::SALES_ORDERS_PER_PAGE),
         );
 
-        $ids = [];
+        $found = [];
         foreach ($salesOrders as $salesOrder) {
             if ($orderId === ($salesOrder->raw['order_id'] ?? null)) {
-                $ids[] = $salesOrder->id;
+                $found[] = $salesOrder;
             }
         }
 
-        return $ids;
+        return $found;
+    }
+
+    /**
+     * Shipmondo's webhooks about the sales order were lost while the order was unlinked, since no order was linked to
+     * it, so the order catches up on the sales order as the orders/status_update webhook would have. A sales order holds
+     * only its payment's current state, not what happened to it, so a capture, a void or a refund can't be caught up on:
+     * an admin is warned to check the payment instead
+     */
+    private function catchUp(OrderInterface $order, SalesOrder $salesOrder): void
+    {
+        $this->runStatusUpdateHandlers($order, $salesOrder);
+
+        $paymentStatus = $salesOrder->raw['payment_status'] ?? null;
+        if (in_array($paymentStatus, self::PAYMENT_STATUSES_THAT_MAY_HAVE_CHANGED, true)) {
+            $this->logger->warning('The sales order {salesOrder}, which a sales order lookup linked the order {order} to, has the payment status {paymentStatus}, so Shipmondo may have captured, voided or refunded its payment while the order was unlinked, and Sylius doesn\'t know. Check the order\'s payment in Sylius', [
+                'order' => $order->getNumber(),
+                'salesOrder' => $salesOrder->id,
+                'paymentStatus' => $paymentStatus,
+            ]);
+        }
+    }
+
+    /**
+     * Runs the handlers of the orders/status_update webhook with the sales order, on the order as the database has it,
+     * locked. When one fails, what they changed on the order, its shipments and its payments is discarded, and the failure
+     * is logged
+     */
+    private function runStatusUpdateHandlers(OrderInterface $order, SalesOrder $salesOrder): void
+    {
+        $handlers = $this->orderWebhookHandlers->forAction(WebhookAction::StatusUpdate);
+        if ([] === $handlers) {
+            return;
+        }
+
+        $webhook = new RemoteEvent(self::CATCH_UP_WEBHOOK_NAME, $salesOrder->raw, WebhookResourceName::Orders, WebhookAction::StatusUpdate);
+        $manager = $this->getManager($order);
+
+        /** @var \Throwable|null $failure */
+        $failure = $manager->wrapInTransaction(function () use ($manager, $order, $handlers, $webhook): ?\Throwable {
+            $manager->refresh($order, LockMode::PESSIMISTIC_WRITE);
+
+            // caught here, since a failure that escapes the transaction would close the entity manager, and so end the run
+            try {
+                foreach ($handlers as $handler) {
+                    $handler->handle($order, $webhook);
+                }
+            } catch (\Throwable $e) {
+                // reading the order, its shipments and its payments again discards what the handlers changed
+                $manager->refresh($order);
+
+                return $e;
+            }
+
+            return null;
+        });
+
+        if (null !== $failure) {
+            $this->logger->error('A webhook handler failed to catch the order {order} up on its sales order {salesOrder}, which a sales order lookup linked it to, so what the handlers changed on the order, its shipments and its payments is discarded. The order stays linked, and Shipmondo\'s webhooks about the sales order reach it from now on. Check the order against its sales order in Shipmondo', [
+                'order' => $order->getNumber(),
+                'salesOrder' => $salesOrder->id,
+                'exception' => $failure,
+            ]);
+        }
     }
 
     /**

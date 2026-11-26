@@ -18,6 +18,12 @@ use Setono\SyliusShipmondoPlugin\Webhook\RemoteEvent;
  * subscribes to exactly the actions the handlers subscribe to, so run `setono:sylius-shipmondo:register-webhooks` again
  * after adding a handler for another action.
  *
+ * A handler of the status_update action also runs when a sales order lookup links an unlinked order
+ * ({@see \Setono\SyliusShipmondoPlugin\Linker\OrderLinkerInterface}): Shipmondo's webhooks about the sales order were
+ * lost while no order was linked to it, so the order catches up on the sales order the lookup found, which is the
+ * payload then. The remote event's name tells the two apart
+ * ({@see \Setono\SyliusShipmondoPlugin\Linker\OrderLinker::CATCH_UP_WEBHOOK_NAME}).
+ *
  * Implementations are autoconfigured with the `setono_sylius_shipmondo.order_webhook_handler` tag; its priority
  * decides the order handlers subscribed to the same action run in.
  */
